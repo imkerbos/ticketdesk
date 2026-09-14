@@ -195,3 +195,75 @@ export interface WorklogTypeStat {
   total_time_sec: number
   entry_count: number
 }
+
+// ============ 交付报表（周报 / 月报）============
+
+export interface DeliverySummary {
+  period_start: string
+  period_end: string
+  delivered: number
+  /** 「已终止」不算交付，单独统计 */
+  terminated: number
+  created: number
+  on_time: number
+  late: number
+  /** 交付了但没有承诺交付日的单数，不进准时率 */
+  no_commitment: number
+  on_time_rate: number
+  /** 正数平均提前、负数平均延期 */
+  avg_variance_days: number
+  avg_delivery_days: number
+  alert_issues: number
+}
+
+export interface DeliveryVarianceItem {
+  issue_key: string
+  title: string
+  priority: string
+  project_key: string
+  assignee_name: string
+  planned_end: string
+  actual_end: string
+  variance_days: number
+}
+
+export interface DeliveryMemberStat {
+  user_id: number
+  display_name: string
+  delivered: number
+  on_time: number
+  late: number
+  on_time_rate: number
+  work_seconds: number
+}
+
+export interface DeliveryRiskItem {
+  issue_key: string
+  title: string
+  priority: string
+  project_key: string
+  assignee_name: string
+  status: string
+  planned_end: string
+  /** 距承诺交付还有几天，负数表示已超期 */
+  days_left: number
+}
+
+export interface DeliveryProjectStat {
+  project_key: string
+  project_name: string
+  delivered: number
+  on_time: number
+  late: number
+  on_time_rate: number
+}
+
+export interface DeliveryReport {
+  summary: DeliverySummary
+  prev_on_time_rate: number
+  prev_delivered: number
+  top_late: DeliveryVarianceItem[]
+  members: DeliveryMemberStat[]
+  risks: DeliveryRiskItem[]
+  projects: DeliveryProjectStat[]
+}
