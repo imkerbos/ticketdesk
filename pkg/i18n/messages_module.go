@@ -375,6 +375,7 @@ var miscMessages = map[string]map[Lang]string{
 	"report.alert_stats_failed":   {ZhCN: "获取告警统计失败", EnUS: "Could not load alert statistics"},
 	"report.dashboard_failed":     {ZhCN: "获取仪表盘统计失败", EnUS: "Could not load the dashboard"},
 	"report.sla_failed":           {ZhCN: "获取 SLA 报表失败", EnUS: "Could not load the SLA report"},
+	"report.delivery_failed":      {ZhCN: "获取交付报表失败", EnUS: "Could not load the delivery report"},
 	"report.worklog_stats_failed": {ZhCN: "获取工时统计失败", EnUS: "Could not load time statistics"},
 	"report.performance_failed":   {ZhCN: "获取用户绩效失败", EnUS: "Could not load the performance report"},
 

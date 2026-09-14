@@ -156,6 +156,13 @@
           <span class="info-label">{{ t('issue.detail.actualEnd') }}</span>
           <span class="time">{{ formatTime(issue.actual_end_date) }}</span>
         </div>
+        <!-- 交付结论：承诺 vs 实际差了几天。
+             工单一进终态，上面的「SLA 状态」行就消失了，最该沉淀的「这单到底
+             守没守住承诺」反而看不到；而且四个日期摆在那儿要读者自己心算。 -->
+        <div v-if="deliveryVariance" class="info-item">
+          <span class="info-label">{{ t('issue.detail.deliveryResult') }}</span>
+          <span class="pill" :class="deliveryVariance.tone">{{ deliveryVariance.text }}</span>
+        </div>
       </div>
     </div>
 
@@ -240,6 +247,8 @@
  * 指派人的编辑态用 defineModel 双向绑回父组件：父组件在打开编辑前
  * 要先懒加载用户列表，状态留在那边流程最短。
  */
+import { computed } from 'vue'
+import dayjs from 'dayjs'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Link, Edit, View, Plus } from '@element-plus/icons-vue'
@@ -252,7 +261,7 @@ const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
 
-defineProps<{
+const props = defineProps<{
   issue: Issue
   watchers: IssueWatcher[]
   users: UserOption[]
@@ -277,6 +286,30 @@ const emit = defineEmits<{
   (e: 'add-watcher'): void
   (e: 'remove-watcher', userId: number): void
 }>()
+
+/**
+ * 交付结论：承诺交付日 vs 实际完成日差了几天。
+ *
+ * 只在两者都有时给结论 —— 告警自动开的单没有排期，不该硬凑一个结论出来。
+ * 承诺是「日期」不是「时刻」，按当天末尾算：当天完成就算准时，不算延期。
+ */
+const deliveryVariance = computed(() => {
+  const planned = props.issue.planned_end_date
+  const actual = props.issue.actual_end_date
+  if (!planned || !actual) return null
+
+  const deadline = dayjs(planned).endOf('day')
+  const done = dayjs(actual)
+  const days = deadline.startOf('day').diff(done.startOf('day'), 'day')
+
+  if (done.isAfter(deadline)) {
+    return { tone: 'sla', text: t('issue.detail.deliveredLate', { n: Math.abs(days) }) }
+  }
+  if (days > 0) {
+    return { tone: 'green', text: t('issue.detail.deliveredEarly', { n: days }) }
+  }
+  return { tone: 'green', text: t('issue.detail.deliveredOnTime') }
+})
 
 const editingAssignee = defineModel<boolean>('editingAssignee', { required: true })
 const editAssigneeId = defineModel<number | undefined>('editAssigneeId', { required: true })

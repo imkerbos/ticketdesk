@@ -1006,6 +1006,7 @@ func (r *Router) registerReportRoutes(rg *gin.RouterGroup) {
 		reports.GET("/dashboard", r.reportHandler.HandleGetDashboardStats)
 		reports.GET("/issues", r.reportHandler.HandleGetIssueStats)
 		reports.GET("/sla", r.reportHandler.HandleGetSLAReport)
+		reports.GET("/delivery", r.reportHandler.HandleGetDeliveryReport)
 		reports.GET("/alerts", r.reportHandler.HandleGetAlertStats)
 		reports.GET("/worklogs", r.reportHandler.HandleGetWorklogStats)
 		reports.GET("/user-performance", r.reportHandler.HandleGetUserPerformance)

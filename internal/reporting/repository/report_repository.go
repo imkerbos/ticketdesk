@@ -50,6 +50,14 @@ type ReportRepository interface {
 	GetWorklogTypeStats(ctx context.Context, projectID *uint64, startDate, endDate time.Time) ([]WorklogTypeStat, error)
 	GetWorklogSummary(ctx context.Context, projectID *uint64, startDate, endDate time.Time) (*WorklogSummaryData, error)
 	GetWorklogDailyUserStats(ctx context.Context, projectID *uint64, startDate, endDate time.Time) ([]WorklogDailyUserStat, error)
+
+	// 交付报表（周报 / 月报）
+	GetDeliveryAggregate(ctx context.Context, projectID *uint64, start, end time.Time) (*DeliveryAggregate, error)
+	GetDeliveryLateIssues(ctx context.Context, projectID *uint64, start, end time.Time, limit int) ([]DeliveryVarianceRow, error)
+	GetDeliveryByMember(ctx context.Context, projectID *uint64, start, end time.Time) ([]DeliveryMemberRow, error)
+	GetDeliveryRisks(ctx context.Context, projectID *uint64, horizonDays, limit int) ([]DeliveryRiskRow, error)
+	GetDeliveryByProject(ctx context.Context, projectID *uint64, start, end time.Time) ([]DeliveryProjectRow, error)
+	GetWorklogSecondsByUser(ctx context.Context, projectID *uint64, start, end time.Time) (map[uint64]int64, error)
 }
 
 // DateCount 日期计数
@@ -829,4 +837,241 @@ func buildSLATargetExpr(slaTargets map[string]int64, priorityColumn string) (str
 	}
 	expr += " ELSE 99999 END"
 	return expr, args
+}
+
+// ============ 交付报表（周报 / 月报）============
+
+// DeliveryAggregate 一个周期内的交付聚合
+type DeliveryAggregate struct {
+	Delivered       int64
+	Terminated      int64
+	Created         int64
+	OnTime          int64
+	Late            int64
+	NoCommitment    int64
+	AlertIssues     int64
+	AvgVarianceDays float64
+	AvgDeliveryDays float64
+}
+
+// deliveredScope 「本期交付」的口径。
+//
+// 只认 resolved：这个产品里 closed 显示成「已终止」，是砍掉而不是交付完成
+// （见 web 语言包 issue.statusMap）。把终止也算成交付，一张被砍掉的需求
+// 就会变成「按时交付」。终止数单独统计，报表里单独一行。
+const deliveredScope = "issues.status = 'resolved'"
+
+// varianceDaysExpr 承诺交付日与实际完成日相差几天：正数提前、负数延期。
+// 承诺是「日期」不是「时刻」，两边都按自然日算，当天完成即准时。
+const varianceDaysExpr = "DATEDIFF(DATE(issues.planned_end_date), DATE(issues.actual_end_date))"
+
+func (r *reportRepository) scopeProject(q *gorm.DB, projectID *uint64) *gorm.DB {
+	if projectID != nil {
+		return q.Where("issues.project_id = ?", *projectID)
+	}
+	return q
+}
+
+// GetDeliveryAggregate 统计一个周期内的交付情况
+func (r *reportRepository) GetDeliveryAggregate(ctx context.Context, projectID *uint64, start, end time.Time) (*DeliveryAggregate, error) {
+	var agg DeliveryAggregate
+
+	// 交付侧：按实际完成时间落在周期内统计
+	deliveredQ := r.scopeProject(r.db.WithContext(ctx).Table("issues").
+		Joins("LEFT JOIN issue_types ON issue_types.id = issues.issue_type_id").
+		Where(deliveredScope).
+		Where("issues.actual_end_date BETWEEN ? AND ?", start, end), projectID)
+
+	var row struct {
+		Delivered    int64
+		OnTime       int64
+		Late         int64
+		NoCommitment int64
+		AlertIssues  int64
+		AvgVariance  float64
+		AvgDelivery  float64
+	}
+	err := deliveredQ.Select(fmt.Sprintf(`
+		COUNT(*) as delivered,
+		SUM(CASE WHEN issues.planned_end_date IS NOT NULL AND (%[1]s) >= 0 THEN 1 ELSE 0 END) as on_time,
+		SUM(CASE WHEN issues.planned_end_date IS NOT NULL AND (%[1]s) <  0 THEN 1 ELSE 0 END) as late,
+		SUM(CASE WHEN issues.planned_end_date IS NULL THEN 1 ELSE 0 END) as no_commitment,
+		SUM(CASE WHEN issue_types.name = 'Alert' THEN 1 ELSE 0 END) as alert_issues,
+		AVG(CASE WHEN issues.planned_end_date IS NOT NULL THEN (%[1]s) ELSE NULL END) as avg_variance,
+		AVG(CASE WHEN issues.actual_start_date IS NOT NULL
+		         THEN TIMESTAMPDIFF(HOUR, issues.actual_start_date, issues.actual_end_date) / 24
+		         ELSE NULL END) as avg_delivery
+	`, varianceDaysExpr)).Scan(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	agg.Delivered = row.Delivered
+	agg.OnTime = row.OnTime
+	agg.Late = row.Late
+	agg.NoCommitment = row.NoCommitment
+	agg.AlertIssues = row.AlertIssues
+	agg.AvgVarianceDays = row.AvgVariance
+	agg.AvgDeliveryDays = row.AvgDelivery
+
+	// 终止数
+	if err := r.scopeProject(r.db.WithContext(ctx).Table("issues").
+		Where("issues.status = 'closed'").
+		Where("issues.closed_at BETWEEN ? AND ?", start, end), projectID).
+		Count(&agg.Terminated).Error; err != nil {
+		return nil, err
+	}
+
+	// 新开数
+	if err := r.scopeProject(r.db.WithContext(ctx).Table("issues").
+		Where("issues.created_at BETWEEN ? AND ?", start, end), projectID).
+		Count(&agg.Created).Error; err != nil {
+		return nil, err
+	}
+
+	return &agg, nil
+}
+
+// DeliveryVarianceRow 偏差明细
+type DeliveryVarianceRow struct {
+	IssueKey     string
+	Title        string
+	Priority     string
+	ProjectKey   string
+	AssigneeName string
+	PlannedEnd   time.Time
+	ActualEnd    time.Time
+	VarianceDays int64
+}
+
+// GetDeliveryLateIssues 本期延期最多的工单
+func (r *reportRepository) GetDeliveryLateIssues(ctx context.Context, projectID *uint64, start, end time.Time, limit int) ([]DeliveryVarianceRow, error) {
+	var rows []DeliveryVarianceRow
+	q := r.scopeProject(r.db.WithContext(ctx).Table("issues").
+		Joins("JOIN projects ON projects.id = issues.project_id").
+		Joins("LEFT JOIN users ON users.id = issues.assignee_id").
+		Where(deliveredScope).
+		Where("issues.planned_end_date IS NOT NULL").
+		Where("issues.actual_end_date BETWEEN ? AND ?", start, end).
+		Where(fmt.Sprintf("(%s) < 0", varianceDaysExpr)), projectID)
+
+	err := q.Select(fmt.Sprintf(`
+		issues.issue_key, issues.title, issues.priority,
+		projects.project_key,
+		COALESCE(users.display_name, users.username, '') as assignee_name,
+		issues.planned_end_date as planned_end,
+		issues.actual_end_date as actual_end,
+		(%s) as variance_days
+	`, varianceDaysExpr)).
+		Order("variance_days ASC").Limit(limit).Scan(&rows).Error
+	return rows, err
+}
+
+// DeliveryMemberRow 人员交付明细
+type DeliveryMemberRow struct {
+	UserID      uint64
+	DisplayName string
+	Delivered   int64
+	OnTime      int64
+	Late        int64
+}
+
+// GetDeliveryByMember 按指派人统计本期交付
+func (r *reportRepository) GetDeliveryByMember(ctx context.Context, projectID *uint64, start, end time.Time) ([]DeliveryMemberRow, error) {
+	var rows []DeliveryMemberRow
+	q := r.scopeProject(r.db.WithContext(ctx).Table("issues").
+		Joins("JOIN users ON users.id = issues.assignee_id").
+		Where(deliveredScope).
+		Where("issues.actual_end_date BETWEEN ? AND ?", start, end), projectID)
+
+	err := q.Select(fmt.Sprintf(`
+		users.id as user_id,
+		COALESCE(users.display_name, users.username) as display_name,
+		COUNT(*) as delivered,
+		SUM(CASE WHEN issues.planned_end_date IS NOT NULL AND (%[1]s) >= 0 THEN 1 ELSE 0 END) as on_time,
+		SUM(CASE WHEN issues.planned_end_date IS NOT NULL AND (%[1]s) <  0 THEN 1 ELSE 0 END) as late
+	`, varianceDaysExpr)).
+		Group("users.id, display_name").Order("delivered DESC").Scan(&rows).Error
+	return rows, err
+}
+
+// DeliveryRiskRow 风险工单
+type DeliveryRiskRow struct {
+	IssueKey     string
+	Title        string
+	Priority     string
+	ProjectKey   string
+	AssigneeName string
+	Status       string
+	PlannedEnd   time.Time
+	DaysLeft     int64
+}
+
+// GetDeliveryRisks 未交付且有承诺的工单，按「还剩几天」升序 —— 已经超期的排最前
+func (r *reportRepository) GetDeliveryRisks(ctx context.Context, projectID *uint64, horizonDays, limit int) ([]DeliveryRiskRow, error) {
+	var rows []DeliveryRiskRow
+	q := r.scopeProject(r.db.WithContext(ctx).Table("issues").
+		Joins("JOIN projects ON projects.id = issues.project_id").
+		Joins("LEFT JOIN users ON users.id = issues.assignee_id").
+		Where("issues.status NOT IN ('resolved','closed','merged')").
+		Where("issues.planned_end_date IS NOT NULL").
+		Where("DATEDIFF(DATE(issues.planned_end_date), CURDATE()) <= ?", horizonDays), projectID)
+
+	err := q.Select(`
+		issues.issue_key, issues.title, issues.priority, issues.status,
+		projects.project_key,
+		COALESCE(users.display_name, users.username, '') as assignee_name,
+		issues.planned_end_date as planned_end,
+		DATEDIFF(DATE(issues.planned_end_date), CURDATE()) as days_left
+	`).Order("days_left ASC").Limit(limit).Scan(&rows).Error
+	return rows, err
+}
+
+// DeliveryProjectRow 项目横向对比
+type DeliveryProjectRow struct {
+	ProjectKey  string
+	ProjectName string
+	Delivered   int64
+	OnTime      int64
+	Late        int64
+}
+
+// GetDeliveryByProject 按项目统计本期交付
+func (r *reportRepository) GetDeliveryByProject(ctx context.Context, projectID *uint64, start, end time.Time) ([]DeliveryProjectRow, error) {
+	var rows []DeliveryProjectRow
+	q := r.scopeProject(r.db.WithContext(ctx).Table("issues").
+		Joins("JOIN projects ON projects.id = issues.project_id").
+		Where(deliveredScope).
+		Where("issues.actual_end_date BETWEEN ? AND ?", start, end), projectID)
+
+	err := q.Select(fmt.Sprintf(`
+		projects.project_key, projects.name as project_name,
+		COUNT(*) as delivered,
+		SUM(CASE WHEN issues.planned_end_date IS NOT NULL AND (%[1]s) >= 0 THEN 1 ELSE 0 END) as on_time,
+		SUM(CASE WHEN issues.planned_end_date IS NOT NULL AND (%[1]s) <  0 THEN 1 ELSE 0 END) as late
+	`, varianceDaysExpr)).
+		Group("projects.id, projects.project_key, projects.name").
+		Order("delivered DESC").Scan(&rows).Error
+	return rows, err
+}
+
+// GetWorklogSecondsByUser 本期每人填报的工时（秒）
+func (r *reportRepository) GetWorklogSecondsByUser(ctx context.Context, projectID *uint64, start, end time.Time) (map[uint64]int64, error) {
+	var rows []struct {
+		UserID  uint64
+		Seconds int64
+	}
+	q := r.db.WithContext(ctx).Table("issue_worklogs").
+		Joins("JOIN issues ON issues.id = issue_worklogs.issue_id").
+		Where("issue_worklogs.worked_at BETWEEN ? AND ?", start, end)
+	q = r.scopeProject(q, projectID)
+
+	if err := q.Select("issue_worklogs.user_id as user_id, SUM(issue_worklogs.time_spent_sec) as seconds").
+		Group("issue_worklogs.user_id").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[uint64]int64, len(rows))
+	for _, row := range rows {
+		out[row.UserID] = row.Seconds
+	}
+	return out, nil
 }

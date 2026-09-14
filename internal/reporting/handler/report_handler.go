@@ -102,6 +102,33 @@ func (h *ReportHandler) HandleGetSLAReport(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// HandleGetDeliveryReport 获取交付报表（周报 / 月报）
+// @Summary 获取交付报表
+// @Description 按周或月统计交付情况：准时率、承诺偏差、人员负载、风险工单、项目对比
+// @Tags Report
+// @Produce json
+// @Param period query string true "统计周期 (week / month)"
+// @Param date query string false "周期内任意一天 (YYYY-MM-DD)，留空取今天"
+// @Param project_key query string false "项目 Key"
+// @Success 200 {object} response.Response{data=dto.DeliveryReportResponse}
+// @Router /reports/delivery [get]
+// @Security BearerAuth
+func (h *ReportHandler) HandleGetDeliveryReport(c *gin.Context) {
+	var req dto.DeliveryReportRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.BadRequestValidation(c, err)
+		return
+	}
+
+	result, err := h.reportService.GetDeliveryReport(c.Request.Context(), &req)
+	if err != nil {
+		response.InternalError(c, "report.delivery_failed")
+		return
+	}
+
+	response.Success(c, result)
+}
+
 // HandleGetAlertStats 获取告警统计
 // @Summary 获取告警统计
 // @Description 获取告警的详细统计数据
