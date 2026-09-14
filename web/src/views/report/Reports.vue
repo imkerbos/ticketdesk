@@ -252,7 +252,10 @@
               <h2>{{ t('report.alertTrend') }}</h2>
             </div>
             <div class="timeline-list">
-              <el-table v-if="alertStats.timeline?.length" :data="alertStats.timeline || []" stripe size="small" :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }">
+              <!-- 限高滚动：这张表的行数跟着日期范围走，选 90 天就是 90 行，
+                   会把整行撑得老高，而左边的严重程度分布只有两三条，
+                   旁边就空出一大块。限高之后两张卡高度接近，长范围也不会失控。 -->
+              <el-table v-if="alertStats.timeline?.length" :data="alertStats.timeline || []" stripe size="small" max-height="258" :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }">
                 <el-table-column :label="t('report.date')" min-width="120">
                   <template #default="{ row }">
                     <span class="timeline-date">{{ formatDate(row.date) }}</span>
@@ -375,6 +378,121 @@
           </p>
         </section>
 
+        <!-- 按优先级 / 按类型：交付了几张是一回事，交付的是什么份量是另一回事 -->
+        <div class="stretch-row">
+          <section class="card">
+            <div class="card-head">
+              <h2>{{ t('report.delivery.byPriority') }}</h2>
+            </div>
+            <el-table
+              v-if="delivery.by_priority?.length"
+              :data="delivery.by_priority"
+              stripe
+              size="small"
+              :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }"
+            >
+              <el-table-column :label="t('issue.priority')" width="90">
+                <template #default="{ row }">
+                  <span class="prio"><span class="dot" :style="{ background: getPriorityColor(row.key) }"></span>{{ row.key }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="delivered" :label="t('report.delivery.delivered')" width="80" align="center" class-name="num" />
+              <el-table-column prop="on_time" :label="t('report.delivery.onTime')" width="80" align="center" class-name="num" />
+              <el-table-column prop="late" :label="t('report.delivery.late')" width="80" align="center" class-name="num" />
+              <el-table-column :label="t('report.delivery.onTimeRate')" min-width="100">
+                <template #default="{ row }">
+                  <span class="num" :class="getSLARateClass(row.on_time_rate)">{{ formatPercent(row.on_time_rate) }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+            <TdEmptyState v-else preset="no-data" :title="t('report.delivery.noDelivered')" />
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>{{ t('report.delivery.byType') }}</h2>
+            </div>
+            <el-table
+              v-if="delivery.by_type?.length"
+              :data="delivery.by_type"
+              stripe
+              size="small"
+              :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }"
+            >
+              <el-table-column prop="key" :label="t('issue.type')" min-width="100" />
+              <el-table-column prop="delivered" :label="t('report.delivery.delivered')" width="80" align="center" class-name="num" />
+              <el-table-column prop="on_time" :label="t('report.delivery.onTime')" width="80" align="center" class-name="num" />
+              <el-table-column prop="late" :label="t('report.delivery.late')" width="80" align="center" class-name="num" />
+              <el-table-column :label="t('report.delivery.onTimeRate')" min-width="100">
+                <template #default="{ row }">
+                  <span class="num" :class="getSLARateClass(row.on_time_rate)">{{ formatPercent(row.on_time_rate) }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+            <TdEmptyState v-else preset="no-data" :title="t('report.delivery.noDelivered')" />
+          </section>
+        </div>
+
+        <!-- 交付清单：写周报的人真正要的东西 —— 这期交付了哪些、什么类型、
+             什么等级、谁做的、承诺 vs 实际。上面那些汇总都是从这张表推出来的。 -->
+        <section class="card">
+          <div class="card-head">
+            <h2>{{ t('report.delivery.listTitle') }}</h2>
+            <span class="count">{{ delivery.delivered_issues?.length || 0 }}</span>
+          </div>
+          <el-table
+            v-if="delivery.delivered_issues?.length"
+            :data="delivery.delivered_issues"
+            stripe
+            size="small"
+            max-height="520"
+            :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }"
+          >
+            <el-table-column :label="t('issue.key')" width="104">
+              <template #default="{ row }">
+                <a class="key" @click="$router.push(`/issues/${row.issue_key}`)">{{ row.issue_key }}</a>
+              </template>
+            </el-table-column>
+            <el-table-column prop="title" :label="t('issue.title')" min-width="220" show-overflow-tooltip />
+            <el-table-column prop="type_name" :label="t('issue.type')" width="92">
+              <template #default="{ row }"><span class="muted">{{ row.type_name }}</span></template>
+            </el-table-column>
+            <el-table-column :label="t('issue.priority')" width="76">
+              <template #default="{ row }">
+                <span class="prio"><span class="dot" :style="{ background: getPriorityColor(row.priority) }"></span>{{ row.priority }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('report.delivery.assignee')" width="92">
+              <template #default="{ row }">
+                <span :class="row.assignee_name ? '' : 'muted'">{{ row.assignee_name || t('common.unassigned') }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('report.delivery.plannedEnd')" width="104">
+              <template #default="{ row }">
+                <span v-if="row.has_commitment" class="time">{{ row.planned_end }}</span>
+                <span v-else class="muted">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('report.delivery.actualEnd')" width="104">
+              <template #default="{ row }"><span class="time">{{ row.actual_end }}</span></template>
+            </el-table-column>
+            <el-table-column :label="t('report.delivery.variance')" width="104" align="right">
+              <template #default="{ row }">
+                <span v-if="!row.has_commitment" class="muted">{{ t('report.delivery.noCommitmentShort') }}</span>
+                <span v-else-if="row.variance_days > 0" class="pill green">{{ t('report.delivery.earlyDays', { n: row.variance_days }) }}</span>
+                <span v-else-if="row.variance_days < 0" class="pill sla">{{ t('report.delivery.lateDays', { n: -row.variance_days }) }}</span>
+                <span v-else class="pill green">{{ t('report.delivery.exactly') }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <TdEmptyState
+            v-else
+            preset="no-data"
+            :title="t('report.delivery.noDelivered')"
+            :description="t('report.delivery.noDeliveredDesc')"
+          />
+        </section>
+
         <!-- 风险 + 延期，两列 -->
         <div class="stretch-row">
           <section class="card">
@@ -400,7 +518,9 @@
                   <span :class="row.assignee_name ? '' : 'muted'">{{ row.assignee_name || t('common.unassigned') }}</span>
                 </template>
               </el-table-column>
-              <el-table-column :label="t('report.delivery.daysLeft')" width="100" align="right">
+              <!-- 「已超期 N 天」而不是「超期 N 天」：后者会被读成「再过 N 天就超期」。
+                   列头也从「剩余」改成「距承诺交付」—— 列头写剩余、值写超期，本身就打架。 -->
+              <el-table-column :label="t('report.delivery.daysLeft')" width="110" align="right">
                 <template #default="{ row }">
                   <span class="pill" :class="row.days_left < 0 ? 'sla' : 'orange'">
                     {{ row.days_left < 0 ? t('report.delivery.overdueDays', { n: -row.days_left }) : t('report.delivery.leftDays', { n: row.days_left }) }}

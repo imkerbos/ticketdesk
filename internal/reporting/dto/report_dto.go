@@ -378,14 +378,45 @@ type DeliveryProjectStat struct {
 	OnTimeRate  float64 `json:"on_time_rate"`
 }
 
+// DeliveryIssueItem 本期交付的工单。周报正文直接抄这张表，
+// 所以类型、优先级、负责人、承诺 vs 实际都要带上，缺一样就得回工单列表翻。
+type DeliveryIssueItem struct {
+	IssueKey     string `json:"issue_key"`
+	Title        string `json:"title"`
+	TypeName     string `json:"type_name"`
+	Priority     string `json:"priority"`
+	ProjectKey   string `json:"project_key"`
+	AssigneeName string `json:"assignee_name"`
+	PlannedEnd   string `json:"planned_end"`
+	ActualEnd    string `json:"actual_end"`
+	// VarianceDays 正数提前、负数延期；没有承诺交付日时 HasCommitment 为 false
+	VarianceDays  int64 `json:"variance_days"`
+	HasCommitment bool  `json:"has_commitment"`
+}
+
+// DeliveryDimensionStat 按某个维度（优先级 / 类型）切分的交付情况
+type DeliveryDimensionStat struct {
+	// Key 维度取值。优先级是 P0..P3，类型是工单类型名
+	Key        string  `json:"key"`
+	Label      string  `json:"label"`
+	Delivered  int64   `json:"delivered"`
+	OnTime     int64   `json:"on_time"`
+	Late       int64   `json:"late"`
+	OnTimeRate float64 `json:"on_time_rate"`
+}
+
 // DeliveryReportResponse 交付报表响应
 type DeliveryReportResponse struct {
 	Summary DeliverySummary `json:"summary"`
 	// PrevOnTimeRate 上一周期的准时率，用于给出环比
-	PrevOnTimeRate float64                `json:"prev_on_time_rate"`
-	PrevDelivered  int64                  `json:"prev_delivered"`
-	TopLate        []DeliveryVarianceItem `json:"top_late"`
-	Members        []DeliveryMemberStat   `json:"members"`
-	Risks          []DeliveryRiskItem     `json:"risks"`
-	Projects       []DeliveryProjectStat  `json:"projects"`
+	PrevOnTimeRate float64 `json:"prev_on_time_rate"`
+	PrevDelivered  int64   `json:"prev_delivered"`
+	// DeliveredIssues 本期交付的工单清单
+	DeliveredIssues []DeliveryIssueItem     `json:"delivered_issues"`
+	ByPriority      []DeliveryDimensionStat `json:"by_priority"`
+	ByType          []DeliveryDimensionStat `json:"by_type"`
+	TopLate         []DeliveryVarianceItem  `json:"top_late"`
+	Members         []DeliveryMemberStat    `json:"members"`
+	Risks           []DeliveryRiskItem      `json:"risks"`
+	Projects        []DeliveryProjectStat   `json:"projects"`
 }

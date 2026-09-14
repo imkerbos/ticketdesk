@@ -258,10 +258,38 @@ export interface DeliveryProjectStat {
   on_time_rate: number
 }
 
+/** 本期交付的工单。周报正文直接抄这张表，类型、等级、负责人、承诺 vs 实际都要带 */
+export interface DeliveryIssueItem {
+  issue_key: string
+  title: string
+  type_name: string
+  priority: string
+  project_key: string
+  assignee_name: string
+  planned_end: string
+  actual_end: string
+  /** 正数提前、负数延期；has_commitment 为 false 时无意义 */
+  variance_days: number
+  has_commitment: boolean
+}
+
+/** 按优先级 / 类型切分的交付情况 */
+export interface DeliveryDimensionStat {
+  key: string
+  label: string
+  delivered: number
+  on_time: number
+  late: number
+  on_time_rate: number
+}
+
 export interface DeliveryReport {
   summary: DeliverySummary
   prev_on_time_rate: number
   prev_delivered: number
+  delivered_issues: DeliveryIssueItem[]
+  by_priority: DeliveryDimensionStat[]
+  by_type: DeliveryDimensionStat[]
   top_late: DeliveryVarianceItem[]
   members: DeliveryMemberStat[]
   risks: DeliveryRiskItem[]

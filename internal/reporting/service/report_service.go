@@ -730,6 +730,44 @@ func onTimeRate(onTime, late int64) float64 {
 	return float64(onTime) / float64(judged) * 100
 }
 
+// deliveryDimension 把按维度切分的交付统计转成响应结构。
+// Label 留空交给前端按语言渲染 —— 优先级是 P0..P3 这种稳定 code，
+// 类型名则是项目里配出来的，本身就是展示名。
+func (s *reportService) deliveryDimension(ctx context.Context, dim string, projectID *uint64, start, end time.Time) []dto.DeliveryDimensionStat {
+	var (
+		rows []repository.DeliveryDimensionRow
+		err  error
+	)
+	switch dim {
+	case "priority":
+		rows, err = s.reportRepo.GetDeliveryByPriority(ctx, projectID, start, end)
+	case "type":
+		rows, err = s.reportRepo.GetDeliveryByType(ctx, projectID, start, end)
+	}
+	if err != nil {
+		logger.Warn("failed to aggregate delivery dimension",
+			zap.String("dimension", dim), zap.Error(err))
+		return nil
+	}
+
+	out := make([]dto.DeliveryDimensionStat, len(rows))
+	for i, row := range rows {
+		out[i] = dto.DeliveryDimensionStat{
+			Key:        row.Key,
+			Label:      row.Key,
+			Delivered:  row.Delivered,
+			OnTime:     row.OnTime,
+			Late:       row.Late,
+			OnTimeRate: onTimeRate(row.OnTime, row.Late),
+		}
+	}
+	// 优先级按 P0..P3 排，不按交付量 —— 严重程度的顺序本身是信息
+	if dim == "priority" {
+		sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	}
+	return out
+}
+
 // GetDeliveryReport 生成交付报表（周报 / 月报）
 func (s *reportService) GetDeliveryReport(ctx context.Context, req *dto.DeliveryReportRequest) (*dto.DeliveryReportResponse, error) {
 	start, end, prevStart, prevEnd, err := resolvePeriod(req.Period, req.Date)
@@ -775,6 +813,34 @@ func (s *reportService) GetDeliveryReport(ctx context.Context, req *dto.Delivery
 	} else {
 		logger.Warn("failed to aggregate previous period", zap.Error(prevErr))
 	}
+
+	// 交付清单：周报正文直接抄这张表。上限给到 500，一个周期交付超过这个数
+	// 的团队，靠清单写周报本来也不现实，该看的是上面的汇总。
+	if issues, issueErr := s.reportRepo.GetDeliveredIssues(ctx, projectID, start, end, 500); issueErr == nil {
+		resp.DeliveredIssues = make([]dto.DeliveryIssueItem, len(issues))
+		for i, it := range issues {
+			item := dto.DeliveryIssueItem{
+				IssueKey:     it.IssueKey,
+				Title:        it.Title,
+				TypeName:     it.TypeName,
+				Priority:     it.Priority,
+				ProjectKey:   it.ProjectKey,
+				AssigneeName: it.AssigneeName,
+				ActualEnd:    it.ActualEnd.Format("2006-01-02"),
+			}
+			if it.PlannedEnd != nil && it.VarianceDays != nil {
+				item.HasCommitment = true
+				item.PlannedEnd = it.PlannedEnd.Format("2006-01-02")
+				item.VarianceDays = *it.VarianceDays
+			}
+			resp.DeliveredIssues[i] = item
+		}
+	} else {
+		logger.Warn("failed to list delivered issues", zap.Error(issueErr))
+	}
+
+	resp.ByPriority = s.deliveryDimension(ctx, "priority", projectID, start, end)
+	resp.ByType = s.deliveryDimension(ctx, "type", projectID, start, end)
 
 	if lateItems, lateErr := s.reportRepo.GetDeliveryLateIssues(ctx, projectID, start, end, 10); lateErr == nil {
 		resp.TopLate = make([]dto.DeliveryVarianceItem, len(lateItems))

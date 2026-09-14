@@ -57,6 +57,9 @@ type ReportRepository interface {
 	GetDeliveryByMember(ctx context.Context, projectID *uint64, start, end time.Time) ([]DeliveryMemberRow, error)
 	GetDeliveryRisks(ctx context.Context, projectID *uint64, horizonDays, limit int) ([]DeliveryRiskRow, error)
 	GetDeliveryByProject(ctx context.Context, projectID *uint64, start, end time.Time) ([]DeliveryProjectRow, error)
+	GetDeliveredIssues(ctx context.Context, projectID *uint64, start, end time.Time, limit int) ([]DeliveredIssueRow, error)
+	GetDeliveryByPriority(ctx context.Context, projectID *uint64, start, end time.Time) ([]DeliveryDimensionRow, error)
+	GetDeliveryByType(ctx context.Context, projectID *uint64, start, end time.Time) ([]DeliveryDimensionRow, error)
 	GetWorklogSecondsByUser(ctx context.Context, projectID *uint64, start, end time.Time) (map[uint64]int64, error)
 }
 
@@ -1074,4 +1077,84 @@ func (r *reportRepository) GetWorklogSecondsByUser(ctx context.Context, projectI
 		out[row.UserID] = row.Seconds
 	}
 	return out, nil
+}
+
+// DeliveredIssueRow 本期交付的工单
+type DeliveredIssueRow struct {
+	IssueKey     string
+	Title        string
+	TypeName     string
+	Priority     string
+	ProjectKey   string
+	AssigneeName string
+	PlannedEnd   *time.Time
+	ActualEnd    time.Time
+	VarianceDays *int64
+}
+
+// GetDeliveredIssues 本期交付的工单清单，按实际完成时间倒序。
+// 没有承诺交付日的也要列出来 —— 它们同样是本期的产出，只是不参与准时率。
+func (r *reportRepository) GetDeliveredIssues(ctx context.Context, projectID *uint64, start, end time.Time, limit int) ([]DeliveredIssueRow, error) {
+	var rows []DeliveredIssueRow
+	q := r.scopeProject(r.db.WithContext(ctx).Table("issues").
+		Joins("JOIN projects ON projects.id = issues.project_id").
+		Joins("LEFT JOIN issue_types ON issue_types.id = issues.issue_type_id").
+		Joins("LEFT JOIN users ON users.id = issues.assignee_id").
+		Where(deliveredScope).
+		Where("issues.actual_end_date BETWEEN ? AND ?", start, end), projectID)
+
+	err := q.Select(fmt.Sprintf(`
+		issues.issue_key, issues.title, issues.priority,
+		COALESCE(issue_types.display_name, issue_types.name, '') as type_name,
+		projects.project_key,
+		COALESCE(users.display_name, users.username, '') as assignee_name,
+		issues.planned_end_date as planned_end,
+		issues.actual_end_date as actual_end,
+		CASE WHEN issues.planned_end_date IS NULL THEN NULL ELSE (%s) END as variance_days
+	`, varianceDaysExpr)).
+		Order("issues.actual_end_date DESC").Limit(limit).Scan(&rows).Error
+	return rows, err
+}
+
+// DeliveryDimensionRow 按维度切分的交付统计
+type DeliveryDimensionRow struct {
+	Key       string
+	Delivered int64
+	OnTime    int64
+	Late      int64
+}
+
+// deliveryByDimension 按指定列分组统计本期交付。
+// 优先级和类型两种切分只差一个分组列，不值得各写一份 SQL。
+func (r *reportRepository) deliveryByDimension(ctx context.Context, projectID *uint64, start, end time.Time, keyExpr, groupBy string, extraJoin string) ([]DeliveryDimensionRow, error) {
+	var rows []DeliveryDimensionRow
+	q := r.db.WithContext(ctx).Table("issues")
+	if extraJoin != "" {
+		q = q.Joins(extraJoin)
+	}
+	q = r.scopeProject(q.
+		Where(deliveredScope).
+		Where("issues.actual_end_date BETWEEN ? AND ?", start, end), projectID)
+
+	err := q.Select(fmt.Sprintf(`
+		%[1]s as %[3]s,
+		COUNT(*) as delivered,
+		SUM(CASE WHEN issues.planned_end_date IS NOT NULL AND (%[2]s) >= 0 THEN 1 ELSE 0 END) as on_time,
+		SUM(CASE WHEN issues.planned_end_date IS NOT NULL AND (%[2]s) <  0 THEN 1 ELSE 0 END) as late
+	`, keyExpr, varianceDaysExpr, "`key`")).
+		Group(groupBy).Order("delivered DESC").Scan(&rows).Error
+	return rows, err
+}
+
+// GetDeliveryByPriority 按优先级统计本期交付
+func (r *reportRepository) GetDeliveryByPriority(ctx context.Context, projectID *uint64, start, end time.Time) ([]DeliveryDimensionRow, error) {
+	return r.deliveryByDimension(ctx, projectID, start, end, "issues.priority", "issues.priority", "")
+}
+
+// GetDeliveryByType 按工单类型统计本期交付
+func (r *reportRepository) GetDeliveryByType(ctx context.Context, projectID *uint64, start, end time.Time) ([]DeliveryDimensionRow, error) {
+	return r.deliveryByDimension(ctx, projectID, start, end,
+		"COALESCE(issue_types.display_name, issue_types.name, '')",
+		"issue_types.id, issue_types.display_name, issue_types.name",
+		"LEFT JOIN issue_types ON issue_types.id = issues.issue_type_id")
 }
