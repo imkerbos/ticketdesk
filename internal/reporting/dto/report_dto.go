@@ -288,3 +288,135 @@ type DateRange struct {
 	StartDate time.Time
 	EndDate   time.Time
 }
+
+// ============ 交付报表（周报 / 月报）============
+
+// DeliveryReportRequest 交付报表请求
+type DeliveryReportRequest struct {
+	// Period 统计周期：week / month
+	Period string `form:"period" binding:"required,oneof=week month"`
+	// Date 周期内的任意一天，据此推出周期起止；留空取今天
+	Date       string `form:"date"`
+	ProjectKey string `form:"project_key"`
+}
+
+// DeliverySummary 交付总览
+type DeliverySummary struct {
+	PeriodStart string `json:"period_start"`
+	PeriodEnd   string `json:"period_end"`
+
+	// Delivered 本期交付数（状态为已完成；「已终止」不算交付，单独统计）
+	Delivered int64 `json:"delivered"`
+	// Terminated 本期终止数
+	Terminated int64 `json:"terminated"`
+	// Created 本期新开数
+	Created int64 `json:"created"`
+
+	// OnTime / Late 只统计「既有承诺交付日、又有实际完成时间」的单
+	OnTime int64 `json:"on_time"`
+	Late   int64 `json:"late"`
+	// NoCommitment 交付了但没有承诺交付日的单数 —— 它们不进准时率，
+	// 必须显式报出来，否则一个漂亮的准时率会骗人
+	NoCommitment int64 `json:"no_commitment"`
+	// OnTimeRate 准时率（%），分母是 OnTime + Late
+	OnTimeRate float64 `json:"on_time_rate"`
+
+	// AvgVarianceDays 平均偏差天数，正数表示平均提前，负数表示平均延期
+	AvgVarianceDays float64 `json:"avg_variance_days"`
+	// AvgDeliveryDays 平均交付时长（实际开始 → 实际完成，天）
+	AvgDeliveryDays float64 `json:"avg_delivery_days"`
+
+	// AlertIssues 本期告警自动开的单数，不进准时率
+	AlertIssues int64 `json:"alert_issues"`
+}
+
+// DeliveryVarianceItem 延期最多的工单
+type DeliveryVarianceItem struct {
+	IssueKey     string `json:"issue_key"`
+	Title        string `json:"title"`
+	Priority     string `json:"priority"`
+	ProjectKey   string `json:"project_key"`
+	AssigneeName string `json:"assignee_name"`
+	PlannedEnd   string `json:"planned_end"`
+	ActualEnd    string `json:"actual_end"`
+	// VarianceDays 正数提前、负数延期
+	VarianceDays int64 `json:"variance_days"`
+}
+
+// DeliveryMemberStat 人员交付情况
+type DeliveryMemberStat struct {
+	UserID      uint64  `json:"user_id"`
+	DisplayName string  `json:"display_name"`
+	Delivered   int64   `json:"delivered"`
+	OnTime      int64   `json:"on_time"`
+	Late        int64   `json:"late"`
+	OnTimeRate  float64 `json:"on_time_rate"`
+	// WorkSeconds 本期填报的工时
+	WorkSeconds int64 `json:"work_seconds"`
+}
+
+// DeliveryRiskItem 风险工单：已延期未交付 / 即将到期
+type DeliveryRiskItem struct {
+	IssueKey     string `json:"issue_key"`
+	Title        string `json:"title"`
+	Priority     string `json:"priority"`
+	ProjectKey   string `json:"project_key"`
+	AssigneeName string `json:"assignee_name"`
+	Status       string `json:"status"`
+	PlannedEnd   string `json:"planned_end"`
+	// DaysLeft 距承诺交付还有几天，负数表示已经超了
+	DaysLeft int64 `json:"days_left"`
+}
+
+// DeliveryProjectStat 项目横向对比
+type DeliveryProjectStat struct {
+	ProjectKey  string  `json:"project_key"`
+	ProjectName string  `json:"project_name"`
+	Delivered   int64   `json:"delivered"`
+	OnTime      int64   `json:"on_time"`
+	Late        int64   `json:"late"`
+	OnTimeRate  float64 `json:"on_time_rate"`
+}
+
+// DeliveryIssueItem 本期交付的工单。周报正文直接抄这张表，
+// 所以类型、优先级、负责人、承诺 vs 实际都要带上，缺一样就得回工单列表翻。
+type DeliveryIssueItem struct {
+	IssueKey     string `json:"issue_key"`
+	Title        string `json:"title"`
+	TypeName     string `json:"type_name"`
+	Priority     string `json:"priority"`
+	ProjectKey   string `json:"project_key"`
+	AssigneeName string `json:"assignee_name"`
+	PlannedEnd   string `json:"planned_end"`
+	ActualEnd    string `json:"actual_end"`
+	// VarianceDays 正数提前、负数延期；没有承诺交付日时 HasCommitment 为 false
+	VarianceDays  int64 `json:"variance_days"`
+	HasCommitment bool  `json:"has_commitment"`
+}
+
+// DeliveryDimensionStat 按某个维度（优先级 / 类型）切分的交付情况
+type DeliveryDimensionStat struct {
+	// Key 维度取值。优先级是 P0..P3，类型是工单类型名
+	Key        string  `json:"key"`
+	Label      string  `json:"label"`
+	Delivered  int64   `json:"delivered"`
+	OnTime     int64   `json:"on_time"`
+	Late       int64   `json:"late"`
+	OnTimeRate float64 `json:"on_time_rate"`
+}
+
+// DeliveryReportResponse 交付报表响应
+type DeliveryReportResponse struct {
+	Summary DeliverySummary `json:"summary"`
+	// PrevOnTimeRate 上一周期的准时率，用于给出环比
+	PrevOnTimeRate float64 `json:"prev_on_time_rate"`
+	PrevDelivered  int64   `json:"prev_delivered"`
+	// DeliveredIssues 本期交付的工单清单
+	DeliveredIssues []DeliveryIssueItem     `json:"delivered_issues"`
+	ByPriority      []DeliveryDimensionStat `json:"by_priority"`
+	ByType          []DeliveryDimensionStat `json:"by_type"`
+	TopLate         []DeliveryVarianceItem  `json:"top_late"`
+	Members         []DeliveryMemberStat    `json:"members"`
+	Risks           []DeliveryRiskItem      `json:"risks"`
+	Projects        []DeliveryProjectStat   `json:"projects"`
+}

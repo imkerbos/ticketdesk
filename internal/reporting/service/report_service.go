@@ -28,6 +28,8 @@ type ReportService interface {
 	GetDashboardStats(ctx context.Context, req *dto.DashboardStatsRequest) (*dto.DashboardStatsResponse, error)
 	GetIssueStats(ctx context.Context, req *dto.IssueStatsRequest) (*dto.IssueStatsResponse, error)
 	GetSLAReport(ctx context.Context, req *dto.SLAReportRequest) (*dto.SLAReportResponse, error)
+	// GetDeliveryReport 交付报表（周报 / 月报）
+	GetDeliveryReport(ctx context.Context, req *dto.DeliveryReportRequest) (*dto.DeliveryReportResponse, error)
 	GetAlertStats(ctx context.Context, req *dto.AlertStatsRequest) (*dto.AlertStatsResponse, error)
 	GetUserPerformance(ctx context.Context, req *dto.IssueStatsRequest) ([]*dto.UserPerformanceResponse, error)
 	GetWorklogStats(ctx context.Context, req *dto.WorklogStatsRequest) (*dto.WorklogStatsResponse, error)
@@ -683,4 +685,233 @@ func (s *reportService) mapToDistribution(data map[string]int64) []dto.Distribut
 	}
 
 	return result
+}
+
+// ============ 交付报表（周报 / 月报）============
+
+// resolvePeriod 把「周期类型 + 周期内任意一天」换算成起止时刻，以及上一周期的起止。
+//
+// 周按 ISO 周算（周一到周日），月按自然月。返回的是左闭右闭的时刻区间，
+// 右端取当天 23:59:59 —— 报表按自然日汇总，不该把周日当天的交付漏掉。
+func resolvePeriod(period, dateStr string) (start, end, prevStart, prevEnd time.Time, err error) {
+	base := time.Now()
+	if dateStr != "" {
+		base, err = time.ParseInLocation("2006-01-02", dateStr, time.Local)
+		if err != nil {
+			return time.Time{}, time.Time{}, time.Time{}, time.Time{}, fmt.Errorf("日期格式错误，应为 YYYY-MM-DD: %w", err)
+		}
+	}
+
+	switch period {
+	case "week":
+		// Go 的 Weekday 周日是 0，这里要周一开头
+		offset := (int(base.Weekday()) + 6) % 7
+		start = time.Date(base.Year(), base.Month(), base.Day()-offset, 0, 0, 0, 0, base.Location())
+		end = start.AddDate(0, 0, 7).Add(-time.Second)
+		prevStart = start.AddDate(0, 0, -7)
+		prevEnd = start.Add(-time.Second)
+	case "month":
+		start = time.Date(base.Year(), base.Month(), 1, 0, 0, 0, 0, base.Location())
+		end = start.AddDate(0, 1, 0).Add(-time.Second)
+		prevStart = start.AddDate(0, -1, 0)
+		prevEnd = start.Add(-time.Second)
+	default:
+		return time.Time{}, time.Time{}, time.Time{}, time.Time{}, fmt.Errorf("不支持的统计周期: %s", period)
+	}
+	return start, end, prevStart, prevEnd, nil
+}
+
+// onTimeRate 准时率。分母只算「有承诺交付日」的单 —— 没排期的既不算准时也不算延期。
+func onTimeRate(onTime, late int64) float64 {
+	judged := onTime + late
+	if judged == 0 {
+		return 0
+	}
+	return float64(onTime) / float64(judged) * 100
+}
+
+// deliveryDimension 把按维度切分的交付统计转成响应结构。
+// Label 留空交给前端按语言渲染 —— 优先级是 P0..P3 这种稳定 code，
+// 类型名则是项目里配出来的，本身就是展示名。
+func (s *reportService) deliveryDimension(ctx context.Context, dim string, projectID *uint64, start, end time.Time) []dto.DeliveryDimensionStat {
+	var (
+		rows []repository.DeliveryDimensionRow
+		err  error
+	)
+	switch dim {
+	case "priority":
+		rows, err = s.reportRepo.GetDeliveryByPriority(ctx, projectID, start, end)
+	case "type":
+		rows, err = s.reportRepo.GetDeliveryByType(ctx, projectID, start, end)
+	}
+	if err != nil {
+		logger.Warn("failed to aggregate delivery dimension",
+			zap.String("dimension", dim), zap.Error(err))
+		return nil
+	}
+
+	out := make([]dto.DeliveryDimensionStat, len(rows))
+	for i, row := range rows {
+		out[i] = dto.DeliveryDimensionStat{
+			Key:        row.Key,
+			Label:      row.Key,
+			Delivered:  row.Delivered,
+			OnTime:     row.OnTime,
+			Late:       row.Late,
+			OnTimeRate: onTimeRate(row.OnTime, row.Late),
+		}
+	}
+	// 优先级按 P0..P3 排，不按交付量 —— 严重程度的顺序本身是信息
+	if dim == "priority" {
+		sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	}
+	return out
+}
+
+// GetDeliveryReport 生成交付报表（周报 / 月报）
+func (s *reportService) GetDeliveryReport(ctx context.Context, req *dto.DeliveryReportRequest) (*dto.DeliveryReportResponse, error) {
+	start, end, prevStart, prevEnd, err := resolvePeriod(req.Period, req.Date)
+	if err != nil {
+		return nil, err
+	}
+
+	var projectID *uint64
+	if req.ProjectKey != "" {
+		project, projectErr := s.projectRepo.GetByKey(ctx, req.ProjectKey)
+		if projectErr != nil {
+			return nil, projectErr
+		}
+		projectID = &project.ID
+	}
+
+	agg, err := s.reportRepo.GetDeliveryAggregate(ctx, projectID, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("统计交付情况失败: %w", err)
+	}
+
+	resp := &dto.DeliveryReportResponse{
+		Summary: dto.DeliverySummary{
+			PeriodStart:     start.Format("2006-01-02"),
+			PeriodEnd:       end.Format("2006-01-02"),
+			Delivered:       agg.Delivered,
+			Terminated:      agg.Terminated,
+			Created:         agg.Created,
+			OnTime:          agg.OnTime,
+			Late:            agg.Late,
+			NoCommitment:    agg.NoCommitment,
+			OnTimeRate:      onTimeRate(agg.OnTime, agg.Late),
+			AvgVarianceDays: agg.AvgVarianceDays,
+			AvgDeliveryDays: agg.AvgDeliveryDays,
+			AlertIssues:     agg.AlertIssues,
+		},
+	}
+
+	// 上期对比：只要准时率和交付量，失败不致命
+	if prev, prevErr := s.reportRepo.GetDeliveryAggregate(ctx, projectID, prevStart, prevEnd); prevErr == nil {
+		resp.PrevOnTimeRate = onTimeRate(prev.OnTime, prev.Late)
+		resp.PrevDelivered = prev.Delivered
+	} else {
+		logger.Warn("failed to aggregate previous period", zap.Error(prevErr))
+	}
+
+	// 交付清单：周报正文直接抄这张表。上限给到 500，一个周期交付超过这个数
+	// 的团队，靠清单写周报本来也不现实，该看的是上面的汇总。
+	if issues, issueErr := s.reportRepo.GetDeliveredIssues(ctx, projectID, start, end, 500); issueErr == nil {
+		resp.DeliveredIssues = make([]dto.DeliveryIssueItem, len(issues))
+		for i, it := range issues {
+			item := dto.DeliveryIssueItem{
+				IssueKey:     it.IssueKey,
+				Title:        it.Title,
+				TypeName:     it.TypeName,
+				Priority:     it.Priority,
+				ProjectKey:   it.ProjectKey,
+				AssigneeName: it.AssigneeName,
+				ActualEnd:    it.ActualEnd.Format("2006-01-02"),
+			}
+			if it.PlannedEnd != nil && it.VarianceDays != nil {
+				item.HasCommitment = true
+				item.PlannedEnd = it.PlannedEnd.Format("2006-01-02")
+				item.VarianceDays = *it.VarianceDays
+			}
+			resp.DeliveredIssues[i] = item
+		}
+	} else {
+		logger.Warn("failed to list delivered issues", zap.Error(issueErr))
+	}
+
+	resp.ByPriority = s.deliveryDimension(ctx, "priority", projectID, start, end)
+	resp.ByType = s.deliveryDimension(ctx, "type", projectID, start, end)
+
+	if lateItems, lateErr := s.reportRepo.GetDeliveryLateIssues(ctx, projectID, start, end, 10); lateErr == nil {
+		resp.TopLate = make([]dto.DeliveryVarianceItem, len(lateItems))
+		for i, it := range lateItems {
+			resp.TopLate[i] = dto.DeliveryVarianceItem{
+				IssueKey:     it.IssueKey,
+				Title:        it.Title,
+				Priority:     it.Priority,
+				ProjectKey:   it.ProjectKey,
+				AssigneeName: it.AssigneeName,
+				PlannedEnd:   it.PlannedEnd.Format("2006-01-02"),
+				ActualEnd:    it.ActualEnd.Format("2006-01-02"),
+				VarianceDays: it.VarianceDays,
+			}
+		}
+	} else {
+		logger.Warn("failed to list late issues", zap.Error(lateErr))
+	}
+
+	if members, memberErr := s.reportRepo.GetDeliveryByMember(ctx, projectID, start, end); memberErr == nil {
+		worklogs, _ := s.reportRepo.GetWorklogSecondsByUser(ctx, projectID, start, end)
+		resp.Members = make([]dto.DeliveryMemberStat, len(members))
+		for i, m := range members {
+			resp.Members[i] = dto.DeliveryMemberStat{
+				UserID:      m.UserID,
+				DisplayName: m.DisplayName,
+				Delivered:   m.Delivered,
+				OnTime:      m.OnTime,
+				Late:        m.Late,
+				OnTimeRate:  onTimeRate(m.OnTime, m.Late),
+				WorkSeconds: worklogs[m.UserID],
+			}
+		}
+	} else {
+		logger.Warn("failed to aggregate by member", zap.Error(memberErr))
+	}
+
+	// 风险：已经超期的 + 未来七天内到期的
+	if risks, riskErr := s.reportRepo.GetDeliveryRisks(ctx, projectID, 7, 20); riskErr == nil {
+		resp.Risks = make([]dto.DeliveryRiskItem, len(risks))
+		for i, rk := range risks {
+			resp.Risks[i] = dto.DeliveryRiskItem{
+				IssueKey:     rk.IssueKey,
+				Title:        rk.Title,
+				Priority:     rk.Priority,
+				ProjectKey:   rk.ProjectKey,
+				AssigneeName: rk.AssigneeName,
+				Status:       rk.Status,
+				PlannedEnd:   rk.PlannedEnd.Format("2006-01-02"),
+				DaysLeft:     rk.DaysLeft,
+			}
+		}
+	} else {
+		logger.Warn("failed to list delivery risks", zap.Error(riskErr))
+	}
+
+	if projects, projErr := s.reportRepo.GetDeliveryByProject(ctx, projectID, start, end); projErr == nil {
+		resp.Projects = make([]dto.DeliveryProjectStat, len(projects))
+		for i, p := range projects {
+			resp.Projects[i] = dto.DeliveryProjectStat{
+				ProjectKey:  p.ProjectKey,
+				ProjectName: p.ProjectName,
+				Delivered:   p.Delivered,
+				OnTime:      p.OnTime,
+				Late:        p.Late,
+				OnTimeRate:  onTimeRate(p.OnTime, p.Late),
+			}
+		}
+	} else {
+		logger.Warn("failed to aggregate by project", zap.Error(projErr))
+	}
+
+	return resp, nil
 }

@@ -312,7 +312,13 @@ const handleDeleteWorklog = async (worklogId: number) => {
 
         .comment-author { font-weight: 600; color: var(--td-text-primary); font-size: 14px; }
         .system-author { color: var(--td-tag-purple-text); }
-        .comment-time { font-size: 12px; color: var(--td-text-placeholder); }
+        /* 时间走等宽 + tabular-nums：一列评论的时间戳要能纵向对齐（CLAUDE.md 3.2） */
+        .comment-time {
+          font-family: var(--td-font-mono);
+          font-variant-numeric: tabular-nums;
+          font-size: 12px;
+          color: var(--td-text-placeholder);
+        }
       }
 
       .comment-text {

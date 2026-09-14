@@ -464,6 +464,10 @@ func SeedData(db *gorm.DB) error {
 		logger.Warn("failed to migrate builtin field schemes", zap.Error(err))
 	}
 
+	if err := MigratePlannedEndRequired(db); err != nil {
+		logger.Error("failed to migrate planned end required", zap.Error(err))
+	}
+
 	// 一次性迁移：修复 Alert 类型 priority 字段可见性
 	if err := MigrateAlertPriorityVisibility(db); err != nil {
 		logger.Warn("failed to migrate alert priority visibility", zap.Error(err))
@@ -539,7 +543,9 @@ func MigrateBuiltinFieldSchemes(db *gorm.DB) error {
 		{FieldKey: "priority", IsRequired: true, SortOrder: -4, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
 		{FieldKey: "assignee", IsRequired: false, SortOrder: -3, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
 		{FieldKey: "planned_start_date", IsRequired: false, SortOrder: -2, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
-		{FieldKey: "planned_end_date", IsRequired: false, SortOrder: -1, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
+		// 「开单必须评估什么时候交付」是团队的工单制度，落到系统就是这一条必填。
+		// 告警类型除外（见 builtinFieldsAlert）—— 机器开的单评估不了排期。
+		{FieldKey: "planned_end_date", IsRequired: true, SortOrder: -1, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
 	}
 
 	// 查询所有项目+工单类型组合（含已有字段方案的组合 + 所有项目×全局工单类型）
@@ -665,6 +671,56 @@ func MigrateAlertPriorityVisibility(db *gorm.DB) error {
 	return nil
 }
 
+// MigratePlannedEndRequired 把存量项目的「预计交付时间」改成必填（一次性迁移）。
+//
+// 团队的工单制度是「开单必须评估什么时候开始、什么时候交付」，但字段方案里
+// 这一条一直是选填，制度只能靠人自觉。默认值已经改成必填，可那只对新建的
+// 方案生效（初始化走的是 FirstOrCreate，不会回头改已有行），所以存量要单独翻一次。
+//
+// 告警类型除外：那类单是告警规则自动开的，机器评估不了排期。
+func MigratePlannedEndRequired(db *gorm.DB) error {
+	const migrationKey = "migration.planned_end_required_v1"
+
+	var config SystemConfig
+	if err := db.Where("config_key = ?", migrationKey).First(&config).Error; err == nil {
+		return nil
+	}
+
+	var plannedEnd FieldDefinition
+	if err := db.Where("field_key = ? AND project_id IS NULL AND is_system = ?",
+		"planned_end_date", true).First(&plannedEnd).Error; err != nil {
+		return nil // 字段不存在，跳过
+	}
+
+	query := db.Model(&IssueTypeFieldScheme{}).Where("field_id = ?", plannedEnd.ID)
+
+	// 排除告警类型
+	var alertType IssueType
+	if err := db.Where("name = ? AND project_id IS NULL", "Alert").First(&alertType).Error; err == nil {
+		query = query.Where("issue_type_id <> ?", alertType.ID)
+	}
+
+	result := query.Updates(map[string]any{
+		"is_required":       true,
+		"is_visible_create": true,
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+
+	db.Create(&SystemConfig{
+		ConfigKey:   migrationKey,
+		ConfigValue: "done",
+		ConfigType:  "string",
+		Category:    "migration",
+		Description: "预计交付时间改为必填",
+	})
+
+	logger.Info("planned end date required migration completed",
+		zap.Int64("rows_affected", result.RowsAffected))
+	return nil
+}
+
 // SeedDefaultFieldSchemeTemplates 初始化默认字段方案模板（从 typeFieldConfig 转化）
 func SeedDefaultFieldSchemeTemplates(db *gorm.DB, createdBy uint64) error {
 	logger.Info("seeding default field scheme templates...")
@@ -692,7 +748,7 @@ func SeedDefaultFieldSchemeTemplates(db *gorm.DB, createdBy uint64) error {
 		{FieldKey: "priority", IsRequired: true, SortOrder: -4},
 		{FieldKey: "assignee", IsRequired: false, SortOrder: -3},
 		{FieldKey: "planned_start_date", IsRequired: false, SortOrder: -2},
-		{FieldKey: "planned_end_date", IsRequired: false, SortOrder: -1},
+		{FieldKey: "planned_end_date", IsRequired: true, SortOrder: -1},
 	}
 
 	templates := []struct {
@@ -1207,7 +1263,9 @@ func InitProjectFieldSchemes(db *gorm.DB, projectID uint64) error {
 		{FieldKey: "priority", IsRequired: true, SortOrder: -4, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
 		{FieldKey: "assignee", IsRequired: false, SortOrder: -3, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
 		{FieldKey: "planned_start_date", IsRequired: false, SortOrder: -2, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
-		{FieldKey: "planned_end_date", IsRequired: false, SortOrder: -1, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
+		// 「开单必须评估什么时候交付」是团队的工单制度，落到系统就是这一条必填。
+		// 告警类型除外（见 builtinFieldsAlert）—— 机器开的单评估不了排期。
+		{FieldKey: "planned_end_date", IsRequired: true, SortOrder: -1, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
 	}
 	// Alert 类型的内置字段（priority 创建时不可见，由规则决定）
 	builtinFieldsAlert := []fieldCfgItem{
@@ -1215,6 +1273,8 @@ func InitProjectFieldSchemes(db *gorm.DB, projectID uint64) error {
 		{FieldKey: "priority", IsRequired: true, SortOrder: -4, IsVisibleCreate: false, IsVisibleEdit: true, IsVisibleDetail: true},
 		{FieldKey: "assignee", IsRequired: false, SortOrder: -3, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
 		{FieldKey: "planned_start_date", IsRequired: false, SortOrder: -2, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
+		// 唯独告警类型的预计交付不必填：这类单是告警规则自动开的，
+		// 机器没法评估排期。交付报表里它们单独归为「无排期」，不计入准时率。
 		{FieldKey: "planned_end_date", IsRequired: false, SortOrder: -1, IsVisibleCreate: true, IsVisibleEdit: true, IsVisibleDetail: true},
 	}
 

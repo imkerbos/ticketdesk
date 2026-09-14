@@ -76,3 +76,16 @@ export function getWorklogStats(params?: {
     params,
   })
 }
+
+/** 交付报表（周报 / 月报）。date 传周期内任意一天，留空取今天 */
+export function getDeliveryReport(params: {
+  period: 'week' | 'month'
+  date?: string
+  project_key?: string
+}) {
+  return request({
+    url: '/reports/delivery',
+    method: 'get',
+    params,
+  })
+}

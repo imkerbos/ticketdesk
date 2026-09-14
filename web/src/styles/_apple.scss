@@ -760,6 +760,26 @@
     font-variant-numeric: tabular-nums;
   }
 
+  // 纯数字（百分比、耗时、计数）走等宽 + tabular-nums 但不改字号和颜色。
+  // .time 连字号和弱色一起带，塞进正文里会突兀，所以另开一个只管字形的类。
+  .num {
+    font-family: var(--td-font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // Element 的时间轴时间戳：和别处的时间列同一套字形，否则活动流里
+  // 一竖排时间戳对不齐（CLAUDE.md 3.2）
+  .el-timeline-item__timestamp {
+    font-family: var(--td-font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // 进度条右侧的百分比同理 —— 一列进度条的数字要对齐
+  .el-progress__text {
+    font-family: var(--td-font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
   .person { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
   .person span:last-child { overflow: hidden; text-overflow: ellipsis; }
 
@@ -856,6 +876,34 @@
     outline: var(--td-focus-ring);
     outline-offset: 2px;
   }
+}
+
+/* Element 自带的过渡是 200–300ms，我们自己的组件统一 150ms（CLAUDE.md 3.7）。
+   同一屏里 tab 下划线滑 300ms、表格行 hover 250ms，而旁边的按钮 150ms，
+   快慢差一倍是能感觉出来的。压到同一档。
+   浮层（弹窗 / 下拉 / 抽屉 / 提示）按规范给到 250ms，不在这里压。 */
+.ap :is(
+  .el-icon,
+  .el-tabs__nav,
+  .el-tabs__active-bar,
+  .el-tabs__item,
+  .el-input__prefix,
+  .el-input__suffix,
+  .el-input__inner,
+  .el-breadcrumb__inner,
+  .el-scrollbar__thumb,
+  .el-table--enable-row-transition .el-table__body td.el-table__cell,
+  .el-table th.el-table__cell,
+  .el-table tr,
+  .el-switch__core,
+  .el-switch__action,
+  .el-checkbox__inner,
+  .el-radio__inner,
+  .el-progress-bar__inner,
+  .el-card
+):not(:where(.el-popper *, .el-dialog *, .el-drawer *)) {
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {

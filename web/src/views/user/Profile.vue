@@ -45,7 +45,7 @@
               <el-icon><Calendar /></el-icon>
               <div class="info-content">
                 <span class="info-label">{{ t('user.profile.registeredAt') }}</span>
-                <span class="info-value">{{ formatDate(profile?.created_at) }}</span>
+                <span class="info-value num">{{ formatDate(profile?.created_at) }}</span>
               </div>
             </div>
           </div>

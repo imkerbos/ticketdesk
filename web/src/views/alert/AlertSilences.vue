@@ -51,13 +51,17 @@
                   <span v-if="row.label_matchers.length > 2" class="pill neutral">+{{ row.label_matchers.length - 2 }}</span>
                 </div>
               </td>
-              <!-- 纯时间戳才走 .time 的等宽；混了中文的分支用普通弱色，
-                   否则中文跟着等宽排，和数字之间会豁开一格 -->
-              <td :class="row.silence_type === 1 ? 'muted' : 'time'">
-                {{ row.silence_type === 1 ? t('alert.silences.startsAtFrom', { time: formatTime(row.starts_at) }) : formatTime(row.starts_at) }}
+              <!-- 等宽只包时间戳本身，「起」这个中文留在外面 ——
+                   整格套 .time 会让中文也跟着等宽排，和数字之间豁开一格；
+                   整格退成普通字体又让这一列的时间对不齐。 -->
+              <td class="muted">
+                <span class="time">{{ formatTime(row.starts_at) }}</span>
+                <template v-if="row.silence_type === 1">{{ t('alert.silences.fromSuffix') }}</template>
               </td>
-              <td :class="row.silence_type === 1 ? 'muted' : 'time'">
-                {{ row.silence_type === 1 ? t('alert.silences.manualClose') : (row.ends_at ? formatTime(row.ends_at) : '-') }}
+              <td class="muted">
+                <template v-if="row.silence_type === 1">{{ t('alert.silences.manualClose') }}</template>
+                <span v-else-if="row.ends_at" class="time">{{ formatTime(row.ends_at) }}</span>
+                <template v-else>-</template>
               </td>
               <td><span class="pill" :class="statusTone(row.status)">{{ getStatusText(row.status) }}</span></td>
               <td>

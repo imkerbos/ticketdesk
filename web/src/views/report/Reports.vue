@@ -148,8 +148,8 @@
                   <el-tag :type="getPriorityType(row.priority)" effect="dark" size="small">{{ row.priority }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="total" :label="t('report.total')" min-width="55" />
-              <el-table-column prop="resolved" :label="t('report.resolvedCol')" min-width="55" />
+              <el-table-column prop="total" :label="t('report.total')" min-width="55" class-name="num" />
+              <el-table-column prop="resolved" :label="t('report.resolvedCol')" min-width="55" class-name="num" />
               <el-table-column :label="t('report.slaTarget')" min-width="80">
                 <template #default="{ row }">{{ formatMinutes(row.sla_target) }}</template>
               </el-table-column>
@@ -158,7 +158,7 @@
               </el-table-column>
               <el-table-column :label="t('report.metRate')" min-width="75">
                 <template #default="{ row }">
-                  <span :class="getSLARateClass(row.sla_rate)">{{ formatPercent(row.sla_rate) }}</span>
+                  <span class="num" :class="getSLARateClass(row.sla_rate)">{{ formatPercent(row.sla_rate) }}</span>
                 </template>
               </el-table-column>
             </el-table>
@@ -174,14 +174,14 @@
                   <span class="project-name-text">{{ row.project_name }}</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="total" :label="t('report.total')" width="55" />
-              <el-table-column prop="resolved" :label="t('report.resolvedCol')" width="55" />
+              <el-table-column prop="total" :label="t('report.total')" width="55" class-name="num" />
+              <el-table-column prop="resolved" :label="t('report.resolvedCol')" width="55" class-name="num" />
               <el-table-column label="MTTR" width="80">
                 <template #default="{ row }">{{ formatMinutes(row.mttr) }}</template>
               </el-table-column>
               <el-table-column :label="t('report.metRate')" width="75">
                 <template #default="{ row }">
-                  <span :class="getSLARateClass(row.sla_rate)">{{ formatPercent(row.sla_rate) }}</span>
+                  <span class="num" :class="getSLARateClass(row.sla_rate)">{{ formatPercent(row.sla_rate) }}</span>
                 </template>
               </el-table-column>
             </el-table>
@@ -252,7 +252,10 @@
               <h2>{{ t('report.alertTrend') }}</h2>
             </div>
             <div class="timeline-list">
-              <el-table v-if="alertStats.timeline?.length" :data="alertStats.timeline || []" stripe size="small" :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }">
+              <!-- 限高滚动：这张表的行数跟着日期范围走，选 90 天就是 90 行，
+                   会把整行撑得老高，而左边的严重程度分布只有两三条，
+                   旁边就空出一大块。限高之后两张卡高度接近，长范围也不会失控。 -->
+              <el-table v-if="alertStats.timeline?.length" :data="alertStats.timeline || []" stripe size="small" max-height="258" :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }">
                 <el-table-column :label="t('report.date')" min-width="120">
                   <template #default="{ row }">
                     <span class="timeline-date">{{ formatDate(row.date) }}</span>
@@ -298,6 +301,342 @@
             </el-table-column>
           </el-table>
           <TdEmptyState v-if="!alertStats.top_alerts?.length" preset="no-data" :title="t('report.noData')" />
+        </section>
+      </div>
+    </template>
+
+    <template v-if="activeTab === 'delivery'">
+      <div v-loading="loading.delivery" class="tab-content">
+        <!-- 周 / 月切换 + 周期导航。日期区间选择器对这一页没意义：
+             周报就是一整周、月报就是一整月，不该让人自己拼区间。 -->
+        <section class="card">
+          <div class="delivery-toolbar">
+            <div class="seg" role="group" :aria-label="t('report.delivery.period')">
+              <button :aria-pressed="deliveryPeriod === 'week'" @click="switchDeliveryPeriod('week')">{{ t('report.delivery.weekly') }}</button>
+              <button :aria-pressed="deliveryPeriod === 'month'" @click="switchDeliveryPeriod('month')">{{ t('report.delivery.monthly') }}</button>
+            </div>
+            <div class="grow"></div>
+            <div class="period-nav">
+              <button class="icon-btn" :aria-label="t('report.prevPeriod')" @click="shiftDeliveryPeriod(-1)">
+                <el-icon><ArrowLeft /></el-icon>
+              </button>
+              <span class="period-label">{{ deliveryRangeLabel }}</span>
+              <button class="icon-btn" :aria-label="t('report.nextPeriod')" :disabled="deliveryAtLatest" @click="shiftDeliveryPeriod(1)">
+                <el-icon><ArrowRight /></el-icon>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 交付总览 -->
+        <section class="card">
+          <div class="kpis">
+            <div class="kpi">
+              <div class="k">{{ t('report.delivery.delivered') }}</div>
+              <div class="v">{{ delivery.summary?.delivered || 0 }}</div>
+            </div>
+            <div class="kpi">
+              <div class="k">{{ t('report.delivery.onTimeRate') }}</div>
+              <div class="v">
+                {{ formatPercent(delivery.summary?.on_time_rate || 0) }}
+                <span v-if="onTimeDelta !== null" class="delta" :class="onTimeDelta >= 0 ? 'up' : 'down'">
+                  {{ onTimeDelta >= 0 ? '+' : '' }}{{ formatPercent(onTimeDelta) }}
+                </span>
+              </div>
+            </div>
+            <div class="kpi">
+              <div class="k">{{ t('report.delivery.avgVariance') }}</div>
+              <div class="v">{{ formatVariance(delivery.summary?.avg_variance_days || 0) }}</div>
+            </div>
+            <div class="kpi">
+              <div class="k">{{ t('report.delivery.avgDeliveryDays') }}</div>
+              <div class="v">{{ (delivery.summary?.avg_delivery_days || 0).toFixed(1) }}<span class="unit-suffix">{{ t('report.delivery.daysUnit') }}</span></div>
+            </div>
+            <div class="kpi">
+              <div class="k">{{ t('report.delivery.created') }}</div>
+              <div class="v">{{ delivery.summary?.created || 0 }}</div>
+            </div>
+          </div>
+
+          <!-- 统计口径。不写清楚的话，一个 100% 的准时率会骗人：
+               没排期的、终止的、告警自动开的单都不在准时率分母里。 -->
+          <p class="scope-note">
+            {{ t('report.delivery.scopeNote', {
+              judged: (delivery.summary?.on_time || 0) + (delivery.summary?.late || 0),
+              onTime: delivery.summary?.on_time || 0,
+              late: delivery.summary?.late || 0,
+            }) }}
+            <template v-if="delivery.summary?.no_commitment">
+              {{ t('report.delivery.scopeNoCommitment', { n: delivery.summary.no_commitment }) }}
+            </template>
+            <template v-if="delivery.summary?.terminated">
+              {{ t('report.delivery.scopeTerminated', { n: delivery.summary.terminated }) }}
+            </template>
+            <template v-if="delivery.summary?.alert_issues">
+              {{ t('report.delivery.scopeAlert', { n: delivery.summary.alert_issues }) }}
+            </template>
+          </p>
+        </section>
+
+        <!-- 按优先级 / 按类型：交付了几张是一回事，交付的是什么份量是另一回事 -->
+        <div class="stretch-row">
+          <section class="card">
+            <div class="card-head">
+              <h2>{{ t('report.delivery.byPriority') }}</h2>
+            </div>
+            <el-table
+              v-if="delivery.by_priority?.length"
+              :data="delivery.by_priority"
+              stripe
+              size="small"
+              :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }"
+            >
+              <el-table-column :label="t('issue.priority')" width="90">
+                <template #default="{ row }">
+                  <span class="prio"><span class="dot" :style="{ background: getPriorityColor(row.key) }"></span>{{ row.key }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="delivered" :label="t('report.delivery.delivered')" width="80" align="center" class-name="num" />
+              <el-table-column prop="on_time" :label="t('report.delivery.onTime')" width="80" align="center" class-name="num" />
+              <el-table-column prop="late" :label="t('report.delivery.late')" width="80" align="center" class-name="num" />
+              <el-table-column :label="t('report.delivery.onTimeRate')" min-width="100">
+                <template #default="{ row }">
+                  <span class="num" :class="getSLARateClass(row.on_time_rate)">{{ formatPercent(row.on_time_rate) }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+            <TdEmptyState v-else preset="no-data" :title="t('report.delivery.noDelivered')" />
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>{{ t('report.delivery.byType') }}</h2>
+            </div>
+            <el-table
+              v-if="delivery.by_type?.length"
+              :data="delivery.by_type"
+              stripe
+              size="small"
+              :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }"
+            >
+              <el-table-column prop="key" :label="t('issue.type')" min-width="100" />
+              <el-table-column prop="delivered" :label="t('report.delivery.delivered')" width="80" align="center" class-name="num" />
+              <el-table-column prop="on_time" :label="t('report.delivery.onTime')" width="80" align="center" class-name="num" />
+              <el-table-column prop="late" :label="t('report.delivery.late')" width="80" align="center" class-name="num" />
+              <el-table-column :label="t('report.delivery.onTimeRate')" min-width="100">
+                <template #default="{ row }">
+                  <span class="num" :class="getSLARateClass(row.on_time_rate)">{{ formatPercent(row.on_time_rate) }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+            <TdEmptyState v-else preset="no-data" :title="t('report.delivery.noDelivered')" />
+          </section>
+        </div>
+
+        <!-- 交付清单：写周报的人真正要的东西 —— 这期交付了哪些、什么类型、
+             什么等级、谁做的、承诺 vs 实际。上面那些汇总都是从这张表推出来的。 -->
+        <section class="card">
+          <div class="card-head">
+            <h2>{{ t('report.delivery.listTitle') }}</h2>
+            <span class="count">{{ delivery.delivered_issues?.length || 0 }}</span>
+          </div>
+          <el-table
+            v-if="delivery.delivered_issues?.length"
+            :data="delivery.delivered_issues"
+            stripe
+            size="small"
+            max-height="520"
+            :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }"
+          >
+            <el-table-column :label="t('issue.key')" width="104">
+              <template #default="{ row }">
+                <a class="key" @click="$router.push(`/issues/${row.issue_key}`)">{{ row.issue_key }}</a>
+              </template>
+            </el-table-column>
+            <el-table-column prop="title" :label="t('issue.title')" min-width="220" show-overflow-tooltip />
+            <el-table-column prop="type_name" :label="t('issue.type')" width="92">
+              <template #default="{ row }"><span class="muted">{{ row.type_name }}</span></template>
+            </el-table-column>
+            <el-table-column :label="t('issue.priority')" width="76">
+              <template #default="{ row }">
+                <span class="prio"><span class="dot" :style="{ background: getPriorityColor(row.priority) }"></span>{{ row.priority }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('report.delivery.assignee')" width="92">
+              <template #default="{ row }">
+                <span :class="row.assignee_name ? '' : 'muted'">{{ row.assignee_name || t('common.unassigned') }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('report.delivery.plannedEnd')" width="104">
+              <template #default="{ row }">
+                <span v-if="row.has_commitment" class="time">{{ row.planned_end }}</span>
+                <span v-else class="muted">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('report.delivery.actualEnd')" width="104">
+              <template #default="{ row }"><span class="time">{{ row.actual_end }}</span></template>
+            </el-table-column>
+            <el-table-column :label="t('report.delivery.variance')" width="104" align="right">
+              <template #default="{ row }">
+                <span v-if="!row.has_commitment" class="muted">{{ t('report.delivery.noCommitmentShort') }}</span>
+                <span v-else-if="row.variance_days > 0" class="pill green">{{ t('report.delivery.earlyDays', { n: row.variance_days }) }}</span>
+                <span v-else-if="row.variance_days < 0" class="pill sla">{{ t('report.delivery.lateDays', { n: -row.variance_days }) }}</span>
+                <span v-else class="pill green">{{ t('report.delivery.exactly') }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <TdEmptyState
+            v-else
+            preset="no-data"
+            :title="t('report.delivery.noDelivered')"
+            :description="t('report.delivery.noDeliveredDesc')"
+          />
+        </section>
+
+        <!-- 风险 + 延期，两列 -->
+        <div class="stretch-row">
+          <section class="card">
+            <div class="card-head">
+              <h2>{{ t('report.delivery.riskTitle') }}</h2>
+              <span class="count">{{ delivery.risks?.length || 0 }}</span>
+            </div>
+            <el-table
+              v-if="delivery.risks?.length"
+              :data="delivery.risks"
+              stripe
+              size="small"
+              :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }"
+            >
+              <el-table-column :label="t('issue.key')" width="96">
+                <template #default="{ row }">
+                  <a class="key" @click="$router.push(`/issues/${row.issue_key}`)">{{ row.issue_key }}</a>
+                </template>
+              </el-table-column>
+              <el-table-column prop="title" :label="t('issue.title')" min-width="180" show-overflow-tooltip />
+              <el-table-column :label="t('report.delivery.assignee')" width="90">
+                <template #default="{ row }">
+                  <span :class="row.assignee_name ? '' : 'muted'">{{ row.assignee_name || t('common.unassigned') }}</span>
+                </template>
+              </el-table-column>
+              <!-- 「已超期 N 天」而不是「超期 N 天」：后者会被读成「再过 N 天就超期」。
+                   列头也从「剩余」改成「距承诺交付」—— 列头写剩余、值写超期，本身就打架。 -->
+              <el-table-column :label="t('report.delivery.daysLeft')" width="110" align="right">
+                <template #default="{ row }">
+                  <span class="pill" :class="row.days_left < 0 ? 'sla' : 'orange'">
+                    {{ row.days_left < 0 ? t('report.delivery.overdueDays', { n: -row.days_left }) : t('report.delivery.leftDays', { n: row.days_left }) }}
+                  </span>
+                </template>
+              </el-table-column>
+            </el-table>
+            <TdEmptyState
+              v-else
+              preset="no-data"
+              :title="t('report.delivery.noRisk')"
+              :description="t('report.delivery.noRiskDesc')"
+            />
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>{{ t('report.delivery.lateTitle') }}</h2>
+              <span class="count">{{ delivery.top_late?.length || 0 }}</span>
+            </div>
+            <el-table
+              v-if="delivery.top_late?.length"
+              :data="delivery.top_late"
+              stripe
+              size="small"
+              :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }"
+            >
+              <el-table-column :label="t('issue.key')" width="96">
+                <template #default="{ row }">
+                  <a class="key" @click="$router.push(`/issues/${row.issue_key}`)">{{ row.issue_key }}</a>
+                </template>
+              </el-table-column>
+              <el-table-column prop="title" :label="t('issue.title')" min-width="170" show-overflow-tooltip />
+              <el-table-column :label="t('report.delivery.plannedEnd')" width="104">
+                <template #default="{ row }"><span class="time">{{ row.planned_end }}</span></template>
+              </el-table-column>
+              <el-table-column :label="t('report.delivery.variance')" width="92" align="right">
+                <template #default="{ row }">
+                  <span class="pill sla">{{ t('report.delivery.lateDays', { n: -row.variance_days }) }}</span>
+                </template>
+              </el-table-column>
+            </el-table>
+            <TdEmptyState
+              v-else
+              preset="no-data"
+              :title="t('report.delivery.noLate')"
+              :description="t('report.delivery.noLateDesc')"
+            />
+          </section>
+        </div>
+
+        <!-- 人员交付 -->
+        <section class="card">
+          <div class="card-head">
+            <h2>{{ t('report.delivery.memberTitle') }}</h2>
+          </div>
+          <el-table
+            v-if="delivery.members?.length"
+            :data="delivery.members"
+            stripe
+            size="small"
+            :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }"
+          >
+            <el-table-column prop="display_name" :label="t('report.userCol')" min-width="150">
+              <template #default="{ row }">
+                <div class="report-user">
+                  <el-avatar :size="24" class="dist-avatar" :style="{ color: personColor(row.display_name) }">{{ row.display_name?.charAt(0) }}</el-avatar>
+                  <span>{{ row.display_name }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="delivered" :label="t('report.delivery.delivered')" width="90" align="center" class-name="num" />
+            <el-table-column prop="on_time" :label="t('report.delivery.onTime')" width="90" align="center" class-name="num" />
+            <el-table-column prop="late" :label="t('report.delivery.late')" width="90" align="center" class-name="num" />
+            <el-table-column :label="t('report.delivery.onTimeRate')" width="120">
+              <template #default="{ row }">
+                <span class="num" :class="getSLARateClass(row.on_time_rate)">{{ formatPercent(row.on_time_rate) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column :label="t('report.delivery.effort')" width="110" align="right">
+              <template #default="{ row }">
+                <span class="worklog-time-value">{{ formatWorklogTime(row.work_seconds) }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <TdEmptyState v-else preset="no-data" :title="t('report.delivery.noMember')" :description="t('report.delivery.noMemberDesc')" />
+        </section>
+
+        <!-- 项目横向对比 -->
+        <section class="card">
+          <div class="card-head">
+            <h2>{{ t('report.delivery.projectTitle') }}</h2>
+          </div>
+          <el-table
+            v-if="delivery.projects?.length"
+            :data="delivery.projects"
+            stripe
+            size="small"
+            :header-cell-style="{ background: 'var(--td-table-header-bg)', color: 'var(--td-text-regular)', fontWeight: 600 }"
+          >
+            <el-table-column :label="t('report.projectCol')" min-width="160">
+              <template #default="{ row }">
+                <span class="project-key-badge">{{ row.project_key }}</span>
+                <span style="margin-left: 8px">{{ row.project_name }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="delivered" :label="t('report.delivery.delivered')" width="90" align="center" class-name="num" />
+            <el-table-column prop="on_time" :label="t('report.delivery.onTime')" width="90" align="center" class-name="num" />
+            <el-table-column prop="late" :label="t('report.delivery.late')" width="90" align="center" class-name="num" />
+            <el-table-column :label="t('report.delivery.onTimeRate')" width="120">
+              <template #default="{ row }">
+                <span class="num" :class="getSLARateClass(row.on_time_rate)">{{ formatPercent(row.on_time_rate) }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <TdEmptyState v-else preset="no-data" :title="t('report.delivery.noProject')" />
         </section>
       </div>
     </template>
@@ -513,9 +852,9 @@ import TdBarChart from '@/components/chart/TdBarChart.vue'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
-import { getIssueStats, getSLAReport, getAlertStats, getUserPerformance, getWorklogStats } from '@/api/report'
+import { getIssueStats, getSLAReport, getAlertStats, getUserPerformance, getWorklogStats, getDeliveryReport } from '@/api/report'
 import { getAllProjects } from '@/api/project'
-import type { IssueStats, SLAReport, AlertStats, UserPerformance, WorklogStats } from '@/types/report'
+import type { IssueStats, SLAReport, AlertStats, UserPerformance, WorklogStats, DeliveryReport } from '@/types/report'
 import type { Project } from '@/types/project'
 import dayjs from 'dayjs'
 import { personColor } from '@/utils/avatar'
@@ -549,13 +888,13 @@ const dateShortcuts = [
 const selectedProject = ref((initQuery.project_key as string) || '')
 const projects = ref<Project[]>([])
 
-const validTabs = ['issues', 'sla', 'alerts', 'performance', 'worklogs']
-const activeTab = ref(validTabs.includes(initQuery.tab as string) ? (initQuery.tab as string) : 'issues')
+const validTabs = ['delivery', 'issues', 'sla', 'alerts', 'performance', 'worklogs']
+const activeTab = ref(validTabs.includes(initQuery.tab as string) ? (initQuery.tab as string) : 'delivery')
 
 // 筛选条件同步到 URL query params
 const syncQueryToUrl = () => {
   const query: Record<string, string> = {}
-  if (activeTab.value && activeTab.value !== 'issues') query.tab = activeTab.value
+  if (activeTab.value && activeTab.value !== 'delivery') query.tab = activeTab.value
   if (selectedProject.value) query.project_key = selectedProject.value
   // 仅当日期非默认值时持久化
   if (dateRange.value[0] !== defaultStart) query.start_date = dateRange.value[0]
@@ -563,12 +902,14 @@ const syncQueryToUrl = () => {
   router.replace({ query })
 }
 const loading = reactive({
+  delivery: false,
   issues: false,
   sla: false,
   alerts: false,
   performance: false,
   worklogs: false })
 
+const delivery = ref<Partial<DeliveryReport>>({})
 const issueStats = ref<Partial<IssueStats>>({})
 const slaReport = ref<Partial<SLAReport>>({})
 const alertStats = ref<Partial<AlertStats>>({})
@@ -669,9 +1010,77 @@ const loadWorklogStats = async () => {
   }
 }
 
+// ── 交付报表（周报 / 月报）────────────────────
+//
+// 周期用「周期内的任意一天」表示，前后翻页就是加减一周 / 一个月。
+// 不给日期区间选择器：周报就是一整周、月报就是一整月，让人自己拼区间
+// 只会拼出跨半周的怪范围，算出来的准时率没法跟上一期比。
+const deliveryPeriod = ref<'week' | 'month'>('week')
+const deliveryAnchor = ref(dayjs().format('YYYY-MM-DD'))
+
+/** 已经翻到当前这一期了，不让再往后翻 —— 未来的周期没有数据 */
+const deliveryAtLatest = computed(() =>
+  dayjs(deliveryAnchor.value).isSame(dayjs(), deliveryPeriod.value === 'week' ? 'week' : 'month'))
+
+const deliveryRangeLabel = computed(() => {
+  const s = delivery.value.summary
+  if (!s) return ''
+  return deliveryPeriod.value === 'week'
+    ? `${s.period_start} ~ ${s.period_end}`
+    : dayjs(s.period_start).format('YYYY-MM')
+})
+
+/** 准时率环比。上一期一张单都没交付时不给箭头 —— 跟 0 比没有意义 */
+const onTimeDelta = computed(() => {
+  const cur = delivery.value.summary?.on_time_rate
+  if (cur == null || !delivery.value.prev_delivered) return null
+  return cur - (delivery.value.prev_on_time_rate || 0)
+})
+
+/** 平均偏差：正数是平均提前，负数是平均延期。直接写 -1.2 天读者要自己反应 */
+const formatVariance = (days: number) => {
+  const n = Math.abs(days).toFixed(1)
+  if (Math.abs(days) < 0.05) return t('report.delivery.varianceOnTime')
+  return days > 0
+    ? t('report.delivery.varianceEarly', { n })
+    : t('report.delivery.varianceLate', { n })
+}
+
+const loadDeliveryReport = async () => {
+  loading.delivery = true
+  try {
+    const { data } = await getDeliveryReport({
+      period: deliveryPeriod.value,
+      date: deliveryAnchor.value,
+      project_key: selectedProject.value || undefined,
+    })
+    delivery.value = data.data
+  } catch {
+    // 请求层已经提示过，这里不再叠一层
+  } finally {
+    loading.delivery = false
+  }
+}
+
+const switchDeliveryPeriod = (p: 'week' | 'month') => {
+  if (deliveryPeriod.value === p) return
+  deliveryPeriod.value = p
+  deliveryAnchor.value = dayjs().format('YYYY-MM-DD')
+  loadDeliveryReport()
+}
+
+const shiftDeliveryPeriod = (step: number) => {
+  const unit = deliveryPeriod.value === 'week' ? 'week' : 'month'
+  deliveryAnchor.value = dayjs(deliveryAnchor.value).add(step, unit).format('YYYY-MM-DD')
+  loadDeliveryReport()
+}
+
 // 根据当前 tab 加载数据
 const loadData = () => {
   switch (activeTab.value) {
+    case 'delivery':
+      loadDeliveryReport()
+      break
     case 'issues':
       loadIssueStats()
       break
@@ -994,6 +1403,58 @@ onMounted(() => {
 .date-range { width: 260px; }
 
 // 图表两栏
+/* ── 交付报表 ───────────────────────────────── */
+.delivery-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+}
+
+.period-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.period-label {
+  font-family: var(--td-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--td-text-primary);
+  min-width: 176px;
+  text-align: center;
+}
+
+/* 环比箭头跟在准时率后面，比主数字小一档、弱一档 —— 它是注脚不是主角 */
+.delta {
+  font-size: 12.5px;
+  font-weight: 500;
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.delta.up { color: var(--td-color-success); }
+.delta.down { color: var(--td-color-danger); }
+
+.unit-suffix {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--td-text-placeholder);
+  margin-left: 3px;
+}
+
+/* 统计口径。不写清楚的话，一个 100% 的准时率会骗人 ——
+   没排期的、终止的、告警自动开的单都不在分母里。 */
+.scope-note {
+  margin: 0;
+  padding: 0 18px 14px;
+  font-size: 12.5px;
+  color: var(--td-text-secondary);
+  line-height: var(--td-leading-normal);
+  max-width: 88ch;
+}
+
 .stretch-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
