@@ -989,6 +989,15 @@ func (s *alertService) autoUpdateIssueOnRecovery(ctx context.Context, issueID ui
 	if autoResolve {
 		issue.Status = "resolved"
 		issue.ResolvedAt = &now
+		// 实际完成时刻要一起记：告警侧是直接改状态的，不走工作流引擎那条
+		// 自动记时间的路（core-workflow/service/workflow_engine.go 的状态同步）。
+		// 漏了这一笔，交付报表就统计不到这张单的实际交付时间。
+		issue.ActualEndDate = &now
+		if issue.ActualStartDate == nil {
+			// 从没进过「进行中」就被告警恢复关掉了，以创建时刻作为实际开始，
+			// 否则交付时长算不出来
+			issue.ActualStartDate = &issue.CreatedAt
+		}
 		if err := s.issueRepo.Update(ctx, issue); err != nil {
 			return fmt.Errorf("failed to update issue status: %w", err)
 		}
@@ -1150,6 +1159,11 @@ func (s *alertService) reactivateIssueIfPendingReview(ctx context.Context, issue
 
 	// 恢复工单状态为 in_progress
 	issue.Status = "in_progress"
+	// 同上：这条路绕开了工作流引擎，实际开始时刻要自己记
+	if issue.ActualStartDate == nil {
+		reactivatedAt := time.Now()
+		issue.ActualStartDate = &reactivatedAt
+	}
 	if err := s.issueRepo.Update(ctx, issue); err != nil {
 		logger.Error("failed to reactivate issue from pending_review",
 			zap.Uint64("issue_id", issueID), zap.Error(err))

@@ -431,16 +431,18 @@ func (r *reportRepository) GetSLAStats(ctx context.Context, projectID *uint64, s
 
 // GetSLAStatsByPriority 按优先级获取 SLA 统计（逐条判断 SLA 达标）
 func (r *reportRepository) GetSLAStatsByPriority(ctx context.Context, projectID *uint64, startDate, endDate time.Time, slaTargets map[string]int64) ([]PrioritySLAStats, error) {
-	slaExpr, slaArgs := buildSLATargetExpr(slaTargets, "priority")
+	deadlineExpr, slaArgs := buildDeadlineExpr(slaTargets, "")
 
+	// 达标 = 解决时刻没晚于承诺截止时刻。不再拿「从开单到解决花了多久」去比一个
+	// 按优先级写死的阈值 —— 那样一张排期十天的 P1 必然违规，哪怕它提前两天交付。
 	selectClause := fmt.Sprintf(`
 		priority,
 		COUNT(*) as total,
 		SUM(CASE WHEN resolved_at IS NOT NULL THEN 1 ELSE 0 END) as resolved,
 		AVG(CASE WHEN actual_start_date IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, created_at, actual_start_date) ELSE NULL END) as avg_mtta,
 		AVG(CASE WHEN resolved_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, created_at, resolved_at) ELSE NULL END) as avg_mttr,
-		SUM(CASE WHEN resolved_at IS NOT NULL AND TIMESTAMPDIFF(MINUTE, created_at, resolved_at) <= (%s) THEN 1 ELSE 0 END) as sla_met
-	`, slaExpr)
+		SUM(CASE WHEN resolved_at IS NOT NULL AND resolved_at <= (%s) THEN 1 ELSE 0 END) as sla_met
+	`, deadlineExpr)
 
 	var results []struct {
 		Priority string
@@ -705,7 +707,7 @@ func (r *reportRepository) GetWorklogSummary(ctx context.Context, projectID *uin
 
 // GetSLAStatsByProject 按项目获取 SLA 统计
 func (r *reportRepository) GetSLAStatsByProject(ctx context.Context, projectID *uint64, startDate, endDate time.Time, slaTargets map[string]int64) ([]ProjectSLAStats, error) {
-	slaExpr, slaArgs := buildSLATargetExpr(slaTargets, "issues.priority")
+	deadlineExpr, slaArgs := buildDeadlineExpr(slaTargets, "issues.")
 
 	selectClause := fmt.Sprintf(`
 		projects.project_key,
@@ -713,8 +715,8 @@ func (r *reportRepository) GetSLAStatsByProject(ctx context.Context, projectID *
 		COUNT(*) as total,
 		SUM(CASE WHEN issues.resolved_at IS NOT NULL THEN 1 ELSE 0 END) as resolved,
 		AVG(CASE WHEN issues.resolved_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, issues.created_at, issues.resolved_at) ELSE NULL END) as mttr,
-		SUM(CASE WHEN issues.resolved_at IS NOT NULL AND TIMESTAMPDIFF(MINUTE, issues.created_at, issues.resolved_at) <= (%s) THEN 1 ELSE 0 END) as sla_met
-	`, slaExpr)
+		SUM(CASE WHEN issues.resolved_at IS NOT NULL AND issues.resolved_at <= (%s) THEN 1 ELSE 0 END) as sla_met
+	`, deadlineExpr)
 
 	var results []ProjectSLAStats
 	query := r.db.WithContext(ctx).Table("issues").
@@ -732,9 +734,11 @@ func (r *reportRepository) GetSLAStatsByProject(ctx context.Context, projectID *
 
 // GetSLAViolations 查询 SLA 违规工单列表
 func (r *reportRepository) GetSLAViolations(ctx context.Context, projectID *uint64, startDate, endDate time.Time, slaTargets map[string]int64) ([]SLAViolationRecord, error) {
-	slaExpr, slaArgs := buildSLATargetExpr(slaTargets, "issues.priority")
+	deadlineExpr, slaArgs := buildDeadlineExpr(slaTargets, "issues.")
 
 	actualTimeExpr := "CASE WHEN issues.resolved_at IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, issues.created_at, issues.resolved_at) ELSE TIMESTAMPDIFF(MINUTE, issues.created_at, NOW()) END"
+	// 已解决的比解决时刻，没解决的比现在 —— 后者才能把「还欠着且已经超了」捞出来
+	settleExpr := "COALESCE(issues.resolved_at, NOW())"
 
 	selectClause := fmt.Sprintf(`
 		issues.issue_key,
@@ -744,7 +748,7 @@ func (r *reportRepository) GetSLAViolations(ctx context.Context, projectID *uint
 		(%s) as actual_time
 	`, actualTimeExpr)
 
-	whereClause := fmt.Sprintf("(%s) > (%s) AND (issues.resolved_at IS NOT NULL OR issues.status NOT IN ('closed', 'merged'))", actualTimeExpr, slaExpr)
+	whereClause := fmt.Sprintf("(%s) > (%s) AND (issues.resolved_at IS NOT NULL OR issues.status NOT IN ('closed', 'merged'))", settleExpr, deadlineExpr)
 
 	var results []SLAViolationRecord
 	query := r.db.WithContext(ctx).Table("issues").
@@ -783,6 +787,30 @@ func (r *reportRepository) GetWorklogDailyUserStats(ctx context.Context, project
 		Order("users.display_name, date, total_time_sec DESC").
 		Find(&results).Error
 	return results, err
+}
+
+// buildDeadlineExpr 构建工单的「承诺截止时刻」表达式。
+//
+// 取值优先级和前端 web/src/utils/sla.ts 保持一致，两边必须是同一套判定：
+//
+//  1. planned_end_date  开单时评估的交付日期，最硬
+//  2. due_date          用户明确设的截止日期
+//  3. created_at + 按优先级的默认 SLA
+//
+// 前两者是「日期」不是「时刻」，按当天 23:59:59 算 —— 截止当天还没过完就不算超时。
+//
+// 为什么不能只用第 3 条：优先级表达的是「这件事多重要」，不是「几小时内必须交付」。
+// 一张排期十天的 P1，按固定 4 小时阈值判必然违规，哪怕它提前两天交付了。
+func buildDeadlineExpr(slaTargets map[string]int64, prefix string) (string, []any) {
+	targetExpr, args := buildSLATargetExpr(slaTargets, prefix+"priority")
+	expr := fmt.Sprintf(`COALESCE(
+		CASE WHEN %[1]splanned_end_date IS NOT NULL
+		     THEN TIMESTAMP(DATE(%[1]splanned_end_date), '23:59:59') END,
+		CASE WHEN %[1]sdue_date IS NOT NULL
+		     THEN TIMESTAMP(DATE(%[1]sdue_date), '23:59:59') END,
+		%[1]screated_at + INTERVAL (%[2]s) MINUTE
+	)`, prefix, targetExpr)
+	return expr, args
 }
 
 // buildSLATargetExpr 构建基于优先级的 SLA 目标 CASE 表达式（返回分钟数）
