@@ -18,7 +18,12 @@ import (
 	"github.com/kerbos/ticketdesk/internal/model"
 	"github.com/kerbos/ticketdesk/internal/system-config/repository"
 	"github.com/kerbos/ticketdesk/pkg/logger"
+	"github.com/kerbos/ticketdesk/pkg/safego"
+	"github.com/kerbos/ticketdesk/pkg/safehttp"
 )
+
+// webhookSendTimeout 单次 Webhook 投递的超时（含连接与读写）
+const webhookSendTimeout = 30 * time.Second
 
 // WebhookPayload Webhook 请求负载
 type WebhookPayload struct {
@@ -50,9 +55,8 @@ func NewWebhookService(
 	return &webhookService{
 		webhookRepo:    webhookRepo,
 		webhookLogRepo: webhookLogRepo,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		// 目标 URL 由管理员配置、由服务端发起请求，需带 SSRF 防护
+		httpClient: safehttp.NewClient(30 * time.Second),
 	}
 }
 
@@ -70,9 +74,19 @@ func (s *webhookService) SendEvent(ctx context.Context, event string, data inter
 	}
 
 	// 并发发送到所有 Webhook
+	//
+	// 这里刻意不沿用调用方传入的 ctx：SendEvent 通常在 HTTP handler 里被调用，
+	// 请求返回后该 ctx 立即被 cancel，这些已经派生出去的协程会在发起 HTTP 请求时
+	// 直接拿到 context canceled —— 表现为 webhook 静默发不出去。
+	// 后台投递用独立 ctx 并自带超时。
 	for _, webhook := range webhooks {
 		go func(wh *model.Webhook) {
-			if err := s.SendToWebhook(ctx, wh, event, data); err != nil {
+			defer safego.Recover("webhook.send")
+
+			sendCtx, cancel := context.WithTimeout(context.Background(), webhookSendTimeout)
+			defer cancel()
+
+			if err := s.SendToWebhook(sendCtx, wh, event, data); err != nil {
 				logger.Error("failed to send webhook",
 					zap.Uint64("webhook_id", wh.ID),
 					zap.String("event", event),

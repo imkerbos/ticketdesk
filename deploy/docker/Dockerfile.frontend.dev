@@ -11,7 +11,13 @@ ENV DOCKER_ENV=true
 
 # 复制 package.json 并安装依赖
 COPY package*.json ./
-RUN npm install
+# 显式锁定 npmjs registry，加 fetch timeout/retry，避免容器内 DNS/网络抖动 hang
+RUN npm config set registry https://registry.npmjs.org/ \
+    && npm config set fetch-timeout 120000 \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 10000 \
+    && npm config set fetch-retry-maxtimeout 60000 \
+    && npm install --no-audit --no-fund --prefer-offline
 
 # 暴露端口
 EXPOSE 3100

@@ -12,6 +12,7 @@ export interface User {
   mfa_enabled: boolean
   auth_source: string
   sso_provider?: string
+  locale?: string // 偏好语言（zh-CN / en-US），空 = 跟随站点设置
   last_login_at?: string
   created_at: string
   updated_at: string
@@ -24,11 +25,22 @@ export interface LoginRequest {
 }
 
 // 登录响应
+//
+// 账号启用 MFA 时，第一步只会返回 requires_mfa + mfa_token，
+// 令牌与用户信息为空；需再调 verifyMFA 换取正式令牌。
 export interface LoginResponse {
-  access_token: string
-  refresh_token: string
-  expires_in: number
-  user: User
+  access_token?: string
+  refresh_token?: string
+  expires_in?: number
+  user?: User
+  requires_mfa?: boolean
+  mfa_token?: string
+}
+
+// MFA 登录验证请求（第二步）
+export interface MFALoginRequest {
+  mfa_token: string
+  code: string
 }
 
 // 刷新 Token 请求
@@ -39,6 +51,11 @@ export interface RefreshTokenRequest {
 // 登录
 export const login = (data: LoginRequest) => {
   return request.post<ApiResponse<LoginResponse>>('/auth/login', data)
+}
+
+// 提交 TOTP 码完成登录（第二步）
+export const verifyMFALogin = (data: MFALoginRequest) => {
+  return request.post<ApiResponse<LoginResponse>>('/auth/mfa/verify', data)
 }
 
 // 刷新 Token

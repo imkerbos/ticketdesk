@@ -5,22 +5,25 @@
         <el-icon class="error-icon" :size="48"><CircleCloseFilled /></el-icon>
         <p class="error-text">{{ error }}</p>
         <el-button type="primary" size="large" class="back-button" @click="goToLogin">
-          返回登录
+          {{ t('auth.backToLogin') }}
         </el-button>
       </div>
       <div v-else class="login-loading">
         <el-icon class="loading-icon" :size="48"><Loading /></el-icon>
-        <p class="loading-text">正在跳转到统一认证...</p>
+        <p class="loading-text">{{ t('auth.ssoRedirecting') }}</p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Loading, CircleCloseFilled } from '@element-plus/icons-vue'
 import { getSSOAuthorizeURL } from '@/api/auth'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const error = ref('')
@@ -35,7 +38,7 @@ onMounted(async () => {
     const { authorize_url } = res.data.data
     window.location.href = authorize_url
   } catch {
-    error.value = 'SSO 未启用或获取授权地址失败'
+    error.value = t('auth.ssoDisabled')
   }
 })
 </script>

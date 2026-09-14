@@ -6,9 +6,11 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-    'Noto Color Emoji';
+  font-family: var(--td-font-sans);
+  // 基准字号必须显式给：不给就是浏览器默认的 16px，
+  // 而所有继承字号的元素（表格单元格、下拉项、组件内文字）都会跟着大一档
+  font-size: var(--td-font-body);
+  letter-spacing: var(--td-tracking-tight);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color: var(--td-text-primary);

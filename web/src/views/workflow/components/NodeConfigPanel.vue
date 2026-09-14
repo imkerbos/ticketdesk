@@ -1,7 +1,7 @@
 <template>
   <div v-if="node" class="config-panel">
     <div class="panel-header">
-      <h3 class="panel-title">节点配置</h3>
+      <h3 class="panel-title">{{ t('workflow.panel.title') }}</h3>
       <el-button text size="small" @click="$emit('close')">
         <el-icon><Close /></el-icon>
       </el-button>
@@ -11,15 +11,15 @@
       <el-form label-position="top" size="default">
         <!-- 基本信息 -->
         <div class="config-section">
-          <div class="section-title">基本信息</div>
-          <el-form-item label="节点名称">
+          <div class="section-title">{{ t('workflow.panel.basic') }}</div>
+          <el-form-item :label="t('workflow.nodeName')">
             <el-input
               v-model="localName"
-              placeholder="请输入节点名称"
+              :placeholder="t('workflow.nodeNamePlaceholder')"
               @change="emitUpdate"
             />
           </el-form-item>
-          <el-form-item label="节点类型">
+          <el-form-item :label="t('workflow.nodeType')">
             <el-tag :type="nodeTypeTagType" size="large">{{ nodeTypeText }}</el-tag>
           </el-form-item>
         </div>
@@ -27,28 +27,28 @@
         <!-- 审批节点配置 -->
         <template v-if="node.data.nodeType === 'approval'">
           <div class="config-section">
-            <div class="section-title">审批配置</div>
-            <el-form-item label="审批类型">
-              <el-select v-model="localConfig.approval_type" placeholder="请选择审批类型" style="width: 100%" @change="emitUpdate">
-                <el-option label="单人审批" value="single" />
-                <el-option label="会签（所有人通过）" value="countersign" />
-                <el-option label="或签（任一人通过）" value="or_sign" />
+            <div class="section-title">{{ t('workflow.panel.approvalConfig') }}</div>
+            <el-form-item :label="t('workflow.approvalType')">
+              <el-select v-model="localConfig.approval_type" :placeholder="t('workflow.approvalTypePlaceholder')" style="width: 100%" @change="emitUpdate">
+                <el-option :label="t('workflow.approvalTypeMap.single')" value="single" />
+                <el-option :label="t('workflow.approvalTypeOption.countersign')" value="countersign" />
+                <el-option :label="t('workflow.approvalTypeOption.or_sign')" value="or_sign" />
               </el-select>
             </el-form-item>
-            <el-form-item label="审批人">
+            <el-form-item :label="t('workflow.approvers')">
               <el-select
                 v-model="localConfig.approvers"
                 multiple
                 filterable
-                placeholder="请选择审批人"
+                :placeholder="t('workflow.approversPlaceholder')"
                 style="width: 100%"
                 @change="emitUpdate"
               >
                 <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
               </el-select>
             </el-form-item>
-            <el-form-item label="审批角色（可选）">
-              <el-input v-model="localConfig.approver_role" placeholder="如: project_lead" @change="emitUpdate" />
+            <el-form-item :label="t('workflow.approverRole')">
+              <el-input v-model="localConfig.approver_role" :placeholder="t('workflow.approverRolePlaceholder')" @change="emitUpdate" />
             </el-form-item>
           </div>
         </template>
@@ -56,29 +56,29 @@
         <!-- 工作节点配置 -->
         <template v-if="node.data.nodeType === 'work'">
           <div class="config-section">
-            <div class="section-title">指派配置</div>
-            <el-form-item label="指派类型">
-              <el-select v-model="localConfig.assignee_type" placeholder="请选择指派类型" style="width: 100%" @change="emitUpdate">
-                <el-option label="指定用户" value="user" />
-                <el-option label="指定角色" value="role" />
-                <el-option label="报告人" value="reporter" />
-                <el-option label="项目负责人" value="project_lead" />
+            <div class="section-title">{{ t('workflow.panel.assignConfig') }}</div>
+            <el-form-item :label="t('workflow.assigneeType')">
+              <el-select v-model="localConfig.assignee_type" :placeholder="t('workflow.assigneeTypePlaceholder')" style="width: 100%" @change="emitUpdate">
+                <el-option :label="t('workflow.assigneeTypeMap.user')" value="user" />
+                <el-option :label="t('workflow.assigneeTypeMap.role')" value="role" />
+                <el-option :label="t('workflow.assigneeTypeMap.reporter')" value="reporter" />
+                <el-option :label="t('workflow.assigneeTypeMap.project_lead')" value="project_lead" />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="localConfig.assignee_type === 'user'" label="指派人">
+            <el-form-item v-if="localConfig.assignee_type === 'user'" :label="t('workflow.assignees')">
               <el-select
                 v-model="localConfig.assignees"
                 multiple
                 filterable
-                placeholder="请选择指派人"
+                :placeholder="t('workflow.assigneesPlaceholder')"
                 style="width: 100%"
                 @change="emitUpdate"
               >
                 <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="localConfig.assignee_type === 'role'" label="角色名称">
-              <el-input v-model="localConfig.assignee_role" placeholder="请输入角色名称" @change="emitUpdate" />
+            <el-form-item v-if="localConfig.assignee_type === 'role'" :label="t('workflow.assigneeRole')">
+              <el-input v-model="localConfig.assignee_role" :placeholder="t('workflow.assigneeRolePlaceholder')" @change="emitUpdate" />
             </el-form-item>
           </div>
         </template>
@@ -86,9 +86,9 @@
         <!-- 系统节点配置 -->
         <template v-if="node.data.nodeType === 'system'">
           <div class="config-section">
-            <div class="section-title">系统动作</div>
-            <el-form-item label="动作名称">
-              <el-input v-model="localConfig.action" placeholder="请输入系统动作" @change="emitUpdate" />
+            <div class="section-title">{{ t('workflow.systemAction') }}</div>
+            <el-form-item :label="t('workflow.actionName')">
+              <el-input v-model="localConfig.action" :placeholder="t('workflow.actionPlaceholder')" @change="emitUpdate" />
             </el-form-item>
           </div>
         </template>
@@ -96,38 +96,38 @@
         <!-- 通用配置（开始/结束节点不显示） -->
         <template v-if="node.data.nodeType !== 'start' && node.data.nodeType !== 'end'">
           <div class="config-section">
-            <div class="section-title">通用配置</div>
-            <el-form-item label="目标状态">
+            <div class="section-title">{{ t('workflow.panel.common') }}</div>
+            <el-form-item :label="t('workflow.targetStatus')">
               <el-select
                 v-model="localConfig.target_status"
-                placeholder="进入该节点时工单状态"
+                :placeholder="t('workflow.targetStatusPlaceholder')"
                 style="width: 100%"
                 clearable
                 @change="emitUpdate"
               >
-                <el-option label="未开始 (open)" value="open" />
-                <el-option label="进行中 (in_progress)" value="in_progress" />
-                <el-option label="待确认 (pending_review)" value="pending_review" />
-                <el-option label="已解决 (resolved)" value="resolved" />
-                <el-option label="已关闭 (closed)" value="closed" />
+                <el-option :label="t('workflow.statusOption.open')" value="open" />
+                <el-option :label="t('workflow.statusOption.in_progress')" value="in_progress" />
+                <el-option :label="t('workflow.statusOption.pending_review')" value="pending_review" />
+                <el-option :label="t('workflow.statusOption.resolved')" value="resolved" />
+                <el-option :label="t('workflow.statusOption.closed')" value="closed" />
               </el-select>
             </el-form-item>
-            <el-form-item label="超时时间（小时）">
+            <el-form-item :label="t('workflow.timeout')">
               <el-input-number
                 v-model="localConfig.timeout_hours"
                 :min="0"
                 :max="720"
-                placeholder="0 表示不超时"
+                :placeholder="t('workflow.timeoutPlaceholder')"
                 style="width: 100%"
                 @change="emitUpdate"
               />
             </el-form-item>
-            <el-form-item label="节点说明">
+            <el-form-item :label="t('workflow.nodeDesc')">
               <el-input
                 v-model="localConfig.description"
                 type="textarea"
                 :rows="3"
-                placeholder="节点说明"
+                :placeholder="t('workflow.nodeDesc')"
                 @change="emitUpdate"
               />
             </el-form-item>
@@ -138,7 +138,7 @@
         <div v-if="node.data.nodeType !== 'start' && node.data.nodeType !== 'end'" class="config-section">
           <el-button type="danger" plain style="width: 100%" @click="$emit('delete', node.id)">
             <el-icon><Delete /></el-icon>
-            删除节点
+            {{ t('workflow.panel.deleteNode') }}
           </el-button>
         </div>
       </el-form>
@@ -147,9 +147,12 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, watch, computed, reactive } from 'vue'
 import { Close, Delete } from '@element-plus/icons-vue'
 import type { NodeConfig } from '@/types/workflow'
+
+const { t } = useI18n()
 
 interface FlowNode {
   id: string
@@ -228,11 +231,11 @@ const emitUpdate = () => {
 
 const nodeTypeText = computed(() => {
   const map: Record<string, string> = {
-    start: '开始节点',
-    end: '结束节点',
-    approval: '审批节点',
-    work: '工作节点',
-    system: '系统节点',
+    start: t('workflow.nodeTypeFullMap.start'),
+    end: t('workflow.nodeTypeFullMap.end'),
+    approval: t('workflow.nodeTypeFullMap.approval'),
+    work: t('workflow.nodeTypeFullMap.work'),
+    system: t('workflow.nodeTypeFullMap.system'),
   }
   return props.node ? map[props.node.data.nodeType] || props.node.data.nodeType : ''
 })
@@ -260,16 +263,21 @@ const nodeTypeTagType = computed((): 'primary' | 'success' | 'info' | 'warning' 
   overflow: hidden;
 }
 
+/* 高度与设计器顶部工具栏一致，两条分隔线连成一线 */
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
+  gap: 8px;
+  height: 48px;
+  padding: 0 10px 0 14px;
+  flex-shrink: 0;
   border-bottom: 1px solid var(--td-border-color);
 
   .panel-title {
-    font-size: 15px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 590;
+    letter-spacing: -0.01em;
     color: var(--td-text-primary);
     margin: 0;
   }
@@ -278,19 +286,24 @@ const nodeTypeTagType = computed((): 'primary' | 'success' | 'info' | 'warning' 
 .panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 14px;
 }
 
 .config-section {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
 
   .section-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--td-text-regular);
+    font-size: 12px;
+    font-weight: 590;
+    letter-spacing: -0.005em;
+    color: var(--td-text-secondary);
     margin-bottom: 12px;
     padding-bottom: 8px;
-    border-bottom: 1px solid var(--td-border-color);
+    border-bottom: 1px solid var(--td-divider-color);
   }
 }
 

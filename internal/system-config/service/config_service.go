@@ -17,6 +17,7 @@ import (
 	"github.com/kerbos/ticketdesk/internal/model"
 	"github.com/kerbos/ticketdesk/internal/system-config/dto"
 	"github.com/kerbos/ticketdesk/internal/system-config/repository"
+	"github.com/kerbos/ticketdesk/pkg/i18n"
 	"github.com/kerbos/ticketdesk/pkg/logger"
 	"github.com/kerbos/ticketdesk/pkg/redis"
 )
@@ -52,9 +53,28 @@ const (
 	KeySecurityPasswordRequireUpper  = "security.password_require_upper"
 	KeySecurityPasswordRequireNumber = "security.password_require_number"
 	KeySecuritySessionTimeout        = "security.session_timeout"
+	KeySecurityWebhookSecret         = "security.webhook_secret" // 告警 Webhook HMAC 密钥；留空则不校验签名
 
 	// 通用配置键
 	KeyGeneralSiteURL = "general.site_url" // 站点域名
+	// KeyGeneralLanguage 平台默认语言（zh-CN / en-US）。
+	// 决定群消息、日报，以及未单独设置语言的用户收到的站内通知与邮件。
+	KeyGeneralLanguage = "general.language"
+
+	// CategorySetup 初始化向导配置分类
+	CategorySetup = "setup"
+
+	// KeySetupCompleted 是否已完成首次初始化（"1" 为已完成）
+	//
+	// 不按"users 表是否为空"判定：管理员被删掉的实例会被误判成新装，
+	// 那样任何人都能重新跑一遍向导、把自己变成管理员。
+	KeySetupCompleted = "setup.completed"
+
+	// KeySetupTokenHash 自动生成的 setup token 的哈希
+	//
+	// 只在没有通过环境变量提供 token 时才有值。存哈希不存明文：
+	// 明文只在生成它的那个副本的启动日志里出现一次。
+	KeySetupTokenHash = "setup.token_hash"
 
 	// 飞书配置键
 	KeyLarkEnabled    = "lark.enabled"
@@ -98,8 +118,8 @@ const (
 
 // 业务错误定义
 var (
-	ErrConfigNotFound  = errors.New("配置不存在")
-	ErrWebhookNotFound = errors.New("Webhook 不存在")
+	ErrConfigNotFound  = errors.New("system.config_not_found")
+	ErrWebhookNotFound = errors.New("system.webhook_not_found")
 )
 
 // ConfigService 系统配置服务接口
@@ -284,6 +304,12 @@ func (s *configService) UpdateConfig(ctx context.Context, key, value string, use
 	// 清除缓存
 	_ = s.InvalidateCache(ctx, key)
 
+	// 平台语言立刻在本副本生效，管理员保存完发条测试消息就能看到效果；
+	// 其余副本由 StartLanguageSync 在一个间隔内收敛
+	if key == KeyGeneralLanguage {
+		i18n.SetBackgroundLang(value)
+	}
+
 	logger.Info("config updated",
 		zap.String("key", key),
 		zap.Uint64("updated_by", userID),
@@ -309,6 +335,10 @@ func (s *configService) BatchUpdateConfigs(ctx context.Context, configs map[stri
 
 	// 清除所有缓存
 	_ = s.InvalidateAllCache(ctx)
+
+	if lang, ok := configs[KeyGeneralLanguage]; ok {
+		i18n.SetBackgroundLang(lang)
+	}
 
 	logger.Info("configs batch updated",
 		zap.Int("count", len(configs)),

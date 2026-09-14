@@ -37,6 +37,9 @@ services:
     build:
       context: ../web
       dockerfile: ../deploy/docker/Dockerfile.frontend.dev
+      # 复用 host 网络做 build，让 npm install 走 host 的 DNS/代理，
+      # 避免容器默认网络解析 registry.npmjs.org 慢/超时导致 build hang
+      network: host
     container_name: ticketdesk-frontend
     restart: unless-stopped
     ports:

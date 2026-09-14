@@ -1,114 +1,81 @@
 <template>
-  <div class="alert-detail-container">
-    <el-page-header style="margin-bottom: 20px" @back="$router.back()">
-      <template #content>
-        <span style="font-size: 18px; font-weight: 500">告警详情</span>
-      </template>
-    </el-page-header>
-
-    <el-card v-loading="loading" shadow="never">
-      <template #header>
-        <div style="display: flex; justify-content: space-between; align-items: center">
-          <div>
-            <h2 style="margin: 0">{{ alert?.alert_name }}</h2>
-            <div style="margin-top: 8px">
-              <el-tag :type="getSeverityType(alert?.severity)" size="small" style="margin-right: 8px">
-                {{ getSeverityText(alert?.severity) }}
-              </el-tag>
-              <el-tag :type="getStatusType(alert?.status)" size="small">
-                {{ getStatusText(alert?.status) }}
-              </el-tag>
-            </div>
-          </div>
-          <div>
-            <el-button
-              v-if="alert?.status === 'firing' && !alert?.ack_at"
-              type="primary"
-              @click="handleAck"
-            >
-              确认告警
-            </el-button>
-            <el-button
-              v-if="alert?.status === 'firing'"
-              type="success"
-              @click="handleResolve"
-            >
-              解决告警
-            </el-button>
-          </div>
+  <!-- 告警详情：这页原来全是内联 style 和 el-descriptions 的边框表格。
+       改成和工单详情同一套：页头 + 属性行 + 标签 + 注解。 -->
+  <div v-loading="loading" class="page">
+    <div class="page-head">
+      <div class="detail-title">
+        <h1>{{ alert?.alert_name }}</h1>
+        <div class="detail-meta">
+          <span class="pill" :class="severityTone(alert?.severity)">{{ getSeverityText(alert?.severity) }}</span>
+          <span class="pill" :class="alert?.status === 'firing' ? 'orange' : 'green'">{{ getStatusText(alert?.status) }}</span>
+          <span class="key static">{{ alert?.fingerprint?.slice(0, 12) }}</span>
         </div>
-      </template>
-
-      <el-descriptions :column="2" border>
-        <el-descriptions-item label="告警指纹">
-          <el-text type="info" size="small">{{ alert?.fingerprint }}</el-text>
-        </el-descriptions-item>
-        <el-descriptions-item label="告警来源">
-          {{ alert?.source }}
-        </el-descriptions-item>
-        <el-descriptions-item label="开始时间">
-          {{ formatTime(alert?.starts_at) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="结束时间">
-          {{ alert?.ends_at ? formatTime(alert.ends_at) : '-' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="关联工单">
-          <el-link
-            v-if="alert?.issue_key"
-            type="primary"
-            :href="`/issues/${alert.issue_key}`"
-            target="_blank"
-          >
-            {{ alert.issue_key }}
-          </el-link>
-          <span v-else>-</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="确认信息">
-          <div v-if="alert?.ack_at">
-            <div>{{ alert.ack_by_name }} 于 {{ formatTime(alert.ack_at) }} 确认</div>
-          </div>
-          <span v-else>-</span>
-        </el-descriptions-item>
-      </el-descriptions>
-
-      <el-divider />
-
-      <h3>标签</h3>
-      <div style="margin-top: 12px">
-        <el-tag
-          v-for="(value, key) in alert?.labels"
-          :key="key"
-          style="margin-right: 8px; margin-bottom: 8px"
-        >
-          {{ key }} = {{ value }}
-        </el-tag>
       </div>
+      <div class="grow"></div>
+      <button v-if="alert?.status === 'firing' && !alert?.ack_at" class="btn secondary" @click="handleAck">
+        {{ t('alert.ackTitle') }}
+      </button>
+      <button v-if="alert?.status === 'firing'" class="btn primary" @click="handleResolve">
+        {{ t('alert.resolveTitle') }}
+      </button>
+    </div>
 
-      <el-divider />
+    <section class="card">
+      <div class="card-head"><h2>{{ t('common.detail') }}</h2></div>
+      <dl class="props">
+        <div class="prop"><dt>{{ t('alert.source') }}</dt><dd>{{ alert?.source || '-' }}</dd></div>
+        <div class="prop"><dt>{{ t('alert.startsAt') }}</dt><dd class="time">{{ formatTime(alert?.starts_at) }}</dd></div>
+        <div class="prop"><dt>{{ t('alert.endsAt') }}</dt><dd class="time">{{ alert?.ends_at ? formatTime(alert.ends_at) : '-' }}</dd></div>
+        <div class="prop">
+          <dt>{{ t('alert.linkedIssue') }}</dt>
+          <dd>
+            <a v-if="alert?.issue_key" class="key" @click="$router.push(`/issues/${alert.issue_key}`)">{{ alert.issue_key }}</a>
+            <span v-else class="muted">-</span>
+          </dd>
+        </div>
+        <div class="prop">
+          <dt>{{ t('alert.ackInfo') }}</dt>
+          <dd>
+            <span v-if="alert?.ack_at">{{ t('alert.ackedBy', { name: alert.ack_by_name, time: formatTime(alert.ack_at) }) }}</span>
+            <span v-else class="muted">-</span>
+          </dd>
+        </div>
+        <div class="prop"><dt>{{ t('alert.fingerprint') }}</dt><dd class="key static">{{ alert?.fingerprint }}</dd></div>
+      </dl>
+    </section>
 
-      <h3>注解</h3>
-      <div style="margin-top: 12px">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item
-            v-for="(value, key) in alert?.annotations"
-            :key="key"
-            :label="key"
-          >
-            {{ value }}
-          </el-descriptions-item>
-        </el-descriptions>
+    <section class="card">
+      <div class="card-head"><h2>{{ t('alert.labels') }}</h2></div>
+      <div class="chips">
+        <span v-for="(value, key) in alert?.labels" :key="key" class="pill neutral">{{ key }} = {{ value }}</span>
+        <span v-if="!alert?.labels || Object.keys(alert.labels).length === 0" class="muted">-</span>
       </div>
-    </el-card>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>{{ t('alert.annotations') }}</h2></div>
+      <dl class="props">
+        <div v-for="(value, key) in alert?.annotations" :key="key" class="prop">
+          <dt>{{ key }}</dt><dd>{{ value }}</dd>
+        </div>
+        <div v-if="!alert?.annotations || Object.keys(alert.annotations).length === 0" class="prop">
+          <dd class="muted">-</dd>
+        </div>
+      </dl>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getAlertDetail, ackAlert, resolveAlert } from '@/api/alert'
 import type { Alert } from '@/types/alert'
 import dayjs from 'dayjs'
+
+const { t } = useI18n()
 
 const route = useRoute()
 // useRouter is available globally in template as $router, but we call it to ensure Vue Router is setup
@@ -132,7 +99,7 @@ const loadData = async () => {
 const handleAck = async () => {
   try {
     await ackAlert(alert.value!.id)
-    ElMessage.success('确认成功')
+    ElMessage.success(t('alert.ackSuccess'))
     loadData()
   } catch {
     // ignored
@@ -142,41 +109,24 @@ const handleAck = async () => {
 const handleResolve = async () => {
   try {
     await resolveAlert(alert.value!.id)
-    ElMessage.success('解决成功')
+    ElMessage.success(t('alert.resolveSuccess'))
     loadData()
   } catch {
     // ignored
   }
 }
 
-const getSeverityType = (severity?: string) => {
-  const map: Record<string, any> = {
-    critical: 'danger',
-    warning: 'warning',
-    info: 'info',
-  }
-  return map[severity || ''] || 'info'
-}
+// 药丸色调（和告警列表共用同一套语义）
+const severityTone = (v?: string) => (v === 'critical' ? 'sla' : v === 'warning' ? 'orange' : 'neutral')
 
 const getSeverityText = (severity?: string) => {
-  const map: Record<string, string> = {
-    critical: '严重',
-    warning: '警告',
-    info: '信息',
-  }
-  return map[severity || ''] || severity
-}
-
-const getStatusType = (status?: string) => {
-  return status === 'firing' ? 'danger' : 'success'
+  const known = ['critical', 'warning', 'info']
+  return known.includes(severity || '') ? t(`alert.severityMap.${severity}`) : severity
 }
 
 const getStatusText = (status?: string) => {
-  const map: Record<string, string> = {
-    firing: '触发中',
-    resolved: '已解决',
-  }
-  return map[status || ''] || status
+  const known = ['firing', 'resolved', 'acked']
+  return known.includes(status || '') ? t(`alert.statusMap.${status}`) : status
 }
 
 const formatTime = (time?: string) => {
@@ -189,11 +139,42 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.alert-detail-container {
-  h3 {
-    font-size: 16px;
-    font-weight: 500;
-    margin-bottom: 12px;
+// 属性行：label 定宽、value 自适应，一行一条发丝线。
+// 原来用的是 el-descriptions 的边框表格——那是 Excel 的语言。
+.props {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.prop {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--td-divider-color);
+
+  &:last-child { border-bottom: 0; }
+
+  dt {
+    flex: 0 0 140px;
+    font-size: 12.5px;
+    color: var(--td-text-placeholder);
   }
+
+  dd {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    word-break: break-all;
+  }
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 14px 18px;
 }
 </style>

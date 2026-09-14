@@ -524,6 +524,13 @@ func (s *reportService) mergeTimelineData(created, inProgress, resolved, closed 
 		result = append(result, *item)
 	}
 
+	// 四个来源合并时走的是 map，Go 的 map 迭代顺序是随机的，
+	// 直接返回会让前端的「工单趋势」表格日期乱序（09-02、08-18、08-19…）。
+	// 日期是 YYYY-MM-DD，字典序即时间序。
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Date < result[j].Date
+	})
+
 	return result
 }
 

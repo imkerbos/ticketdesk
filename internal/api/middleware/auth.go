@@ -2,6 +2,7 @@
 package middleware
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -12,11 +13,15 @@ import (
 )
 
 // AuthMiddleware JWT 认证中间件，同时支持 PAT 鉴权
-func AuthMiddleware(jwtManager *jwt.Manager, tokenSvc service.APITokenService) gin.HandlerFunc {
+//
+// authState 用于校验「令牌签发之后账号是否发生了变化」：
+// JWT 自包含、签发后无法撤回，若只验签名，被禁用的账号、改过密码的账号
+// 仍能拿旧令牌一直用到自然过期。
+func AuthMiddleware(jwtManager *jwt.Manager, tokenSvc service.APITokenService, authState service.AuthStateProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			response.Unauthorized(c, "缺少认证信息")
+			response.UnauthorizedT(c, "auth.missing_credential")
 			c.Abort()
 			return
 		}
@@ -24,7 +29,7 @@ func AuthMiddleware(jwtManager *jwt.Manager, tokenSvc service.APITokenService) g
 		// Bearer token
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			response.Unauthorized(c, "认证格式错误")
+			response.UnauthorizedT(c, "auth.bad_auth_format")
 			c.Abort()
 			return
 		}
@@ -35,7 +40,7 @@ func AuthMiddleware(jwtManager *jwt.Manager, tokenSvc service.APITokenService) g
 		if service.IsAPIToken(raw) {
 			user, _, err := tokenSvc.Authenticate(c.Request.Context(), raw)
 			if err != nil {
-				response.Unauthorized(c, "API token 无效或已过期")
+				response.UnauthorizedT(c, "auth.api_token_invalid")
 				c.Abort()
 				return
 			}
@@ -46,19 +51,42 @@ func AuthMiddleware(jwtManager *jwt.Manager, tokenSvc service.APITokenService) g
 			return
 		}
 
-		// 否则走 JWT 鉴权（原有逻辑）
-		claims, err := jwtManager.ParseToken(raw)
+		// 否则走 JWT 鉴权：必须是 access 类型，
+		// refresh / mfa 挑战令牌都不得直接用于访问业务接口
+		claims, err := jwtManager.ParseTokenOfType(raw, jwt.TokenTypeAccess)
 		if err != nil {
-			switch err {
-			case jwt.ErrTokenExpired:
-				response.Unauthorized(c, "Token 已过期")
-			case jwt.ErrTokenMalformed:
-				response.Unauthorized(c, "Token 格式错误")
+			switch {
+			case errors.Is(err, jwt.ErrTokenExpired):
+				response.UnauthorizedT(c, "auth.token_expired")
+			case errors.Is(err, jwt.ErrTokenMalformed):
+				response.UnauthorizedT(c, "auth.token_malformed")
+			case errors.Is(err, jwt.ErrTokenWrongType):
+				response.UnauthorizedT(c, "auth.token_wrong_type")
 			default:
-				response.Unauthorized(c, "Token 无效")
+				response.UnauthorizedT(c, "auth.token_invalid")
 			}
 			c.Abort()
 			return
+		}
+
+		// 校验账号当前状态与令牌版本（带缓存，正常路径命中 Redis）
+		if authState != nil {
+			state, err := authState.GetAuthState(c.Request.Context(), claims.UserID)
+			if err != nil {
+				response.UnauthorizedT(c, "auth.state_check_failed")
+				c.Abort()
+				return
+			}
+			if state.Status == 0 {
+				response.ForbiddenT(c, "auth.account_disabled")
+				c.Abort()
+				return
+			}
+			if claims.TokenVersion != state.TokenVersion {
+				response.UnauthorizedT(c, "auth.token_revoked")
+				c.Abort()
+				return
+			}
 		}
 
 		// 将用户信息存入上下文
@@ -91,7 +119,7 @@ func RecoveryMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if err := recover(); err != nil {
-				response.InternalError(c, "服务器内部错误")
+				response.InternalError(c, "common.internal_error")
 				c.Abort()
 			}
 		}()

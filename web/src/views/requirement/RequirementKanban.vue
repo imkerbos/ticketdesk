@@ -1,116 +1,73 @@
 <template>
-  <div class="requirement-kanban">
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><Grid /></el-icon>
-        </div>
-      </template>
-      <template #title>需求看板</template>
-      <template #actions>
-        <el-button @click="router.push('/requirements')">
-          <el-icon><List /></el-icon>
-          列表视图
-        </el-button>
-        <el-button type="primary" @click="handleCreate">
-          <el-icon><Plus /></el-icon>
-          创建需求
-        </el-button>
-      </template>
-    </TdPageHeader>
+  <!-- 看板：页头 + 一条筛选带 + 列。卡片用发丝线，不再有阴影和实心标签。 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('requirement.kanbanTitle') }}</h1>
+      <div class="grow"></div>
+      <button class="btn secondary" @click="router.push('/requirements')">{{ t('requirement.listView') }}</button>
+      <button class="btn primary" @click="handleCreate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('requirement.create') }}
+      </button>
+    </div>
 
-    <!-- 筛选条件 -->
-    <el-card class="filter-card" shadow="never">
-      <el-form :inline="true" :model="filters">
-        <el-form-item label="需求池">
-          <el-select v-model="filters.pool_id" placeholder="全部" clearable style="width: 180px" @change="loadKanban">
-            <el-option
-              v-for="pool in pools"
-              :key="pool.id"
-              :label="pool.name"
-              :value="pool.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="分组方式">
-          <el-select v-model="filters.group_by" style="width: 140px" @change="loadKanban">
-            <el-option label="按状态" value="status" />
-            <el-option label="按优先级" value="priority" />
-            <el-option label="按负责人" value="assignee" />
-            <el-option label="按时间线" value="timeline" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <div class="toolbar">
+      <el-select v-model="filters.pool_id" :placeholder="t('requirement.pool')" clearable class="filter-select" @change="loadKanban">
+        <el-option v-for="pool in pools" :key="pool.id" :label="pool.name" :value="pool.id" />
+      </el-select>
+      <div class="seg" role="group" :aria-label="t('requirement.groupBy')">
+        <button
+          v-for="g in (['status', 'priority', 'assignee', 'timeline'] as const)"
+          :key="g"
+          :aria-pressed="filters.group_by === g"
+          @click="selectGroupBy(g)"
+        >
+          {{ t(`requirement.group${g.charAt(0).toUpperCase()}${g.slice(1)}`) }}
+        </button>
+      </div>
+    </div>
 
-    <!-- 看板 -->
     <div v-loading="loading" class="kanban-container">
       <div class="kanban-board">
-        <div
-          v-for="column in kanbanData.columns"
-          :key="column.key"
-          class="kanban-column"
-          :class="{ 'completed-column': column.key === 'completed' }"
-        >
-          <div class="column-header" :class="{ 'completed-header': column.key === 'completed' }">
+        <div v-for="column in kanbanData.columns" :key="column.key" class="kanban-column">
+          <!--
+            列头原来是整条饱和实心色带（三列蓝、一列绿），比页面上任何按钮
+            都响；而且待评估/规划中/进行中三个状态同为蓝色，等于没区分。
+            改成状态色圆点 + 深色标题，颜色只用来区分状态本身。
+          -->
+          <div class="column-header">
+            <span class="column-dot" :class="`is-${column.key}`"></span>
             <span class="column-title">{{ column.title }}</span>
-            <el-badge :value="column.count" :max="99" type="info" />
+            <span class="column-count">{{ column.count }}</span>
           </div>
-          <div class="column-content" :class="{ 'completed-content': column.key === 'completed' }">
+          <div class="column-content">
             <div
               v-for="requirement in column.requirements"
               :key="requirement.id"
               class="kanban-card"
               @click="handleCardClick(requirement)"
             >
-              <div class="card-header">
-                <el-tag :type="getPriorityType(requirement.priority)" size="small">
-                  {{ requirement.priority }}
-                </el-tag>
-                <el-tag :type="getCategoryType(requirement.category)" size="small">
-                  {{ getCategoryLabel(requirement.category) }}
-                </el-tag>
-                <el-tag :type="getStatusType(requirement.status)" size="small">
-                  {{ getStatusLabel(requirement.status) }}
-                </el-tag>
-              </div>
               <div class="card-title">{{ requirement.title }}</div>
-              <div class="card-meta">
-                <span v-if="requirement.reporter_name">
-                  <el-icon><User /></el-icon>
-                  {{ requirement.reporter_name }}
+
+              <div class="card-tags">
+                <span class="prio">
+                  <span class="dot" :style="{ background: priorityColor(requirement.priority) }"></span>{{ requirement.priority }}
                 </span>
-                <span v-if="requirement.assignee_name">
-                  <el-icon><User /></el-icon>
-                  {{ requirement.assignee_name }}
-                </span>
-                <span v-if="requirement.end_date">
-                  <el-icon><Calendar /></el-icon>
-                  {{ formatDateTime(requirement.end_date) }}
-                </span>
+                <span class="pill neutral">{{ getCategoryLabel(requirement.category) }}</span>
+                <span v-if="requirement.converted_issue_key" class="key">{{ requirement.converted_issue_key }}</span>
               </div>
-              <!-- 关联工单信息 -->
-              <div v-if="requirement.converted_issue_key" class="card-issue">
-                <el-icon><Link /></el-icon>
-                <span class="issue-key">{{ requirement.converted_issue_key }}</span>
-                <el-tag
-                  v-if="requirement.converted_issue_status"
-                  :type="getIssueStatusType(requirement.converted_issue_status)"
-                  size="small"
-                >
-                  {{ getIssueStatusLabel(requirement.converted_issue_status) }}
-                </el-tag>
-              </div>
-              <div class="card-footer">
-                <span class="pool-name">{{ requirement.pool_name }}</span>
-                <span v-if="requirement.comment_count > 0" class="comment-count">
-                  <el-icon><ChatDotRound /></el-icon>
-                  {{ requirement.comment_count }}
+
+              <div class="card-foot">
+                <span class="muted">{{ requirement.pool_name }}</span>
+                <div class="grow"></div>
+                <span v-if="requirement.assignee_name" class="person">
+                  <span class="ava" :style="{ color: personColor(requirement.assignee_name) }">{{ requirement.assignee_name.charAt(0) }}</span>
                 </span>
+                <span v-if="requirement.end_date" class="time">{{ formatDate(requirement.end_date) }}</span>
               </div>
             </div>
             <div v-if="column.requirements.length === 0" class="empty-column">
-              暂无需求
+              {{ t('requirement.empty') }}
             </div>
           </div>
         </div>
@@ -125,26 +82,26 @@
     >
       <template v-if="selectedRequirement">
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="需求池">{{ selectedRequirement.pool_name }}</el-descriptions-item>
-          <el-descriptions-item label="分类">
+          <el-descriptions-item :label="t('requirement.pool')">{{ selectedRequirement.pool_name }}</el-descriptions-item>
+          <el-descriptions-item :label="t('requirement.category')">
             <el-tag :type="getCategoryType(selectedRequirement.category)" size="small">
               {{ getCategoryLabel(selectedRequirement.category) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="优先级">
+          <el-descriptions-item :label="t('issue.priority')">
             <el-tag :type="getPriorityType(selectedRequirement.priority)" size="small">
               {{ selectedRequirement.priority }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="状态">
+          <el-descriptions-item :label="t('issue.status')">
             <el-tag :type="getStatusType(selectedRequirement.status)" size="small">
               {{ getStatusLabel(selectedRequirement.status) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="来源">{{ selectedRequirement.reporter_name || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="负责人">{{ selectedRequirement.assignee_name || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="创建人">{{ selectedRequirement.creator_name }}</el-descriptions-item>
-          <el-descriptions-item label="关联工单">
+          <el-descriptions-item :label="t('requirement.source')">{{ selectedRequirement.reporter_name || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('requirement.assignee')">{{ selectedRequirement.assignee_name || '-' }}</el-descriptions-item>
+          <el-descriptions-item :label="t('requirement.creator')">{{ selectedRequirement.creator_name }}</el-descriptions-item>
+          <el-descriptions-item :label="t('requirement.linkedIssue')">
             <div v-if="selectedRequirement.converted_issue_key">
               <router-link
                 :to="`/issues/${selectedRequirement.converted_issue_key}`"
@@ -163,28 +120,28 @@
             </div>
             <span v-else>-</span>
           </el-descriptions-item>
-          <el-descriptions-item label="开始时间">{{ formatDateTime(selectedRequirement.start_date) }}</el-descriptions-item>
-          <el-descriptions-item label="结束时间">{{ formatDateTime(selectedRequirement.end_date) }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ selectedRequirement.created_at }}</el-descriptions-item>
+          <el-descriptions-item :label="t('requirement.startDate')">{{ formatDateTime(selectedRequirement.start_date) }}</el-descriptions-item>
+          <el-descriptions-item :label="t('requirement.endDate')">{{ formatDateTime(selectedRequirement.end_date) }}</el-descriptions-item>
+          <el-descriptions-item :label="t('common.createdAt')">{{ selectedRequirement.created_at }}</el-descriptions-item>
         </el-descriptions>
 
         <div class="description-section">
-          <h4>描述</h4>
-          <div class="description-content">{{ selectedRequirement.description || '暂无描述' }}</div>
+          <h4>{{ t('issue.description') }}</h4>
+          <div class="description-content">{{ selectedRequirement.description || t('requirement.noDescription') }}</div>
         </div>
 
         <div v-if="selectedRequirement.progress" class="description-section">
-          <h4>当前进度</h4>
+          <h4>{{ t('requirement.progress') }}</h4>
           <div class="description-content">{{ selectedRequirement.progress }}</div>
         </div>
 
         <div v-if="selectedRequirement.result" class="description-section">
-          <h4>结果</h4>
+          <h4>{{ t('requirement.result') }}</h4>
           <div class="description-content">{{ selectedRequirement.result }}</div>
         </div>
 
         <div v-if="selectedRequirement.tags && selectedRequirement.tags.length" class="tags-section">
-          <h4>标签</h4>
+          <h4>{{ t('requirement.tags') }}</h4>
           <div class="tags">
             <el-tag v-for="tag in selectedRequirement.tags" :key="tag" size="small">{{ tag }}</el-tag>
           </div>
@@ -193,25 +150,25 @@
         <div class="actions-section">
           <el-button-group>
             <el-button v-if="selectedRequirement.status === 'pending_review'" @click="handleStatusChange('planning')">
-              开始规划
+              {{ t('requirement.startPlanning') }}
             </el-button>
             <el-button v-if="selectedRequirement.status === 'pending_review' || selectedRequirement.status === 'planning' || selectedRequirement.status === 'on_hold'" type="primary" @click="handleStatusChange('in_progress')">
-              开始执行
+              {{ t('requirement.startWork') }}
             </el-button>
             <el-button v-if="selectedRequirement.status === 'in_progress'" type="success" @click="handleStatusChange('completed')">
-              完成
+              {{ t('requirement.complete') }}
             </el-button>
             <el-button v-if="selectedRequirement.status === 'pending_review' || selectedRequirement.status === 'planning' || selectedRequirement.status === 'in_progress'" type="warning" @click="handleStatusChange('on_hold')">
-              搁置
+              {{ t('requirement.hold') }}
             </el-button>
             <el-button v-if="selectedRequirement.status === 'pending_review' || selectedRequirement.status === 'planning' || selectedRequirement.status === 'in_progress'" type="danger" @click="handleStatusChange('rejected')">
-              拒绝
+              {{ t('requirement.reject') }}
             </el-button>
             <el-button v-if="selectedRequirement.status === 'rejected' || selectedRequirement.status === 'on_hold'" @click="handleStatusChange('pending_review')">
-              重新评估
+              {{ t('requirement.reevaluate') }}
             </el-button>
             <el-button v-if="selectedRequirement.status !== 'completed' && selectedRequirement.status !== 'rejected' && !selectedRequirement.converted_issue_id" type="primary" @click="handleConvert">
-              转化为工单
+              {{ t('requirement.convert') }}
             </el-button>
           </el-button-group>
         </div>
@@ -219,10 +176,10 @@
     </el-drawer>
 
     <!-- 创建需求对话框 -->
-    <el-dialog v-model="showCreateDialog" title="创建需求" width="700px" @closed="resetForm">
+    <el-dialog v-model="showCreateDialog" :title="t('requirement.create')" width="700px" @closed="resetForm">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="需求池" prop="pool_id">
-          <el-select v-model="form.pool_id" placeholder="请选择需求池" style="width: 100%">
+        <el-form-item :label="t('requirement.pool')" prop="pool_id">
+          <el-select v-model="form.pool_id" :placeholder="t('requirement.poolPlaceholder')" style="width: 100%">
             <el-option
               v-for="pool in pools"
               :key="pool.id"
@@ -231,21 +188,21 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="标题" prop="title">
-          <el-input v-model="form.title" placeholder="请输入需求标题" />
+        <el-form-item :label="t('issue.title')" prop="title">
+          <el-input v-model="form.title" :placeholder="t('requirement.titlePlaceholder')" />
         </el-form-item>
-        <el-form-item label="描述" prop="description">
+        <el-form-item :label="t('issue.description')" prop="description">
           <el-input
             v-model="form.description"
             type="textarea"
             :rows="4"
-            placeholder="请输入需求描述"
+            :placeholder="t('requirement.descPlaceholder')"
           />
         </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="分类" prop="category">
-              <el-select v-model="form.category" placeholder="请选择分类" style="width: 100%">
+            <el-form-item :label="t('requirement.category')" prop="category">
+              <el-select v-model="form.category" :placeholder="t('requirement.categoryPlaceholder')" style="width: 100%">
                 <el-option
                   v-for="cat in categories"
                   :key="cat.name"
@@ -256,20 +213,20 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="优先级" prop="priority">
-              <el-select v-model="form.priority" placeholder="请选择优先级" style="width: 100%">
-                <el-option label="P0 - 紧急" value="P0" />
-                <el-option label="P1 - 高" value="P1" />
-                <el-option label="P2 - 中" value="P2" />
-                <el-option label="P3 - 低" value="P3" />
+            <el-form-item :label="t('issue.priority')" prop="priority">
+              <el-select v-model="form.priority" :placeholder="t('requirement.priorityPlaceholder')" style="width: 100%">
+                <el-option :label="t('issue.priorityMap.P0')" value="P0" />
+                <el-option :label="t('issue.priorityMap.P1')" value="P1" />
+                <el-option :label="t('issue.priorityMap.P2')" value="P2" />
+                <el-option :label="t('issue.priorityMap.P3')" value="P3" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="负责人" prop="assignee_id">
-              <el-select v-model="form.assignee_id" placeholder="请选择负责人" filterable clearable style="width: 100%">
+            <el-form-item :label="t('requirement.assignee')" prop="assignee_id">
+              <el-select v-model="form.assignee_id" :placeholder="t('requirement.assigneePlaceholder')" filterable clearable style="width: 100%">
                 <el-option
                   v-for="user in users"
                   :key="user.id"
@@ -282,18 +239,18 @@
         </el-row>
       </el-form>
       <template #footer>
-        <el-button @click="handleCancel">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleCreateSubmit">确定</el-button>
+        <el-button @click="handleCancel">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleCreateSubmit">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, List, Grid, User, Calendar, ChatDotRound, Link } from '@element-plus/icons-vue'
 import {
   getRequirementKanban,
   getRequirementPoolList,
@@ -302,6 +259,7 @@ import {
   getRequirementCategories,
 } from '@/api/requirement'
 import { getAllUsers } from '@/api/user'
+import { personColor } from '@/utils/avatar'
 import type {
   Requirement,
   RequirementPool,
@@ -312,6 +270,9 @@ import type {
   RequirementCategory,
   RequirementCategoryDef,
 } from '@/types/requirement'
+
+
+const { t } = useI18n()
 
 const router = useRouter()
 
@@ -350,15 +311,15 @@ const rules: FormRules = {
     trigger: 'change',
     validator: (_rule, value, callback) => {
       if (!value || value === 0) {
-        callback(new Error('请选择需求池'))
+        callback(new Error(t('requirement.poolRequired')))
       } else {
         callback()
       }
     }
   }],
-  title: [{ required: true, message: '请输入需求标题', trigger: 'blur' }],
-  priority: [{ required: true, message: '请选择优先级', trigger: 'change' }],
-  category: [{ required: true, message: '请选择分类', trigger: 'change' }],
+  title: [{ required: true, message: t('requirement.titleRequired'), trigger: ['blur', 'change'] }],
+  priority: [{ required: true, message: t('requirement.priorityRequired'), trigger: 'change' }],
+  category: [{ required: true, message: t('requirement.categoryRequired'), trigger: 'change' }],
 }
 
 // 状态映射
@@ -366,12 +327,12 @@ type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
 
 const getStatusLabel = (status: RequirementStatus) => {
   const map: Record<RequirementStatus, string> = {
-    pending_review: '待评估',
-    planning: '规划中',
-    in_progress: '进行中',
-    completed: '已完成',
-    on_hold: '已搁置',
-    rejected: '已拒绝',
+    pending_review: t('requirement.statusMap.pending_review'),
+    planning: t('requirement.statusMap.planning'),
+    in_progress: t('requirement.statusMap.in_progress'),
+    completed: t('requirement.statusMap.completed'),
+    on_hold: t('requirement.statusMap.on_hold'),
+    rejected: t('requirement.statusMap.rejected'),
   }
   return map[status] || status
 }
@@ -398,6 +359,21 @@ const getCategoryType = (category: RequirementCategory): TagType => {
   return (cat?.color as TagType) || 'info'
 }
 
+// 分组切换（原来是下拉，改成分段控件）
+const selectGroupBy = (g: 'status' | 'priority' | 'assignee' | 'timeline') => {
+  filters.group_by = g
+  loadKanban()
+}
+
+const PRIORITY_COLOR: Record<string, string> = {
+  P0: 'var(--td-color-danger)',
+  P1: 'var(--td-color-warning)',
+  P2: 'var(--td-cat-2)',
+  P3: 'var(--td-text-disabled)',
+}
+
+const priorityColor = (p: string) => PRIORITY_COLOR[p] || 'var(--td-text-disabled)'
+
 const getPriorityType = (priority: RequirementPriority): TagType => {
   const map: Record<RequirementPriority, TagType> = {
     P0: 'danger',
@@ -410,14 +386,9 @@ const getPriorityType = (priority: RequirementPriority): TagType => {
 
 // 工单状态映射
 const getIssueStatusLabel = (status: string) => {
-  const map: Record<string, string> = {
-    open: '待处理',
-    'in-progress': '进行中',
-    resolved: '已完成',
-    closed: '已终止',
-    reopened: '重新打开',
-  }
-  return map[status] || status
+    // 状态文案统一走语言包：它同时出现在列表、详情、报表、看板，
+  // 各处各写一份必然改一处漏三处
+  return t(`issue.statusMap.${status}`)
 }
 
 const getIssueStatusType = (status: string): TagType => {
@@ -443,6 +414,15 @@ const formatDateTime = (dateStr: string | undefined) => {
   return `${year}-${month}-${day} ${hours}:${minutes}`
 }
 
+// 需求只有日期粒度，卡片上带 00:00 是纯噪音
+const formatDate = (dateStr: string | undefined) => {
+  if (!dateStr) return '-'
+  const date = new Date(dateStr)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
 // 加载看板数据
 const loadKanban = async () => {
   loading.value = true
@@ -453,7 +433,7 @@ const loadKanban = async () => {
     })
     kanbanData.value = data.data
   } catch {
-    ElMessage.error('加载看板数据失败')
+    ElMessage.error(t('requirement.loadKanbanFailed'))
   } finally {
     loading.value = false
   }
@@ -501,11 +481,11 @@ const handleStatusChange = async (status: RequirementStatus) => {
 
   try {
     await updateRequirement(selectedRequirement.value.id, { status })
-    ElMessage.success('状态更新成功')
+    ElMessage.success(t('requirement.statusUpdated'))
     showDetailDrawer.value = false
     loadKanban()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '状态更新失败')
+    ElMessage.error(error.response?.data?.message || t('requirement.statusUpdateFailed'))
   }
 }
 
@@ -524,7 +504,7 @@ const handleCreateSubmit = async () => {
 
     // 再次检查必填字段
     if (!form.pool_id) {
-      ElMessage.error('请选择需求池')
+      ElMessage.error(t('requirement.poolRequired'))
       return
     }
 
@@ -546,12 +526,12 @@ const handleCreateSubmit = async () => {
       }
 
       await createRequirement(createData)
-      ElMessage.success('创建成功')
+      ElMessage.success(t('common.createSuccess'))
       showCreateDialog.value = false
       resetForm()
       loadKanban()
     } catch (error: any) {
-      ElMessage.error(error.response?.data?.message || '创建失败')
+      ElMessage.error(error.response?.data?.message || t('project.settings.createFailed'))
     } finally {
       submitting.value = false
     }
@@ -595,381 +575,133 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.requirement-kanban {
-  padding: 24px;
-  height: 100%;
+// 看板列与卡片。列表页那套（.page/.card/.pill/.prio）来自 _apple.scss，
+// 这里只写看板独有的布局。
+
+.kanban-container { overflow-x: auto; }
+
+.kanban-board {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-height: 60vh;
+}
+
+.kanban-column {
+  flex: 0 0 288px;
+  background: var(--td-bg-section);
+  border: 1px solid var(--td-border-color);
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
-  background: var(--td-bg-page);
-  min-height: 100vh;
+  max-height: calc(100vh - 220px);
+}
 
-  // 页面头部 icon (TdPageHeader leading slot)
-  .page-header-icon {
-    width: 40px;
-    height: 40px;
-    background: var(--td-tag-primary-bg);
-    border-radius: var(--td-radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--td-color-primary);
-    flex-shrink: 0;
+.column-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--td-divider-color);
+}
+
+.column-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 6px;
+  background: var(--td-text-placeholder);
+
+  &.is-in_progress { background: var(--td-color-warning); }
+  &.is-completed { background: var(--td-color-success); }
+  &.is-rejected { background: var(--td-color-danger); }
+}
+
+.column-title { font-size: 13px; font-weight: var(--td-weight-semibold); }
+.column-count { font-size: 12px; color: var(--td-text-placeholder); font-variant-numeric: tabular-nums; }
+
+.column-content {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+// 卡片：发丝线，不用阴影。hover 只换边框与底色。
+.kanban-card {
+  background: var(--td-bg-card);
+  border: 1px solid var(--td-border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  transition: var(--td-transition-border), var(--td-transition-bg);
+
+  &:hover {
+    border-color: var(--td-color-primary);
+    background: var(--td-bg-card-hover);
   }
+}
 
-  .filter-card {
-    margin-bottom: 20px;
-    flex-shrink: 0;
-    border-radius: 12px;
-    border: none;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    transition: box-shadow 150ms ease-out;
+.card-title {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--td-text-primary);
+}
 
-    &:hover {
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
-    }
+.card-tags,
+.card-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 
-    :deep(.el-card__body) {
-      padding: 20px 24px;
-    }
+.card-foot { font-size: 11.5px; }
+.card-foot .grow { flex: 1; }
 
-    :deep(.el-form-item) {
-      margin-bottom: 0;
-    }
+.empty-column {
+  padding: 28px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--td-text-placeholder);
+}
+
+
+/* 详情抽屉：描述 / 标签 / 状态流转按钮三块 */
+.description-section,
+.tags-section {
+  margin-top: 18px;
+
+  h4 {
+    margin: 0 0 6px;
+    font-size: 12.5px;
+    font-weight: 590;
+    color: var(--td-text-secondary);
   }
+}
 
-  .kanban-container {
-    flex: 1;
-    overflow: hidden;
+.description-content {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--td-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
-    .kanban-board {
-      display: flex;
-      gap: 20px;
-      height: 100%;
-      overflow-x: auto;
-      padding-bottom: 10px;
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 
-      .kanban-column {
-        flex: 0 0 320px;
-        background: var(--td-bg-card);
-        border-radius: 12px;
-        display: flex;
-        flex-direction: column;
-        max-height: 100%;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-        transition: all 150ms ease-out;
-
-        &:hover {
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
-        }
-
-        &.completed-column {
-          background: var(--td-tag-success-bg);
-          border: 2px solid #6ee7b7;
-        }
-
-        .column-header {
-          padding: 18px 20px;
-          background: var(--td-color-primary);
-          color: white;
-          border-radius: 12px 12px 0 0;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-weight: 600;
-          font-size: 15px;
-          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-
-          &.completed-header {
-            background: var(--td-color-success);
-            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-
-            :deep(.el-badge__content) {
-              background: var(--td-color-success);
-            }
-          }
-
-          .column-title {
-            font-weight: 600;
-            font-size: 15px;
-          }
-
-          :deep(.el-badge__content) {
-            background: var(--td-color-primary);
-            border: none;
-            font-weight: 600;
-          }
-        }
-
-        .column-content {
-          flex: 1;
-          overflow-y: auto;
-          padding: 16px;
-          background: var(--td-bg-section);
-
-          &.completed-content {
-            background: var(--td-tag-success-bg);
-          }
-
-          .kanban-card {
-            background: var(--td-bg-card);
-            border-radius: 10px;
-            padding: 16px;
-            margin-bottom: 12px;
-            cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            border: 1px solid var(--td-border-color);
-            transition: all 150ms ease-out;
-
-            &:hover {
-              box-shadow: 0 6px 20px rgba(59, 130, 246, 0.2);
-              border-color: var(--td-color-primary);
-            }
-
-            .card-header {
-              display: flex;
-              gap: 8px;
-              margin-bottom: 12px;
-              flex-wrap: wrap;
-
-              :deep(.el-tag) {
-                border-radius: 6px;
-                padding: 4px 10px;
-                font-size: 12px;
-                font-weight: 600;
-                border: none;
-              }
-            }
-
-            .card-title {
-              font-size: 15px;
-              font-weight: 600;
-              line-height: 1.5;
-              margin-bottom: 12px;
-              color: #2c3e50;
-              display: -webkit-box;
-              -webkit-line-clamp: 2;
-              -webkit-box-orient: vertical;
-              overflow: hidden;
-            }
-
-            .card-meta {
-              display: flex;
-              gap: 16px;
-              font-size: 13px;
-              color: #6c757d;
-              margin-bottom: 12px;
-
-              span {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-
-                .el-icon {
-                  font-size: 14px;
-                  color: var(--td-color-primary);
-                }
-              }
-            }
-
-            .card-issue {
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              font-size: 12px;
-              color: var(--td-text-regular);
-              padding: 8px;
-              background: var(--td-tag-primary-bg);
-              border-radius: 6px;
-              margin-bottom: 8px;
-
-              .el-icon {
-                font-size: 14px;
-                color: var(--td-color-primary);
-              }
-
-              .issue-key {
-                font-weight: 600;
-                color: var(--td-color-primary);
-              }
-
-              .el-tag {
-                margin-left: auto;
-              }
-            }
-
-            .card-footer {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              font-size: 12px;
-              color: #6c757d;
-              padding-top: 12px;
-              border-top: 1px solid var(--td-divider-color);
-
-              .pool-name {
-                max-width: 180px;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-                font-weight: 500;
-                color: var(--td-color-primary);
-              }
-
-              .comment-count {
-                display: flex;
-                align-items: center;
-                gap: 4px;
-                color: #6c757d;
-
-                .el-icon {
-                  font-size: 14px;
-                }
-              }
-            }
-          }
-
-          .empty-column {
-            text-align: center;
-            color: #adb5bd;
-            padding: 60px 20px;
-            font-size: 14px;
-            background: var(--td-bg-card);
-            border-radius: 8px;
-            border: 2px dashed #dee2e6;
-          }
-        }
-      }
-    }
-  }
-
-  .description-section,
-  .tags-section,
-  .actions-section {
-    margin-top: 24px;
-
-    h4 {
-      margin: 0 0 12px 0;
-      font-size: 15px;
-      color: var(--td-text-regular);
-      font-weight: 600;
-    }
-  }
-
-  .description-content {
-    padding: 16px;
-    background: var(--td-bg-section);
-    border-radius: 8px;
-    white-space: pre-wrap;
-    line-height: 1.8;
-    color: var(--td-text-regular);
-    border: 1px solid var(--td-border-color);
-  }
-
-  .tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-
-    .el-tag {
-      border-radius: 6px;
-      padding: 6px 14px;
-      font-weight: 500;
-      background: var(--td-tag-primary-border);
-      color: #1976d2;
-      border: none;
-    }
-  }
-
-  :deep(.el-drawer) {
-    border-radius: 12px 0 0 12px;
-
-    .el-drawer__header {
-      padding: 24px;
-      margin-bottom: 0;
-      border-bottom: 2px solid #e9ecef;
-      background: var(--td-bg-section);
-
-      .el-drawer__title {
-        font-size: 18px;
-        font-weight: 600;
-        color: #2c3e50;
-      }
-    }
-
-    .el-drawer__body {
-      padding: 24px;
-    }
-
-    .el-descriptions {
-      :deep(.el-descriptions__label) {
-        font-weight: 600;
-        color: var(--td-text-regular);
-      }
-    }
-
-    .actions-section {
-      :deep(.el-button-group) {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-
-        .el-button {
-          border-radius: 8px;
-          font-weight: 500;
-          transition: all 150ms ease-out;
-
-          &:hover {
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          }
-        }
-      }
-    }
-  }
-
-  :deep(.el-dialog) {
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-
-    .el-dialog__header {
-      padding: 20px 24px;
-      background: var(--td-color-primary);
-      border-radius: 12px 12px 0 0;
-
-      .el-dialog__title {
-        color: var(--td-text-white);
-        font-weight: 600;
-        font-size: 18px;
-      }
-
-      .el-dialog__headerbtn .el-dialog__close {
-        color: var(--td-text-white);
-        font-size: 20px;
-
-        &:hover {
-          color: var(--td-text-white);
-        }
-      }
-    }
-
-    .el-dialog__body {
-      padding: 24px;
-    }
-
-    .el-dialog__footer {
-      padding: 16px 24px;
-      border-top: 1px solid #e9ecef;
-
-      .el-button--primary {
-        background: var(--td-color-primary);
-        border: none;
-        padding: 10px 24px;
-        transition: all 150ms ease-out;
-
-        &:hover {
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-        }
-      }
-    }
-  }
+.actions-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--td-divider-color);
 }
 </style>

@@ -2,6 +2,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -132,6 +133,16 @@ func createCompositeIndexes(db *gorm.DB) {
 		{"issues", "idx_issues_status_created"},
 		// deleted_at 单列索引：99.99% 行为 NULL，无过滤效果，反而误导优化器选错索引
 		{"issues", "idx_issues_deleted_at"},
+		// 以下单列索引均为下方复合索引的最左前缀，或基数极低（priority 4 值、resolution 7 值），
+		// 优化器基本不会选中，却让 issues 这张最热写表每次写入多维护一棵 B+ 树。
+		{"issues", "idx_issues_project_id"},
+		{"issues", "idx_issues_assignee_id"},
+		{"issues", "idx_issues_reporter_id"},
+		{"issues", "idx_issues_epic_id"},
+		{"issues", "idx_issues_priority"},
+		{"issues", "idx_issues_resolution"},
+		// 与 idx_issues_project_type_id 完全重复（后者多带 id DESC，严格更优）
+		{"issues", "idx_issue_project_type_status"},
 	}
 
 	for _, idx := range oldIndexes {
@@ -158,6 +169,9 @@ func createCompositeIndexes(db *gorm.DB) {
 		{"issues", "idx_issues_project_type_id", "project_id, issue_type_id, id DESC"},
 		{"issues", "idx_issues_assignee_status_id", "assignee_id, status, id DESC"},
 		{"issues", "idx_issues_reporter_id_desc", "reporter_id, id DESC"},
+		// 与 reporter 同形状：(assignee_id, status, id) 在不带 status 过滤时无法用于排序，
+		// 「我的工单」这类只按指派人筛选的查询需要这个索引才能免掉 filesort
+		{"issues", "idx_issues_assignee_id_desc", "assignee_id, id DESC"},
 		{"issues", "idx_issues_epic_status_id", "epic_id, status, id DESC"},
 		// "我的工单"场景：项目 + 指派人
 		{"issues", "idx_issues_project_assignee_id", "project_id, assignee_id, id DESC"},
@@ -321,47 +335,12 @@ func SeedData(db *gorm.DB) error {
 		}
 	}
 
-	// 初始化默认管理员用户
-	var adminUser User
-	adminResult := db.Where("username = ?", "admin").First(&adminUser)
-	if adminResult.Error != nil {
-		if adminResult.Error == gorm.ErrRecordNotFound {
-			// 创建默认管理员
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
-			if err != nil {
-				logger.Error("failed to hash admin password", zap.Error(err))
-				return err
-			}
-
-			adminUser = User{
-				Username:     "admin",
-				Email:        "admin@ticketdesk.local",
-				PasswordHash: string(hashedPassword),
-				DisplayName:  "系统管理员",
-				Status:       1,
-			}
-
-			if err := db.Create(&adminUser).Error; err != nil {
-				logger.Error("failed to create admin user", zap.Error(err))
-				return err
-			}
-
-			// 分配管理员角色
-			var adminRole Role
-			if err := db.Where("name = ?", "admin").First(&adminRole).Error; err == nil {
-				userRole := UserRole{
-					UserID: adminUser.ID,
-					RoleID: adminRole.ID,
-				}
-				if err := db.Create(&userRole).Error; err != nil {
-					logger.Warn("failed to assign admin role", zap.Error(err))
-				}
-			}
-
-			logger.Info("default admin user created",
-				zap.String("username", "admin"),
-			)
-		}
+	// 判定初始化状态
+	//
+	// 这里不再预置 admin/admin123 —— 那是个人尽皆知的默认口令，
+	// 部署完不立刻改就等于敞开。管理员改由首次启动的初始化向导当场创建。
+	if err := seedSetupState(db); err != nil {
+		return err
 	}
 
 	// 初始化告警机器人用户
@@ -403,6 +382,14 @@ func SeedData(db *gorm.DB) error {
 			IsSecret:    false,
 		},
 		{
+			ConfigKey:   "general.language",
+			ConfigValue: "zh-CN",
+			ConfigType:  "string",
+			Category:    "general",
+			Description: "平台默认语言（zh-CN / en-US）",
+			IsSecret:    false,
+		},
+		{
 			ConfigKey:   "worklog.work_types",
 			ConfigValue: `[{"value":"开发","label":"开发"},{"value":"测试","label":"测试"},{"value":"调试","label":"调试"},{"value":"文档","label":"文档"},{"value":"故障排查","label":"故障排查"},{"value":"监控运维","label":"监控运维"},{"value":"部署发布","label":"部署发布"},{"value":"配置变更","label":"配置变更"},{"value":"巡检","label":"巡检"},{"value":"安全响应","label":"安全响应"},{"value":"其他","label":"其他"}]`,
 			ConfigType:  "json",
@@ -426,7 +413,9 @@ func SeedData(db *gorm.DB) error {
 	}
 
 	// 初始化默认告警静默规则模板
-	if err := seedDefaultAlertSilences(db, adminUser.ID); err != nil {
+	// createdBy 传 0 表示系统创建 —— 此时还没有管理员（由初始化向导创建），
+	// 而 0 在本项目里本就是「系统」的既定表示（见前端 operator_id === 0 的处理）
+	if err := seedDefaultAlertSilences(db, 0); err != nil {
 		return err
 	}
 
@@ -466,7 +455,7 @@ func SeedData(db *gorm.DB) error {
 	}
 
 	// 初始化默认字段方案模板
-	if err := SeedDefaultFieldSchemeTemplates(db, adminUser.ID); err != nil {
+	if err := SeedDefaultFieldSchemeTemplates(db, 0); err != nil {
 		logger.Warn("failed to seed default field scheme templates", zap.Error(err))
 	}
 
@@ -1663,5 +1652,62 @@ func seedDefaultAlertSilences(db *gorm.DB, adminUserID uint64) error {
 	}
 
 	logger.Info("default alert silence templates seeded")
+	return nil
+}
+
+// 初始化状态相关常量
+//
+// 刻意不 import system-config 包：model 是最底层，被所有模块依赖，
+// 反过来依赖上层服务会成环。
+const (
+	setupCompletedKey = "setup.completed"
+	alertBotUsername  = "alert-bot"
+)
+
+// seedSetupState 判定并落定初始化状态
+//
+// 关键在于向后兼容：老部署升级上来时数据库里早就有用户了，
+// 绝不能弹向导 —— 那会让一个已经在跑的实例变成"谁先访问谁是管理员"。
+// 所以只在"配置行不存在（老库首次升级）"时做一次判定，之后这行就是唯一依据。
+//
+// alert-bot 是系统账号、不是人，判定时要排除掉，
+// 否则新装的库因为有 alert-bot 会被误判成老部署，向导永远出不来。
+func seedSetupState(db *gorm.DB) error {
+	var existing SystemConfig
+	err := db.Where("config_key = ?", setupCompletedKey).First(&existing).Error
+	if err == nil {
+		return nil // 已判定过，不再改动
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Error("failed to read setup state", zap.Error(err))
+		return err
+	}
+
+	var humanUsers int64
+	if err := db.Model(&User{}).Where("username <> ?", alertBotUsername).Count(&humanUsers).Error; err != nil {
+		logger.Error("failed to count users for setup state", zap.Error(err))
+		return err
+	}
+
+	completed := "0"
+	if humanUsers > 0 {
+		completed = "1" // 老部署：已经有人在用了
+	}
+
+	if err := db.Create(&SystemConfig{
+		ConfigKey:   setupCompletedKey,
+		ConfigValue: completed,
+		ConfigType:  "string",
+		Category:    "setup",
+		Description: "是否已完成首次初始化",
+	}).Error; err != nil {
+		logger.Error("failed to seed setup state", zap.Error(err))
+		return err
+	}
+
+	logger.Info("setup state initialized",
+		zap.String("completed", completed),
+		zap.Int64("existing_users", humanUsers),
+	)
 	return nil
 }

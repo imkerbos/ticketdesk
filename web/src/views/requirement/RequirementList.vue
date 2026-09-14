@@ -1,214 +1,148 @@
 <template>
-  <div class="requirement-list">
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><Tickets /></el-icon>
+  <!-- 结构同其它列表页 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('requirement.listTitle') }}</h1>
+      <div class="grow"></div>
+      <button class="btn secondary" @click="router.push('/requirements/kanban')">{{ t('requirement.kanbanView') }}</button>
+      <button class="btn primary" @click="handleCreate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('requirement.create') }}
+      </button>
+    </div>
+
+    <div class="toolbar">
+      <label class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        <input v-model="filters.keyword" type="search" :placeholder="t('requirement.keywordPlaceholder')" @keyup.enter="loadData" @search="loadData" />
+      </label>
+      <el-select v-model="filters.pool_id" :placeholder="t('requirement.pool')" clearable class="filter-select" @change="loadData">
+        <el-option v-for="pool in pools" :key="pool.id" :label="pool.name" :value="pool.id" />
+      </el-select>
+      <el-select v-model="filters.status" :placeholder="t('issue.status')" clearable class="filter-select" @change="loadData">
+        <el-option v-for="st in ['pending_review', 'planning', 'in_progress', 'completed', 'on_hold', 'rejected']" :key="st" :label="t(`requirement.statusMap.${st}`)" :value="st" />
+      </el-select>
+      <el-select v-model="filters.category" :placeholder="t('requirement.category')" clearable class="filter-select" @change="loadData">
+        <el-option v-for="cat in categories" :key="cat.name" :label="cat.label" :value="cat.name" />
+      </el-select>
+      <el-select v-model="filters.priority" :placeholder="t('issue.priority')" clearable class="filter-select-sm" @change="loadData">
+        <el-option v-for="pr in ['P0', 'P1', 'P2', 'P3']" :key="pr" :label="pr" :value="pr" />
+      </el-select>
+      <button class="btn secondary" @click="resetFilters">{{ t('common.reset') }}</button>
+    </div>
+
+    <section class="card">
+      <div v-loading="loading" class="table-wrap">
+        <table class="issues">
+          <colgroup>
+            <col style="width: 260px" /><col /><col style="width: 96px" /><col style="width: 96px" />
+            <col style="width: 62px" /><col style="width: 96px" /><col style="width: 200px" />
+            <col style="width: 96px" /><col style="width: 130px" /><col style="width: 96px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ t('requirement.requirementName') }}</th>
+              <th>{{ t('requirement.requirementDesc') }}</th>
+              <th>{{ t('requirement.source') }}</th>
+              <th>{{ t('requirement.category') }}</th>
+              <th>{{ t('issue.priority') }}</th>
+              <th>{{ t('requirement.assignee') }}</th>
+              <th>{{ t('requirement.startDate') }} / {{ t('requirement.endDate') }}</th>
+              <th>{{ t('issue.status') }}</th>
+              <th>{{ t('requirement.linkedIssue') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in requirements" :key="row.id" @click="handleViewDetail(row)">
+              <td>
+                <div class="title-cell">
+                  <span class="txt">{{ row.title }}</span>
+                  <span v-for="tag in (row.tags || []).slice(0, 2)" :key="tag" class="pill neutral">{{ tag }}</span>
+                </div>
+              </td>
+              <td class="muted desc">{{ row.description || '-' }}</td>
+              <td class="muted">{{ row.reporter_name || '-' }}</td>
+              <!-- 分类是维度不是状态，走中性药丸 -->
+              <td><span class="pill neutral">{{ getCategoryLabel(row.category) }}</span></td>
+              <td>
+                <span class="prio">
+                  <span class="dot" :style="{ background: priorityColor(row.priority) }"></span>{{ row.priority }}
+                </span>
+              </td>
+              <td class="muted">{{ row.assignee_name || '-' }}</td>
+              <td class="time">
+                <template v-if="row.start_date || row.end_date">
+                  {{ formatDate(row.start_date) }} → {{ formatDate(row.end_date) }}
+                </template>
+                <template v-else>-</template>
+              </td>
+              <td><span class="pill" :class="reqStatusTone(row.status)">{{ getStatusLabel(row.status) }}</span></td>
+              <td>
+                <a v-if="row.converted_issue_key" class="key" @click.stop="router.push(`/issues/${row.converted_issue_key}`)">
+                  {{ row.converted_issue_key }}
+                </a>
+                <span v-else class="muted">-</span>
+              </td>
+              <td>
+                <div class="row-actions" @click.stop>
+                  <button class="link-btn" @click="handleEdit(row)">{{ t('common.edit') }}</button>
+                  <el-dropdown trigger="click" @command="(cmd: string) => handleRowCommand(row, cmd)">
+                    <button class="more" :aria-label="t('common.operation')" @click.stop>···</button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item v-if="row.status === 'pending_review'" command="planning">{{ t('requirement.transitTo', { name: t('requirement.statusMap.planning') }) }}</el-dropdown-item>
+                        <el-dropdown-item v-if="row.status === 'pending_review' || row.status === 'planning' || row.status === 'on_hold'" command="in_progress">{{ t('requirement.transitTo', { name: t('requirement.statusMap.in_progress') }) }}</el-dropdown-item>
+                        <el-dropdown-item v-if="row.status === 'in_progress'" command="completed">{{ t('requirement.transitTo', { name: t('requirement.statusMap.completed') }) }}</el-dropdown-item>
+                        <el-dropdown-item v-if="row.status === 'pending_review' || row.status === 'planning' || row.status === 'in_progress'" command="on_hold">{{ t('requirement.transitTo', { name: t('requirement.hold') }) }}</el-dropdown-item>
+                        <el-dropdown-item v-if="row.status === 'pending_review' || row.status === 'planning' || row.status === 'in_progress'" command="rejected">{{ t('requirement.transitTo', { name: t('requirement.reject') }) }}</el-dropdown-item>
+                        <el-dropdown-item v-if="row.status === 'rejected' || row.status === 'on_hold'" command="pending_review">{{ t('requirement.restoreTo', { name: t('requirement.statusMap.pending_review') }) }}</el-dropdown-item>
+                        <el-dropdown-item v-if="row.status === 'completed'" command="in_progress">{{ t('requirement.restoreTo', { name: t('requirement.statusMap.in_progress') }) }}</el-dropdown-item>
+                        <el-dropdown-item
+                          v-if="row.status !== 'completed' && row.status !== 'rejected' && !row.converted_issue_id"
+                          command="convert"
+                          divided
+                        >
+                          {{ t('requirement.toIssue') }}
+                        </el-dropdown-item>
+                        <el-dropdown-item command="delete" divided style="color: var(--td-color-danger);">{{ t('common.delete') }}</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="!loading && requirements.length === 0" class="empty">
+          <TdEmptyState preset="no-data" :title="t('requirement.empty')" />
         </div>
-      </template>
-      <template #title>需求管理</template>
-      <template #actions>
-        <el-button @click="router.push('/requirements/kanban')">
-          <el-icon><Grid /></el-icon>
-          看板视图
-        </el-button>
-        <el-button type="primary" @click="handleCreate">
-          <el-icon><Plus /></el-icon>
-          创建需求
-        </el-button>
-      </template>
-    </TdPageHeader>
 
-    <!-- 筛选条件 -->
-    <el-card class="filter-card" shadow="never">
-      <el-form :inline="true" :model="filters">
-        <el-form-item label="需求池">
-          <el-select v-model="filters.pool_id" placeholder="全部" clearable style="width: 180px">
-            <el-option
-              v-for="pool in pools"
-              :key="pool.id"
-              :label="pool.name"
-              :value="pool.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="filters.status" placeholder="全部" clearable style="width: 120px">
-            <el-option label="待评估" value="pending_review" />
-            <el-option label="规划中" value="planning" />
-            <el-option label="进行中" value="in_progress" />
-            <el-option label="已完成" value="completed" />
-            <el-option label="已搁置" value="on_hold" />
-            <el-option label="已拒绝" value="rejected" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-select v-model="filters.category" placeholder="全部" clearable style="width: 120px">
-            <el-option
-              v-for="cat in categories"
-              :key="cat.name"
-              :label="cat.label"
-              :value="cat.name"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="优先级">
-          <el-select v-model="filters.priority" placeholder="全部" clearable style="width: 100px">
-            <el-option label="P0" value="P0" />
-            <el-option label="P1" value="P1" />
-            <el-option label="P2" value="P2" />
-            <el-option label="P3" value="P3" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="关键词">
-          <el-input v-model="filters.keyword" placeholder="搜索标题或描述" clearable style="width: 200px" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="loadData">查询</el-button>
-          <el-button @click="resetFilters">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <!-- 需求列表 -->
-    <el-card class="table-card" shadow="never">
-      <el-table v-loading="loading" :data="requirements" stripe>
-        <el-table-column prop="title" label="需求名称" min-width="250">
-          <template #default="{ row }">
-            <span class="link" @click="handleViewDetail(row)">
-              {{ row.title }}
-            </span>
-            <div v-if="row.tags && row.tags.length" class="tags">
-              <el-tag v-for="tag in row.tags" :key="tag" size="small" type="info">{{ tag }}</el-tag>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="需求描述" min-width="200" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.description || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="来源" width="100" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.reporter_name || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="category" label="分类" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getCategoryType(row.category)" size="small">{{ getCategoryLabel(row.category) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="priority" label="优先级" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag :type="getPriorityType(row.priority)" size="small">{{ row.priority }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="负责人" width="100" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.assignee_name || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="开始时间" width="110" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ formatDate(row.start_date) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="结束时间" width="110" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ formatDate(row.end_date) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusLabel(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="progress" label="进度" min-width="150" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.progress || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="result" label="结果" min-width="150" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.result || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="关联工单" width="150" show-overflow-tooltip>
-          <template #default="{ row }">
-            <div v-if="row.converted_issue_key" style="display: flex; align-items: center; gap: 4px;">
-              <router-link
-                :to="`/issues/${row.converted_issue_key}`"
-                class="link"
-                style="flex-shrink: 0;"
-              >
-                {{ row.converted_issue_key }}
-              </router-link>
-              <el-tag
-                v-if="row.converted_issue_status"
-                :type="getIssueStatusType(row.converted_issue_status)"
-                size="small"
-              >
-                {{ getIssueStatusLabel(row.converted_issue_status) }}
-              </el-tag>
-            </div>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-dropdown trigger="click" @command="(cmd: string) => handleRowCommand(row, cmd)">
-              <el-button link type="primary" size="small">
-                更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item v-if="row.status === 'pending_review'" command="planning">流转：规划中</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'pending_review' || row.status === 'planning' || row.status === 'on_hold'" command="in_progress">流转：进行中</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'in_progress'" command="completed">流转：已完成</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'pending_review' || row.status === 'planning' || row.status === 'in_progress'" command="on_hold">流转：搁置</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'pending_review' || row.status === 'planning' || row.status === 'in_progress'" command="rejected">流转：拒绝</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'rejected' || row.status === 'on_hold'" command="pending_review">恢复：待评估</el-dropdown-item>
-                  <el-dropdown-item v-if="row.status === 'completed'" command="in_progress">恢复：进行中</el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="row.status !== 'completed' && row.status !== 'rejected' && !row.converted_issue_id"
-                    command="convert"
-                    divided
-                  >
-                    转工单
-                  </el-dropdown-item>
-                  <el-dropdown-item command="delete" divided style="color: var(--td-color-danger);">删除</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <!-- 分页 -->
-      <div class="pagination">
-        <el-pagination
-          v-model:current-page="pagination.page"
-          v-model:page-size="pagination.page_size"
-          :total="pagination.total"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="loadData"
-          @current-change="loadData"
-        />
+        <div v-if="pagination.total > pagination.page_size" class="table-foot">
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.page_size"
+            :total="pagination.total"
+            :page-sizes="[10, 20, 50, 100]"
+            layout="sizes, prev, pager, next"
+            @size-change="loadData"
+            @current-change="loadData"
+          />
+        </div>
       </div>
-    </el-card>
+    </section>
 
     <!-- 创建/编辑对话框 -->
     <el-dialog
       v-model="showCreateDialog"
-      :title="editingRequirement ? '编辑需求' : '创建需求'"
+      :title="editingRequirement ? t('requirement.edit') : t('requirement.create')"
       width="700px"
       @closed="resetForm"
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="需求池" prop="pool_id">
-          <el-select v-model="form.pool_id" placeholder="请选择需求池" :disabled="!!editingRequirement" style="width: 100%">
+        <el-form-item :label="t('requirement.pool')" prop="pool_id">
+          <el-select v-model="form.pool_id" :placeholder="t('requirement.poolPlaceholder')" :disabled="!!editingRequirement" style="width: 100%">
             <el-option
               v-for="pool in pools"
               :key="pool.id"
@@ -217,21 +151,21 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="标题" prop="title">
-          <el-input v-model="form.title" placeholder="请输入需求标题" />
+        <el-form-item :label="t('issue.title')" prop="title">
+          <el-input v-model="form.title" :placeholder="t('requirement.titlePlaceholder')" />
         </el-form-item>
-        <el-form-item label="描述" prop="description">
+        <el-form-item :label="t('issue.description')" prop="description">
           <el-input
             v-model="form.description"
             type="textarea"
             :rows="4"
-            placeholder="请输入需求描述"
+            :placeholder="t('requirement.descPlaceholder')"
           />
         </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="分类" prop="category">
-              <el-select v-model="form.category" placeholder="请选择分类" style="width: 100%">
+            <el-form-item :label="t('requirement.category')" prop="category">
+              <el-select v-model="form.category" :placeholder="t('requirement.categoryPlaceholder')" style="width: 100%">
                 <el-option
                   v-for="cat in categories"
                   :key="cat.name"
@@ -242,20 +176,20 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="优先级" prop="priority">
-              <el-select v-model="form.priority" placeholder="请选择优先级" style="width: 100%">
-                <el-option label="P0 - 紧急" value="P0" />
-                <el-option label="P1 - 高" value="P1" />
-                <el-option label="P2 - 中" value="P2" />
-                <el-option label="P3 - 低" value="P3" />
+            <el-form-item :label="t('issue.priority')" prop="priority">
+              <el-select v-model="form.priority" :placeholder="t('requirement.priorityPlaceholder')" style="width: 100%">
+                <el-option :label="t('issue.priorityMap.P0')" value="P0" />
+                <el-option :label="t('issue.priorityMap.P1')" value="P1" />
+                <el-option :label="t('issue.priorityMap.P2')" value="P2" />
+                <el-option :label="t('issue.priorityMap.P3')" value="P3" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="来源" prop="reporter_id">
-              <el-select v-model="form.reporter_id" placeholder="请选择报告人" filterable clearable style="width: 100%">
+            <el-form-item :label="t('requirement.source')" prop="reporter_id">
+              <el-select v-model="form.reporter_id" :placeholder="t('requirement.reporterPlaceholder')" filterable clearable style="width: 100%">
                 <el-option
                   v-for="user in users"
                   :key="user.id"
@@ -266,8 +200,8 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="负责人" prop="assignee_id">
-              <el-select v-model="form.assignee_id" placeholder="请选择负责人" filterable clearable style="width: 100%">
+            <el-form-item :label="t('requirement.assignee')" prop="assignee_id">
+              <el-select v-model="form.assignee_id" :placeholder="t('requirement.assigneePlaceholder')" filterable clearable style="width: 100%">
                 <el-option
                   v-for="user in users"
                   :key="user.id"
@@ -280,46 +214,46 @@
         </el-row>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="开始时间" prop="start_date">
+            <el-form-item :label="t('requirement.startDate')" prop="start_date">
               <el-date-picker
                 v-model="form.start_date"
                 type="datetime"
-                placeholder="选择日期时间"
+                :placeholder="t('requirement.datePlaceholder')"
                 value-format="YYYY-MM-DD HH:mm:ss"
                 style="width: 100%"
               />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="结束时间" prop="end_date">
+            <el-form-item :label="t('requirement.endDate')" prop="end_date">
               <el-date-picker
                 v-model="form.end_date"
                 type="datetime"
-                placeholder="选择日期时间"
+                :placeholder="t('requirement.datePlaceholder')"
                 value-format="YYYY-MM-DD HH:mm:ss"
                 style="width: 100%"
               />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item v-if="editingRequirement" label="进度" prop="progress">
+        <el-form-item v-if="editingRequirement" :label="t('requirement.progress')" prop="progress">
           <el-input
             v-model="form.progress"
             type="textarea"
             :rows="3"
-            placeholder="请输入当前进度描述"
+            :placeholder="t('requirement.progressPlaceholder')"
           />
         </el-form-item>
-        <el-form-item v-if="editingRequirement" label="结果" prop="result">
+        <el-form-item v-if="editingRequirement" :label="t('requirement.result')" prop="result">
           <el-input
             v-model="form.result"
             type="textarea"
             :rows="3"
-            placeholder="请输入结果描述"
+            :placeholder="t('requirement.resultPlaceholder')"
           />
         </el-form-item>
-        <el-form-item label="目标项目" prop="target_project_id">
-          <el-select v-model="form.target_project_id" placeholder="请选择目标项目" clearable style="width: 100%">
+        <el-form-item :label="t('requirement.targetProject')" prop="target_project_id">
+          <el-select v-model="form.target_project_id" :placeholder="t('requirement.targetProjectPlaceholder')" clearable style="width: 100%">
             <el-option
               v-for="project in projects"
               :key="project.id"
@@ -328,29 +262,29 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="标签" prop="tags">
+        <el-form-item :label="t('requirement.tags')" prop="tags">
           <el-select
             v-model="form.tags"
             multiple
             filterable
             allow-create
             default-first-option
-            placeholder="输入标签后回车"
+            :placeholder="t('requirement.tagsPlaceholder')"
             style="width: 100%"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="handleCancel">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
+        <el-button @click="handleCancel">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 转化为工单对话框 -->
-    <el-dialog v-model="showConvertDialog" title="转化为工单" width="500px">
+    <el-dialog v-model="showConvertDialog" :title="t('requirement.convert')" width="500px">
       <el-form ref="convertFormRef" :model="convertForm" :rules="convertRules" label-width="100px">
-        <el-form-item label="目标项目" prop="project_key">
-          <el-select v-model="convertForm.project_key" placeholder="请选择项目" style="width: 100%" @change="loadIssueTypes">
+        <el-form-item :label="t('requirement.convertProject')" prop="project_key">
+          <el-select v-model="convertForm.project_key" :placeholder="t('requirement.projectPlaceholder')" style="width: 100%" @change="loadIssueTypes">
             <el-option
               v-for="project in projects"
               :key="project.project_key"
@@ -359,8 +293,8 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="工单类型" prop="issue_type_id">
-          <el-select v-model="convertForm.issue_type_id" placeholder="请选择工单类型" style="width: 100%">
+        <el-form-item :label="t('alert.rules.issueType')" prop="issue_type_id">
+          <el-select v-model="convertForm.issue_type_id" :placeholder="t('requirement.issueTypePlaceholder')" style="width: 100%">
             <el-option
               v-for="type in issueTypes"
               :key="type.id"
@@ -369,8 +303,8 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="指派给" prop="assignee_id">
-          <el-select v-model="convertForm.assignee_id" placeholder="请选择负责人" filterable clearable style="width: 100%">
+        <el-form-item :label="t('requirement.convertAssignee')" prop="assignee_id">
+          <el-select v-model="convertForm.assignee_id" :placeholder="t('requirement.assigneePlaceholder')" filterable clearable style="width: 100%">
             <el-option
               v-for="user in users"
               :key="user.id"
@@ -381,35 +315,35 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showConvertDialog = false">取消</el-button>
-        <el-button type="primary" :loading="converting" @click="handleConvertSubmit">转化</el-button>
+        <el-button @click="showConvertDialog = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="converting" @click="handleConvertSubmit">{{ t('requirement.convertAction') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 详情抽屉 -->
-    <el-drawer v-if="selectedRequirement" v-model="showDetailDrawer" title="需求详情" size="50%">
+    <el-drawer v-if="selectedRequirement" v-model="showDetailDrawer" :title="t('requirement.detailTitle')" size="50%">
       <el-descriptions :column="2" border>
-        <el-descriptions-item label="标题" :span="2">{{ selectedRequirement.title }}</el-descriptions-item>
-        <el-descriptions-item label="需求池" :span="2">{{ selectedRequirement.pool_name }}</el-descriptions-item>
-        <el-descriptions-item label="分类">
+        <el-descriptions-item :label="t('issue.title')" :span="2">{{ selectedRequirement.title }}</el-descriptions-item>
+        <el-descriptions-item :label="t('requirement.pool')" :span="2">{{ selectedRequirement.pool_name }}</el-descriptions-item>
+        <el-descriptions-item :label="t('requirement.category')">
           <el-tag :type="getCategoryType(selectedRequirement.category)" size="small">
             {{ getCategoryLabel(selectedRequirement.category) }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="优先级">
+        <el-descriptions-item :label="t('issue.priority')">
           <el-tag :type="getPriorityType(selectedRequirement.priority)" size="small">
             {{ selectedRequirement.priority }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="状态">
+        <el-descriptions-item :label="t('issue.status')">
           <el-tag :type="getStatusType(selectedRequirement.status)" size="small">
             {{ getStatusLabel(selectedRequirement.status) }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="来源">{{ selectedRequirement.reporter_name || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="负责人">{{ selectedRequirement.assignee_name || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="创建人">{{ selectedRequirement.creator_name }}</el-descriptions-item>
-        <el-descriptions-item label="关联工单">
+        <el-descriptions-item :label="t('requirement.source')">{{ selectedRequirement.reporter_name || '-' }}</el-descriptions-item>
+        <el-descriptions-item :label="t('requirement.assignee')">{{ selectedRequirement.assignee_name || '-' }}</el-descriptions-item>
+        <el-descriptions-item :label="t('requirement.creator')">{{ selectedRequirement.creator_name }}</el-descriptions-item>
+        <el-descriptions-item :label="t('requirement.linkedIssue')">
           <div v-if="selectedRequirement.converted_issue_key">
             <router-link
               :to="`/issues/${selectedRequirement.converted_issue_key}`"
@@ -428,45 +362,45 @@
           </div>
           <span v-else>-</span>
         </el-descriptions-item>
-        <el-descriptions-item label="开始时间">{{ formatDateTime(selectedRequirement.start_date) }}</el-descriptions-item>
-        <el-descriptions-item label="结束时间">{{ formatDateTime(selectedRequirement.end_date) }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间" :span="2">{{ formatDateTime(selectedRequirement.created_at) }}</el-descriptions-item>
+        <el-descriptions-item :label="t('requirement.startDate')">{{ formatDateTime(selectedRequirement.start_date) }}</el-descriptions-item>
+        <el-descriptions-item :label="t('requirement.endDate')">{{ formatDateTime(selectedRequirement.end_date) }}</el-descriptions-item>
+        <el-descriptions-item :label="t('common.createdAt')" :span="2">{{ formatDateTime(selectedRequirement.created_at) }}</el-descriptions-item>
       </el-descriptions>
 
       <div class="description-section" style="margin-top: 20px;">
-        <h4>需求描述</h4>
-        <p>{{ selectedRequirement.description || '暂无描述' }}</p>
+        <h4>{{ t('requirement.requirementDesc') }}</h4>
+        <p>{{ selectedRequirement.description || t('requirement.noDescription') }}</p>
       </div>
 
       <div v-if="selectedRequirement.progress" class="description-section" style="margin-top: 20px;">
-        <h4>当前进度</h4>
+        <h4>{{ t('requirement.progress') }}</h4>
         <p>{{ selectedRequirement.progress }}</p>
       </div>
 
       <div v-if="selectedRequirement.result" class="description-section" style="margin-top: 20px;">
-        <h4>结果</h4>
+        <h4>{{ t('requirement.result') }}</h4>
         <p>{{ selectedRequirement.result }}</p>
       </div>
 
       <div v-if="selectedRequirement.tags && selectedRequirement.tags.length" class="tags-section" style="margin-top: 20px;">
-        <h4>标签</h4>
+        <h4>{{ t('requirement.tags') }}</h4>
         <el-tag v-for="tag in selectedRequirement.tags" :key="tag" style="margin-right: 8px;">{{ tag }}</el-tag>
       </div>
 
       <template #footer>
-        <el-button @click="showDetailDrawer = false">关闭</el-button>
-        <el-button type="primary" @click="handleEdit(selectedRequirement)">编辑</el-button>
-        <el-button type="danger" @click="handleDelete(selectedRequirement)">删除</el-button>
+        <el-button @click="showDetailDrawer = false">{{ t('common.close') }}</el-button>
+        <el-button type="primary" @click="handleEdit(selectedRequirement)">{{ t('common.edit') }}</el-button>
+        <el-button type="danger" @click="handleDelete(selectedRequirement)">{{ t('common.delete') }}</el-button>
       </template>
     </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Grid, ArrowDown, Tickets } from '@element-plus/icons-vue'
 import {
   getRequirementList,
   getRequirementPoolList,
@@ -488,6 +422,9 @@ import type {
   RequirementCategory,
   RequirementCategoryDef,
 } from '@/types/requirement'
+
+
+const { t } = useI18n()
 
 const router = useRouter()
 const route = useRoute()
@@ -558,15 +495,15 @@ const rules: FormRules = {
     trigger: 'change',
     validator: (_rule, value, callback) => {
       if (!value || value === 0) {
-        callback(new Error('请选择需求池'))
+        callback(new Error(t('requirement.poolRequired')))
       } else {
         callback()
       }
     }
   }],
-  title: [{ required: true, message: '请输入需求标题', trigger: 'blur' }],
-  priority: [{ required: true, message: '请选择优先级', trigger: 'change' }],
-  category: [{ required: true, message: '请选择分类', trigger: 'change' }],
+  title: [{ required: true, message: t('requirement.titleRequired'), trigger: ['blur', 'change'] }],
+  priority: [{ required: true, message: t('requirement.priorityRequired'), trigger: 'change' }],
+  category: [{ required: true, message: t('requirement.categoryRequired'), trigger: 'change' }],
 }
 
 const convertRules: FormRules = {
@@ -575,7 +512,7 @@ const convertRules: FormRules = {
     trigger: 'change',
     validator: (_rule, value, callback) => {
       if (!value) {
-        callback(new Error('请选择项目'))
+        callback(new Error(t('requirement.projectRequired')))
       } else {
         callback()
       }
@@ -586,7 +523,7 @@ const convertRules: FormRules = {
     trigger: 'change',
     validator: (_rule, value, callback) => {
       if (!value || value === 0) {
-        callback(new Error('请选择工单类型'))
+        callback(new Error(t('requirement.issueTypeRequired')))
       } else {
         callback()
       }
@@ -599,15 +536,28 @@ type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
 
 const getStatusLabel = (status: RequirementStatus) => {
   const map: Record<RequirementStatus, string> = {
-    pending_review: '待评估',
-    planning: '规划中',
-    in_progress: '进行中',
-    completed: '已完成',
-    on_hold: '已搁置',
-    rejected: '已拒绝',
+    pending_review: t('requirement.statusMap.pending_review'),
+    planning: t('requirement.statusMap.planning'),
+    in_progress: t('requirement.statusMap.in_progress'),
+    completed: t('requirement.statusMap.completed'),
+    on_hold: t('requirement.statusMap.on_hold'),
+    rejected: t('requirement.statusMap.rejected'),
   }
   return map[status] || status
 }
+
+// 需求状态的药丸色调：进行中给橙，完成给绿，驳回给红底，其余中性
+const reqStatusTone = (s: string) =>
+  s === 'in_progress' ? 'orange' : s === 'completed' ? 'green' : s === 'rejected' ? 'sla' : 'neutral'
+
+const PRIORITY_COLOR: Record<string, string> = {
+  P0: 'var(--td-color-danger)',
+  P1: 'var(--td-color-warning)',
+  P2: 'var(--td-cat-2)',
+  P3: 'var(--td-text-disabled)',
+}
+
+const priorityColor = (p: string) => PRIORITY_COLOR[p] || 'var(--td-text-disabled)'
 
 const getStatusType = (status: RequirementStatus): TagType => {
   const map: Record<RequirementStatus, TagType> = {
@@ -643,14 +593,9 @@ const getPriorityType = (priority: RequirementPriority): TagType => {
 
 // 工单状态映射
 const getIssueStatusLabel = (status: string) => {
-  const map: Record<string, string> = {
-    open: '待处理',
-    'in-progress': '进行中',
-    resolved: '已完成',
-    closed: '已终止',
-    reopened: '重新打开',
-  }
-  return map[status] || status
+    // 状态文案统一走语言包：它同时出现在列表、详情、报表、看板，
+  // 各处各写一份必然改一处漏三处
+  return t(`issue.statusMap.${status}`)
 }
 
 const getIssueStatusType = (status: string): TagType => {
@@ -698,7 +643,7 @@ const loadData = async () => {
     requirements.value = data.data.items
     pagination.total = data.data.total
   } catch {
-    ElMessage.error('加载需求列表失败')
+    ElMessage.error(t('requirement.loadListFailed'))
   } finally {
     loading.value = false
   }
@@ -790,10 +735,10 @@ const handleRowCommand = (requirement: Requirement, command: string) => {
 const handleStatusChange = async (requirement: Requirement, status: RequirementStatus) => {
   try {
     await updateRequirement(requirement.id, { status })
-    ElMessage.success(`状态已更新为${getStatusLabel(status)}`)
+    ElMessage.success(t('requirement.statusUpdatedTo', { name: getStatusLabel(status) }))
     loadData()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '状态更新失败')
+    ElMessage.error(error.response?.data?.message || t('requirement.statusUpdateFailed'))
   }
 }
 
@@ -835,18 +780,18 @@ const handleConvert = (requirement: Requirement) => {
 // 删除
 const handleDelete = async (requirement: Requirement) => {
   try {
-    await ElMessageBox.confirm(`确定要删除需求"${requirement.title}"吗？`, '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
+    await ElMessageBox.confirm(t('requirement.confirmDelete', { name: requirement.title }), t('issue.msg.tipTitle'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning',
     })
 
     await deleteRequirement(requirement.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     loadData()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '删除失败')
+      ElMessage.error(error.response?.data?.message || t('issue.msg.deleteFailed2'))
     }
   }
 }
@@ -860,7 +805,7 @@ const handleSubmit = async () => {
 
     // 再次检查必填字段
     if (!form.pool_id) {
-      ElMessage.error('请选择需求池')
+      ElMessage.error(t('requirement.poolRequired'))
       return
     }
 
@@ -883,7 +828,7 @@ const handleSubmit = async () => {
           tags: form.tags ?? [],
         }
         await updateRequirement(editingRequirement.value.id, updateData as UpdateRequirementRequest)
-        ElMessage.success('更新成功')
+        ElMessage.success(t('issue.msg.updateSuccess'))
       } else {
         // 创建 - 构建请求数据，只包含有值的字段
         const createData: any = {
@@ -913,14 +858,14 @@ const handleSubmit = async () => {
         }
 
         await createRequirement(createData)
-        ElMessage.success('创建成功')
+        ElMessage.success(t('common.createSuccess'))
       }
 
       showCreateDialog.value = false
       resetForm()
       loadData()
     } catch (error: any) {
-      ElMessage.error(error.response?.data?.message || '操作失败')
+      ElMessage.error(error.response?.data?.message || t('common.operationFailed'))
     } finally {
       submitting.value = false
     }
@@ -936,11 +881,11 @@ const handleConvertSubmit = async () => {
 
     // 再次检查必填字段
     if (!convertForm.project_key) {
-      ElMessage.error('请选择项目')
+      ElMessage.error(t('requirement.projectRequired'))
       return
     }
     if (!convertForm.issue_type_id) {
-      ElMessage.error('请选择工单类型')
+      ElMessage.error(t('requirement.issueTypeRequired'))
       return
     }
 
@@ -959,15 +904,15 @@ const handleConvertSubmit = async () => {
       const { data } = await convertToIssue(convertingRequirement.value!.id, convertData)
 
       // 显示成功消息，包含工单号
-      ElMessage.success(`转化成功！工单号：${data.data.issue_key}`)
+      ElMessage.success(t('requirement.convertSuccess', { key: data.data.issue_key }))
 
       showConvertDialog.value = false
       loadData()
 
       // 询问是否跳转到工单详情
-      ElMessageBox.confirm(`需求已转化为工单 ${data.data.issue_key}，是否查看工单详情？`, '转化成功', {
-        confirmButtonText: '查看工单',
-        cancelButtonText: '留在当前页',
+      ElMessageBox.confirm(t('requirement.convertAsk', { key: data.data.issue_key }), t('requirement.convertSuccessTitle'), {
+        confirmButtonText: t('requirement.viewIssue'),
+        cancelButtonText: t('requirement.stayHere'),
         type: 'success',
       }).then(() => {
         router.push(`/issues/${data.data.issue_key}`)
@@ -975,7 +920,7 @@ const handleConvertSubmit = async () => {
         // 用户选择留在当前页，不做任何操作
       })
     } catch (error: any) {
-      ElMessage.error(error.response?.data?.message || '转化失败')
+      ElMessage.error(error.response?.data?.message || t('requirement.convertFailed'))
     } finally {
       converting.value = false
     }
@@ -1038,207 +983,28 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
-.requirement-list {
-  padding: 24px;
-  background: var(--td-bg-page);
-  min-height: 100vh;
+// 列表样式在 _apple.scss 里。
 
-  // 页面头部 icon (TdPageHeader leading slot)
-  .page-header-icon {
-    width: 40px;
-    height: 40px;
-    background: var(--td-tag-primary-bg);
-    border-radius: var(--td-radius-md);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--td-color-primary);
-    flex-shrink: 0;
+.desc { max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+
+/* 详情抽屉里的描述 / 进度 / 结果 / 标签分块 */
+.description-section,
+.tags-section {
+  h4 {
+    margin: 0 0 6px;
+    font-size: 12.5px;
+    font-weight: 590;
+    color: var(--td-text-secondary);
   }
 
-  .filter-card {
-    margin-bottom: 20px;
-    border-radius: 12px;
-    border: none;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    transition: box-shadow 150ms ease-out;
-
-    &:hover {
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
-    }
-
-    :deep(.el-card__body) {
-      padding: 20px 24px;
-    }
-
-    :deep(.el-form-item) {
-      margin-bottom: 0;
-    }
-
-    :deep(.el-button--primary) {
-      background: var(--td-color-primary);
-      border: none;
-      transition: all 150ms ease-out;
-
-      &:hover {
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-      }
-    }
-  }
-
-  .table-card {
-    border-radius: 12px;
-    border: none;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-    overflow: hidden;
-
-    :deep(.el-card__body) {
-      padding: 0;
-    }
-
-    :deep(.el-table) {
-      border-radius: 12px;
-
-      th {
-        background: var(--td-table-header-bg);
-        color: var(--td-text-regular);
-        font-weight: 600;
-        font-size: 14px;
-        padding: 16px 12px;
-      }
-
-      td {
-        padding: 16px 12px;
-      }
-
-      .el-table__row {
-        transition: all 150ms ease-out;
-
-        &:hover {
-          background: var(--td-bg-card-hover) !important;
-          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
-        }
-      }
-    }
-
-    .link {
-      color: var(--td-color-primary);
-      text-decoration: none;
-      font-weight: 500;
-      font-size: 15px;
-      transition: all 150ms ease-out;
-
-      &:hover {
-        color: var(--td-color-primary-hover);
-        text-decoration: underline;
-      }
-    }
-
-    .tags {
-      margin-top: 8px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-
-      .el-tag {
-        border-radius: 6px;
-        padding: 2px 10px;
-        font-size: 12px;
-        background: var(--td-tag-primary-border);
-        color: var(--td-color-primary);
-        border: none;
-        font-weight: 500;
-      }
-    }
-
-    :deep(.el-tag) {
-      border-radius: 6px;
-      padding: 4px 12px;
-      font-weight: 500;
-      border: none;
-    }
-
-    :deep(.el-button--primary) {
-      color: var(--td-color-primary);
-
-      &:hover {
-        color: var(--td-color-primary-hover);
-        background: var(--td-tag-primary-bg);
-      }
-    }
-
-    :deep(.el-button--success) {
-      color: var(--td-color-success);
-
-      &:hover {
-        color: var(--td-color-success);
-        background: var(--td-color-primary-light);
-      }
-    }
-
-    :deep(.el-button--danger) {
-      color: var(--td-color-danger);
-
-      &:hover {
-        color: var(--td-color-danger);
-        background: var(--td-tag-danger-bg);
-      }
-    }
-
-    .pagination {
-      margin-top: 0;
-      padding: 20px 24px;
-      display: flex;
-      justify-content: flex-end;
-      background: var(--td-bg-section);
-      border-top: 1px solid var(--td-border-color);
-    }
-  }
-
-  :deep(.el-dialog) {
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-
-    .el-dialog__header {
-      padding: 20px 24px;
-      background: var(--td-color-primary);
-      border-radius: 12px 12px 0 0;
-
-      .el-dialog__title {
-        color: var(--td-text-white);
-        font-weight: 600;
-        font-size: 18px;
-      }
-
-      .el-dialog__headerbtn .el-dialog__close {
-        color: var(--td-text-white);
-        font-size: 20px;
-
-        &:hover {
-          color: var(--td-text-white);
-        }
-      }
-    }
-
-    .el-dialog__body {
-      padding: 24px;
-    }
-
-    .el-dialog__footer {
-      padding: 16px 24px;
-      border-top: 1px solid #e9ecef;
-
-      .el-button--primary {
-        background: var(--td-color-primary);
-        border: none;
-        padding: 10px 24px;
-        transition: all 150ms ease-out;
-
-        &:hover {
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-        }
-      }
-    }
+  p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--td-text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 }
 </style>

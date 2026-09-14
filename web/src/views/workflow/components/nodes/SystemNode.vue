@@ -1,6 +1,6 @@
 <template>
   <div class="custom-node system-node" :class="{ selected: selected }">
-    <Handle type="target" :position="Position.Top" />
+    <Handle type="target" :position="Position.Left" />
     <div class="node-body">
       <div class="node-header">
         <div class="node-icon">
@@ -9,22 +9,25 @@
         <div class="node-title">{{ data.label }}</div>
       </div>
       <div class="node-meta">
-        <span class="node-type-badge">系统</span>
+        <span class="node-type-badge">{{ t('workflow.nodeTypeMap.system') }}</span>
         <span v-if="data.config?.action" class="node-detail">{{ data.config.action }}</span>
       </div>
       <div v-if="data.config?.target_status" class="node-status">
         → {{ statusText }}
       </div>
     </div>
-    <Handle type="source" :position="Position.Bottom" />
+    <Handle type="source" :position="Position.Right" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 import { Setting } from '@element-plus/icons-vue'
 import type { NodeConfig } from '@/types/workflow'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   data: { label: string; config?: NodeConfig }
@@ -33,11 +36,11 @@ const props = defineProps<{
 
 const statusText = computed(() => {
   const map: Record<string, string> = {
-    open: '未开始',
-    in_progress: '进行中',
-    pending_review: '待确认',
-    resolved: '已解决',
-    closed: '已关闭',
+    open: t('workflow.statusMap.open'),
+    in_progress: t('workflow.statusMap.in_progress'),
+    pending_review: t('workflow.statusMap.pending_review'),
+    resolved: t('workflow.statusMap.resolved'),
+    closed: t('workflow.statusMap.closed'),
   }
   return props.data.config?.target_status ? (map[props.data.config.target_status] || props.data.config.target_status) : ''
 })
@@ -47,41 +50,46 @@ const statusText = computed(() => {
 .system-node {
   .node-body {
     background: var(--td-bg-card);
-    border: 2px solid #8b5cf6;
-    border-radius: 12px;
+    /* 节点是浮在画布上的对象，给一层发丝边 + 轻阴影就够了。
+       原来 2px 饱和描边 + 同色光晕，几十个节点铺开满屏都在喊。 */
+    border: 1px solid var(--td-border-color);
+    border-radius: 10px;
     min-width: 160px;
     overflow: hidden;
-    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.15);
-    transition: box-shadow 150ms ease-out, transform 150ms ease-out;
+    box-shadow: var(--td-elevation-3);
+    transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
   }
 
+  /* 选中态所有节点一致：主色描边 + 聚焦环，不做缩放位移 */
   &.selected .node-body {
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3), 0 4px 16px rgba(139, 92, 246, 0.25);
-    transform: scale(1.02);
+    border-color: var(--td-color-primary);
+    box-shadow: var(--td-focus-ring), var(--td-elevation-3);
   }
 
   &:hover .node-body {
-    box-shadow: 0 6px 16px rgba(139, 92, 246, 0.25);
+    border-color: var(--td-border-color-dark);
   }
 
   .node-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 14px;
-    background: #8b5cf6;
-    color: var(--td-text-white);
+    padding: 9px 12px;
+    background: var(--td-tag-purple-bg);
+    color: var(--td-tag-purple-text);
+    border-bottom: 1px solid var(--td-tag-purple-border);
   }
 
   .node-icon {
-    font-size: 18px;
+    font-size: 15px;
     line-height: 1;
     flex-shrink: 0;
   }
 
   .node-title {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 590;
+    letter-spacing: -0.01em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -91,26 +99,28 @@ const statusText = computed(() => {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 14px;
+    padding: 8px 12px;
     flex-wrap: wrap;
   }
 
   .node-type-badge {
     font-size: 11px;
-    padding: 2px 8px;
+    line-height: 16px;
+    padding: 0 7px;
     background: var(--td-tag-purple-bg);
     color: var(--td-tag-purple-text);
-    border-radius: 10px;
+    border: 1px solid var(--td-tag-purple-border);
+    border-radius: 5px;
     font-weight: 500;
   }
 
   .node-detail {
     font-size: 11px;
-    color: var(--td-tag-purple-text);
+    color: var(--td-text-secondary);
   }
 
   .node-status {
-    padding: 4px 14px 8px;
+    padding: 0 12px 8px;
     font-size: 11px;
     color: var(--td-text-secondary);
   }

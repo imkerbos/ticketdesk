@@ -44,7 +44,7 @@ func NewRequirementHandler(
 func (h *RequirementHandler) HandleCreate(c *gin.Context) {
 	var req dto.CreateRequirementRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -78,7 +78,7 @@ func (h *RequirementHandler) HandleCreate(c *gin.Context) {
 func (h *RequirementHandler) HandleGetByID(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的需求ID")
+		response.BadRequest(c, "requirement.invalid_id")
 		return
 	}
 
@@ -116,13 +116,13 @@ func (h *RequirementHandler) HandleGetByID(c *gin.Context) {
 func (h *RequirementHandler) HandleUpdate(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的需求ID")
+		response.BadRequest(c, "requirement.invalid_id")
 		return
 	}
 
 	var req dto.UpdateRequirementRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -142,7 +142,7 @@ func (h *RequirementHandler) HandleUpdate(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"message": "更新成功"})
+	response.Success(c, gin.H{"message": response.T(c, "requirement.updated")})
 }
 
 // HandleDelete 删除需求
@@ -161,7 +161,7 @@ func (h *RequirementHandler) HandleUpdate(c *gin.Context) {
 func (h *RequirementHandler) HandleDelete(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的需求ID")
+		response.BadRequest(c, "requirement.invalid_id")
 		return
 	}
 
@@ -187,7 +187,7 @@ func (h *RequirementHandler) HandleDelete(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"message": "删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "requirement.deleted")})
 }
 
 // HandleList 获取需求列表
@@ -214,7 +214,7 @@ func (h *RequirementHandler) HandleDelete(c *gin.Context) {
 func (h *RequirementHandler) HandleList(c *gin.Context) {
 	var req dto.RequirementListRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -256,13 +256,13 @@ func (h *RequirementHandler) HandleList(c *gin.Context) {
 func (h *RequirementHandler) HandleConvertToIssue(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的需求ID")
+		response.BadRequest(c, "requirement.invalid_id")
 		return
 	}
 
 	var req dto.ConvertToIssueRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -314,13 +314,13 @@ func (h *RequirementHandler) HandleConvertToIssue(c *gin.Context) {
 func (h *RequirementHandler) HandleAddComment(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的需求ID")
+		response.BadRequest(c, "requirement.invalid_id")
 		return
 	}
 
 	var req dto.RequirementCommentRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -362,7 +362,7 @@ func (h *RequirementHandler) HandleAddComment(c *gin.Context) {
 func (h *RequirementHandler) HandleGetKanban(c *gin.Context) {
 	var req dto.KanbanRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -396,7 +396,7 @@ func (h *RequirementHandler) HandleGetKanban(c *gin.Context) {
 func (h *RequirementHandler) HandleGetReport(c *gin.Context) {
 	var req dto.ReportRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 

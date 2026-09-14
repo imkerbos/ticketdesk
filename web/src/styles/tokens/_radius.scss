@@ -1,10 +1,17 @@
-// 圆角标度
+// 圆角标度 — Apple 尺度
+//
+// 只有这几档，不要出现第七个值。按角色取用，不按"大一点/小一点"取用：
+//   sm  徽章、标签
+//   md  按钮、输入框、分段控件
+//   lg  卡片、表格容器
+//   xl  弹窗、抽屉
+// full 只给头像和开关，其它地方一律不用胶囊形。
 :root {
-  --td-radius-xs: 3px;
-  --td-radius-sm: 4px;
-  --td-radius-md: 6px;
-  --td-radius-lg: 8px;
-  --td-radius-xl: 12px;
-  --td-radius-2xl: 16px;
+  --td-radius-xs: 4px;
+  --td-radius-sm: 5px;
+  --td-radius-md: 8px;
+  --td-radius-lg: 12px;
+  --td-radius-xl: 18px;
+  --td-radius-2xl: 20px;
   --td-radius-full: 9999px;
 }

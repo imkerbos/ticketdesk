@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/kerbos/ticketdesk/internal/activity/detail"
 	issueDto "github.com/kerbos/ticketdesk/internal/core-issue/dto"
 	"github.com/kerbos/ticketdesk/internal/model"
 	"github.com/kerbos/ticketdesk/internal/requirement-pool/dto"
@@ -70,14 +71,14 @@ func (s *requirementService) Create(ctx context.Context, req *dto.CreateRequirem
 	pool, err := s.poolRepo.GetByID(ctx, req.PoolID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("需求池不存在")
+			return nil, errors.New("requirement.pool_not_found")
 		}
 		return nil, fmt.Errorf("获取需求池失败: %w", err)
 	}
 
 	// 验证需求池状态
 	if pool.Status != model.RequirementPoolStatusActive {
-		return nil, errors.New("需求池已归档，无法添加需求")
+		return nil, errors.New("requirement.pool_archived")
 	}
 
 	// 处理标签
@@ -146,7 +147,7 @@ func (s *requirementService) GetByID(ctx context.Context, id uint64) (*dto.Requi
 	requirement, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("需求不存在")
+			return nil, errors.New("requirement.not_found")
 		}
 		s.logger.Error("failed to get requirement",
 			zap.Error(err),
@@ -163,7 +164,7 @@ func (s *requirementService) Update(ctx context.Context, id uint64, req *dto.Upd
 	requirement, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("需求不存在")
+			return errors.New("requirement.not_found")
 		}
 		return fmt.Errorf("获取需求失败: %w", err)
 	}
@@ -258,7 +259,7 @@ func (s *requirementService) Delete(ctx context.Context, id, userID uint64) erro
 	_, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("需求不存在")
+			return errors.New("requirement.not_found")
 		}
 		return fmt.Errorf("获取需求失败: %w", err)
 	}
@@ -323,7 +324,7 @@ func (s *requirementService) List(ctx context.Context, req *dto.RequirementListR
 // ConvertToIssue 转化为工单（通过 IssueService.CreateIssue 走标准建单流程）
 func (s *requirementService) ConvertToIssue(ctx context.Context, id uint64, req *dto.ConvertToIssueRequest, userID uint64) (*dto.ConvertToIssueResponse, error) {
 	if s.issueSvc == nil {
-		return nil, errors.New("工单创建服务未初始化")
+		return nil, errors.New("requirement.service_uninitialized")
 	}
 
 	// 分布式锁防止同一需求被并发转化
@@ -336,22 +337,22 @@ func (s *requirementService) ConvertToIssue(ctx context.Context, id uint64, req 
 	requirement, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("需求不存在")
+			return nil, errors.New("requirement.not_found")
 		}
 		return nil, fmt.Errorf("获取需求失败: %w", err)
 	}
 
 	// 终态不允许转化
 	if requirement.Status == model.RequirementStatusCompleted {
-		return nil, errors.New("已完成的需求不能转化为工单")
+		return nil, errors.New("requirement.completed_no_convert")
 	}
 	if requirement.Status == model.RequirementStatusRejected {
-		return nil, errors.New("已拒绝的需求不能转化为工单")
+		return nil, errors.New("requirement.rejected_no_convert")
 	}
 
 	// 已转化的不允许再次转化
 	if requirement.ConvertedIssueID != nil {
-		return nil, errors.New("该需求已转化为工单，不允许重复转化")
+		return nil, errors.New("requirement.already_converted")
 	}
 
 	// 通过 IssueService 标准流程创建工单（包含工作流实例、关注人、通知等）
@@ -411,12 +412,13 @@ func (s *requirementService) ConvertToIssue(ctx context.Context, id uint64, req 
 		if queryErr := tx.First(&user, userID).Error; queryErr == nil {
 			activity := &model.ActivityLog{
 				UserID:     userID,
-				UserName:   user.Username,
-				Action:     "converted",
+				UserName:   user.DisplayName,
+				Action:     "requirement_converted",
 				EntityType: "requirement",
 				EntityID:   requirement.ID,
 				EntityKey:  requirement.Title,
-				Details:    fmt.Sprintf(`{"issue_id":%d,"issue_key":%q,"message":"需求已转化为工单 %s"}`, issueResp.ID, issueResp.IssueKey, issueResp.IssueKey),
+				Details: detail.New("activity.detail.requirementConverted",
+					"issueId", issueResp.ID, "issueKey", issueResp.IssueKey),
 			}
 			if createErr := tx.Create(activity).Error; createErr != nil {
 				s.logger.Warn("failed to create requirement activity log", zap.Error(createErr))
@@ -455,7 +457,7 @@ func (s *requirementService) AddComment(ctx context.Context, id uint64, req *dto
 	_, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("需求不存在")
+			return nil, errors.New("requirement.not_found")
 		}
 		return nil, fmt.Errorf("获取需求失败: %w", err)
 	}
@@ -747,13 +749,13 @@ func (s *requirementService) toRequirementResponse(req *model.Requirement) *dto.
 		resp.PoolName = req.Pool.Name
 	}
 	if req.Reporter != nil {
-		resp.ReporterName = req.Reporter.Username
+		resp.ReporterName = req.Reporter.DisplayName
 	}
 	if req.Assignee != nil {
-		resp.AssigneeName = req.Assignee.Username
+		resp.AssigneeName = req.Assignee.DisplayName
 	}
 	if req.Creator != nil {
-		resp.CreatorName = req.Creator.Username
+		resp.CreatorName = req.Creator.DisplayName
 	}
 	if req.ConvertedIssue != nil {
 		resp.ConvertedIssueKey = req.ConvertedIssue.IssueKey
@@ -782,7 +784,7 @@ func (s *requirementService) toCommentResponse(comment *model.RequirementComment
 	}
 
 	if comment.User != nil {
-		resp.UserName = comment.User.Username
+		resp.UserName = comment.User.DisplayName
 	}
 
 	return resp

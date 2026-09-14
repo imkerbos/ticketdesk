@@ -1,0 +1,863 @@
+// Apple 设计语言的组件层
+//
+// 这一份不是"在 Element 上做覆盖"，而是直接把设计样张的 CSS 搬过来，
+// 组件用原生标签实现（nav / table / button），不再和 Element 的默认样式打架。
+// 覆盖打不过的地方、!important 互相压的地方、组件内部 DOM 变了就失效的地方，
+// 之前全踩过一遍，所以这里换成"我们自己的 DOM + 我们自己的 CSS"。
+//
+// 全部规则收在 .ap 命名空间下：其它页面还在用 Element 那套，
+// .card / .btn 这类通用类名不能泄漏出去。
+//
+// 色值一律走 --td-* 令牌，不写死：样张里的 --bg / --fg 只是它自己的局部名字，
+// 换成令牌后暗色模式和色板校验才继续有效。
+
+.ap {
+  --ap-radius: 12px;
+
+  display: flex;
+  min-height: 100vh;
+  font-family: var(--td-font-sans);
+  font-size: 13.5px;
+  letter-spacing: -0.01em;
+  background: var(--td-bg-page);
+  color: var(--td-text-primary);
+  -webkit-font-smoothing: antialiased;
+
+  // 页面上的文字大半是用户自己填的：工单标题、描述、评论、项目名。
+  // 中文能按字断行，一条没有空格的长 URL 不能 —— 粘一个当标题，
+  // 详情页的 h1 会直接从右上角的操作按钮底下穿过去，把整页撑出横滚。
+  //
+  // 用 break-word 而不是 anywhere：前者不参与 min-content 尺寸计算，
+  // 不会让 flex / grid 项被压得比预期更窄，只在真的放不下时才断。
+  overflow-wrap: break-word;
+
+  // 只重置我们自己写的原生 button。
+  //
+  // :not() 必须套 :where() —— :where() 不计特异度。
+  // 写成 button:not(.el-button) 是 (0,2,1)，会压过下面的 .btn (0,2,0)，
+  // 把全站 41 个 .btn 的边框又剥掉一次（.btn.secondary 只设了 border-color，
+  // 宽度还是来自这里的 border: 0）。套上 :where() 后是 (0,1,1)：
+  //   · 比 .btn (0,2,0) 低 → 自己写的按钮样式赢
+  //   · .el-button 被 :not 排除，压不到它
+  //
+  // 排除只能写 .el-button 本身：按类名前缀排会连带排掉我们自己的 .icon-btn ——
+  // 它作为 el-dropdown 的触发器会被挂上 el-tooltip__trigger。
+  // 弹窗/抽屉的关闭按钮都 teleport 到 body，本来就不在 .ap 里。
+  button:not(:where(.el-button)) {
+    font: inherit;
+    color: inherit;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+
+  // ── 侧边栏 ──────────────────────────────────────────
+  .sidebar {
+    width: 232px;
+    flex: 0 0 232px;
+    // 这里刻意不上 backdrop-filter：.main 有 margin-left: 232px，
+    // 内容不会从侧边栏底下流过，模糊背后只有一块平铺底色，
+    // 视觉上看不出任何差别，却要多付一个合成层。
+    // 玻璃材质只给真正盖在内容之上的浮层（顶栏 / 下拉 / 弹窗）。
+    background: var(--td-sidebar-bg);
+    border-right: 1px solid var(--td-border-color);
+    padding: 0 10px 16px;
+    overflow-y: auto;
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 10;
+  }
+
+  .brand {
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--td-text-primary);
+  }
+
+  .brand .mark {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: var(--td-color-primary);
+    display: grid;
+    place-items: center;
+    flex: 0 0 20px;
+    overflow: hidden;
+  }
+
+  .brand .mark svg { width: 12px; height: 12px; fill: #fff; }
+  .brand .mark img { width: 100%; height: 100%; object-fit: cover; }
+
+  .nav-group {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .nav-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--td-text-placeholder);
+    letter-spacing: 0.04em;
+    padding: 0 8px 6px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 30px;
+    padding: 0 8px;
+    border-radius: 7px;
+    width: 100%;
+    text-align: left;
+    color: var(--td-text-primary);
+    transition: background-color var(--td-duration-fast) var(--td-ease-out);
+  }
+
+  .nav-item svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    stroke: var(--td-text-secondary);
+    stroke-width: 1.6;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .nav-item:hover { background: var(--td-sidebar-hover); }
+
+  .nav-item[aria-current='page'] {
+    background: var(--td-sidebar-active-bg);
+    font-weight: 600;
+  }
+
+  .nav-item[aria-current='page'] svg { stroke: var(--td-text-primary); }
+
+  .nav-sub {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 8px 0 33px;
+    border-radius: 7px;
+    color: var(--td-text-secondary);
+    font-size: 13px;
+    width: 100%;
+    text-align: left;
+    transition: background-color var(--td-duration-fast) var(--td-ease-out);
+  }
+
+  .nav-sub:hover { background: var(--td-sidebar-hover); }
+
+  .nav-sub[aria-current='page'] {
+    background: var(--td-sidebar-active-bg);
+    color: var(--td-text-primary);
+    font-weight: 600;
+  }
+
+  .chev {
+    margin-left: auto;
+    width: 12px;
+    height: 12px;
+    stroke: var(--td-text-placeholder);
+    stroke-width: 1.8;
+    fill: none;
+    transition: transform var(--td-duration-fast) var(--td-ease-out);
+  }
+
+  // 收起时箭头朝下（样张里就是这样），不是朝左
+  .chev.is-collapsed { transform: rotate(180deg); }
+
+  .nav-badge {
+    margin-left: auto;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--td-color-danger);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sidebar-foot {
+    margin-top: 18px;
+    padding: 0 8px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--td-text-placeholder);
+  }
+
+  // ── 主区 ───────────────────────────────────────────
+  .main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    margin-left: 232px;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 9;
+    height: 52px;
+    flex: 0 0 52px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--td-border-color);
+    background: var(--td-header-bg-translucent);
+    backdrop-filter: saturate(180%) blur(20px);
+  }
+
+  .crumb { font-size: 13px; color: var(--td-text-placeholder); }
+  .crumb b { color: var(--td-text-primary); font-weight: 600; }
+
+  .grow { flex: 1; }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    position: relative;
+    transition: background-color var(--td-duration-fast) var(--td-ease-out);
+  }
+
+  .icon-btn:hover { background: var(--td-sidebar-hover); }
+
+  .icon-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--td-text-secondary);
+    stroke-width: 1.6;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .icon-btn .locale-code {
+    font-size: 12px;
+    color: var(--td-text-secondary);
+    font-weight: 500;
+  }
+
+  .who {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    padding-left: 6px;
+    cursor: pointer;
+  }
+
+  .avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--td-color-primary);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    display: grid;
+    place-items: center;
+    flex: 0 0 24px;
+  }
+
+  .content {
+    // 24 而不是样张 CSS 里写的 20：样张那一份是嵌在带 1px 边框的预览框里的，
+    // 它渲染出来的内容左边缘在 x=256，用 20 会差 4px。对齐的是渲染结果。
+    // 上 20 下 24、左右 24：纵向按样张的 20px 对齐（顶栏到标题的距离），
+    // 横向要 24 才能和样张渲染出来的左右边缘重合（它嵌在带边框的预览框里）
+    //
+    // 满幅页面（看板、设计器、API 文档）要用负边距把这层内边距抵消掉，
+    // 所以这三个值必须能被它们读到 —— 写死的话窄屏下 padding 变了、
+    // 负边距没跟着变，每边就会多撑出 8px，页面主体跟着横滚。
+    --td-content-pad-top: 20px;
+    --td-content-pad-x: 24px;
+    --td-content-pad-bottom: 24px;
+    padding: var(--td-content-pad-top) var(--td-content-pad-x) var(--td-content-pad-bottom);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  // ── 页头 / 按钮 ─────────────────────────────────────
+  .page-head {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .page-head h1 {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.022em;
+    line-height: 1.15;
+    margin: 0;
+  }
+
+  .btn {
+    height: 30px;
+    padding: 0 13px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    color: var(--td-text-primary);
+    transition: background-color var(--td-duration-fast) var(--td-ease-out),
+      border-color var(--td-duration-fast) var(--td-ease-out);
+  }
+
+  .btn svg {
+    width: 13px;
+    height: 13px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+    stroke-linecap: round;
+  }
+
+  .btn.secondary { background: var(--td-bg-card); border-color: var(--td-border-color); }
+  .btn.secondary:hover { background: var(--td-bg-section); }
+  .btn.primary { background: var(--td-color-primary); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .btn-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    margin-left: 2px;
+    border-radius: 8px;
+    background: var(--td-color-primary);
+    color: #fff;
+    font-size: 11px;
+  }
+
+  // ── tabs ──────────────────────────────────────────
+  .tabs {
+    display: flex;
+    gap: 22px;
+    border-bottom: 1px solid var(--td-border-color);
+  }
+
+  .tab {
+    font-size: 13.5px;
+    color: var(--td-text-secondary);
+    padding: 0 0 9px;
+    position: relative;
+    transition: color var(--td-duration-fast) var(--td-ease-out);
+  }
+
+  .tab:hover { color: var(--td-text-primary); }
+
+  .tab[aria-selected='true'] { color: var(--td-text-primary); font-weight: 600; }
+
+  .tab[aria-selected='true']::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 -1px;
+    height: 2px;
+    background: var(--td-text-primary);
+    border-radius: 2px;
+  }
+
+  // ── 工具带 ─────────────────────────────────────────
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .seg {
+    display: inline-flex;
+    background: var(--td-segmented-track);
+    border-radius: 8px;
+    padding: 2px;
+  }
+
+  .seg button {
+    font-size: 12.5px;
+    padding: 4px 11px;
+    border-radius: 6px;
+    color: var(--td-text-secondary);
+    transition: background-color var(--td-duration-fast) var(--td-ease-out);
+  }
+
+  .seg button[aria-pressed='true'] {
+    background: var(--td-segmented-thumb);
+    color: var(--td-text-primary);
+    font-weight: 500;
+    box-shadow: var(--td-segmented-shadow);
+  }
+
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 11px;
+    border-radius: 8px;
+    background: var(--td-bg-card);
+    border: 1px solid var(--td-border-color);
+    width: 240px;
+    max-width: 100%;
+    color: var(--td-text-placeholder);
+    font-size: 13px;
+  }
+
+  .search svg {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 13px;
+    stroke: var(--td-text-placeholder);
+    stroke-width: 1.8;
+    fill: none;
+  }
+
+  .search input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: none;
+    background: none;
+    font: inherit;
+    color: var(--td-text-primary);
+  }
+
+  .search input::placeholder { color: var(--td-text-placeholder); }
+
+  // ── 列表页的通用骨架 ───────────────────────────────
+  // 页面本体：页头 / 工具带 / 卡片之间统一 14px
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  // 筛选下拉：Element 的 select 留着（原生 select 在多选、远程搜索上不够用），
+  // 只把尺寸对齐到 30px 这一档
+  .filter-select { width: 140px; }
+  .filter-select-sm { width: 120px; }
+
+  // 行内操作：一个常用动作直接给链接，其余收进 ··· 菜单。
+  // 不再一行摆四个图标按钮——那是"每个动作都同样重要"的写法，实际不是。
+  .row-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .link-btn {
+    font-size: 12.5px;
+    color: var(--td-color-primary);
+    padding: 0;
+  }
+
+  .link-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+  // 人名单元格：名字一行，账号和邮箱一行弱色
+  .user-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .user-cell .user-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--td-text-primary);
+  }
+
+  .user-cell .user-meta {
+    font-size: 11.5px;
+    color: var(--td-text-placeholder);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // ── 卡片 / 指标 ────────────────────────────────────
+  .card {
+    background: var(--td-bg-card);
+    border: 1px solid var(--td-border-color);
+    border-radius: var(--ap-radius);
+    overflow: hidden;
+  }
+
+  .kpis {
+    display: flex;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--td-divider-color);
+    flex-wrap: wrap;
+    gap: 14px 0;
+  }
+
+  .kpi {
+    padding-right: 30px;
+    margin-right: 30px;
+    border-right: 1px solid var(--td-divider-color);
+  }
+
+  .kpi:nth-of-type(4) { border-right: 0; margin-right: 0; }
+
+  // 可点的指标（告警列表用来当筛选入口）：默认和普通指标长得一样，
+  // 只有 hover 和选中时才有提示，避免一排指标看起来像一排按钮。
+  //
+  // 上下内边距放在 .kpi 上而不是 .as-filter 上 —— 一排里混着可点的 <button>
+  // 和不可点的 <div>（工作台的「本周已完成」没有对应的列表页），
+  // 只给可点的加 padding 会让它们比旁边高 4px，数字基线对不齐。
+  .kpi {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+
+  .kpi.as-filter {
+    text-align: left;
+    border-radius: 0;
+  }
+
+  .kpi.as-filter:hover .v { color: var(--td-color-primary); }
+
+  .kpi.as-filter.is-active .v { color: var(--td-color-primary); }
+  .kpi.as-filter.is-active .k { color: var(--td-text-secondary); }
+  .kpi .k { font-size: 11.5px; color: var(--td-text-placeholder); margin-bottom: 3px; }
+
+  .kpi .v {
+    font-size: 19px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.015em;
+  }
+
+  .count {
+    font-size: 12.5px;
+    color: var(--td-text-placeholder);
+    margin-right: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  // 卡片头：标题 + 计数 + 右侧「查看全部」。
+  // 原来每个卡片头左边挂一个彩色圆角图标块，四个卡片四种颜色，
+  // 颜色在这里不表达任何东西，删掉。
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--td-divider-color);
+  }
+
+  .card-head h2 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .card-head .n {
+    font-size: 12.5px;
+    color: var(--td-text-placeholder);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // 两栏：工作台左右分栏，窄屏并成一栏
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 14px;
+    align-items: start;
+  }
+
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  @media (max-width: 1100px) {
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  // 简单条目列表（工作台的工单/告警/活动都用它）
+  .rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .row-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 18px;
+    height: 44px;
+    border-bottom: 1px solid var(--td-divider-color);
+    cursor: pointer;
+    transition: background-color var(--td-duration-fast) var(--td-ease-out);
+
+    &:last-child { border-bottom: 0; }
+    &:hover { background: var(--td-bg-card-hover); }
+  }
+
+  .row-item .txt {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // ── 表格 ───────────────────────────────────────────
+  .table-wrap { overflow-x: auto; }
+
+  .issues {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 1080px;
+  }
+
+  .issues th {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--td-text-placeholder);
+    text-align: left;
+    padding: 0 10px;
+    height: 32px;
+    border-bottom: 1px solid var(--td-divider-color);
+    white-space: nowrap;
+  }
+
+  .issues th.sortable { cursor: pointer; user-select: none; position: relative; }
+  .issues th.sortable:hover { color: var(--td-text-primary); }
+
+  // 排序箭头只在悬停或已按该列排序时出现，且绝对定位不占列宽
+  .issues th .caret {
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 9px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity var(--td-duration-fast) var(--td-ease-out);
+  }
+
+  .issues th.sortable:hover .caret,
+  .issues th.is-sorted .caret { opacity: 1; }
+  .issues th.is-sorted { color: var(--td-text-primary); }
+
+  .issues td {
+    padding: 0 10px;
+    height: 44px;
+    border-bottom: 1px solid var(--td-divider-color);
+    font-size: 13px;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  .issues tbody tr { transition: background-color var(--td-duration-fast) var(--td-ease-out); cursor: pointer; }
+  .issues tbody tr:hover { background: var(--td-bg-card-hover); }
+  .issues tbody tr:last-child td { border-bottom: 0; }
+
+  .key {
+    font-family: var(--td-font-mono);
+    font-size: 12.5px;
+    color: var(--td-color-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // 点不动的标识符（指纹、field_key、role_key、页头的项目标识……）。
+  // 蓝色在本站的语义就是「这个能点」，不可点的东西染蓝会让人一直去点。
+  .key.static {
+    color: var(--td-text-secondary);
+  }
+
+  // 头像的中性变体：不承载身份色（哈希色）也不承载角色，只是个首字母占位
+  .ava.tinted {
+    background: var(--td-bg-section);
+    color: var(--td-text-secondary);
+  }
+
+  .title-cell { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .title-cell .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 6px; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 19px;
+    padding: 0 7px;
+    border-radius: 5px;
+    font-size: 11.5px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .pill.sla {
+    background: var(--td-tag-danger-bg);
+    color: var(--td-tag-danger-text);
+    font-family: var(--td-font-mono);
+    font-size: 11px;
+  }
+
+  .pill.neutral { background: var(--td-segmented-track); color: var(--td-text-secondary); }
+  // 轻微超时用它：时长要等宽才好横向比大小，但底色保持中性 —— 红色留给严重超时
+  .pill.mono { font-family: var(--td-font-mono); font-size: 11px; }
+  .pill.blue { background: var(--td-tag-primary-bg); color: var(--td-tag-primary-text); }
+  .pill.green { background: var(--td-tag-success-bg); color: var(--td-tag-success-text); }
+  .pill.orange { background: var(--td-tag-orange-bg); color: var(--td-tag-orange-text); }
+  .pill.purple { background: var(--td-tag-purple-bg); color: var(--td-tag-purple-text); }
+
+  .prio {
+    font-family: var(--td-font-mono);
+    font-size: 12px;
+    color: var(--td-text-secondary);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .muted { color: var(--td-text-placeholder); }
+
+  // 只给绝对时间戳和纯数字用：等宽是为了让同一列的数字纵向对齐。
+  // 「20 小时前」「2 分钟」「手动关闭」这种混了中文的串不要用它 ——
+  // 中文会跟着等宽排，数字和单位之间豁开一个空格宽。那些用 .muted。
+  .time {
+    font-family: var(--td-font-mono);
+    font-size: 12px;
+    color: var(--td-text-placeholder);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .person { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+  .person span:last-child { overflow: hidden; text-overflow: ellipsis; }
+
+  // 头像统一走「中性淡底 + 有色字母」：身份靠字母颜色区分就够了。
+  // 实心饱和圆在列表里一列排下来是最重的东西，而它只是「谁」的标识。
+  .ava {
+    width: 19px;
+    height: 19px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--td-bg-section);
+    color: var(--td-text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 19px;
+  }
+
+  .more {
+    color: var(--td-text-placeholder);
+    font-size: 15px;
+    letter-spacing: 1px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 5px;
+  }
+
+  .more:hover { background: var(--td-bg-section); color: var(--td-text-primary); }
+
+  // 表格底部的分页：样张里没有这一块（静态页不需要翻页），
+  // 保持同一套发丝线和字号，不要让它自成一格
+  .table-foot {
+    display: flex;
+    justify-content: flex-end;
+    padding: 12px 18px;
+    border-top: 1px solid var(--td-divider-color);
+  }
+
+  .empty {
+    padding: 64px 20px;
+    text-align: center;
+    color: var(--td-text-placeholder);
+    font-size: 13px;
+  }
+
+  // .empty 原本是给「一行灰字」用的占位容器，64px 的上下内边距是它自己撑场面的。
+  // 后来全站 23 处里有 21 处塞的是 TdEmptyState，而组件自带 32px 内边距 ——
+  // 两层叠起来，147px 的空态被撑成 275px，工作台「我的待办工单」空卡就有 322px 高。
+  // 容器交给组件自己撑，不重复加。
+  .empty:has(> .td-empty-state) {
+    padding: 0;
+  }
+
+  // 汉堡按钮只在窄屏出现。这条规则必须和 .icon-btn 放在同一个文件里：
+  // 写在组件的 scoped 样式里优先级打平，靠加载顺序决定胜负，结果是宽屏也显示。
+  .nav-toggle { display: none; }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .nav-toggle { display: grid; }
+    .main { margin-left: 0; }
+    .content {
+      --td-content-pad-top: 16px;
+      --td-content-pad-x: 16px;
+      --td-content-pad-bottom: 16px;
+    }
+  }
+}
+
+/* 跳到主内容：平时挪到屏幕外，不占布局也不被鼠标用户看到；
+   键盘聚焦时才滑进左上角。位置写在 .ap 外面 —— 它是 .ap 的兄弟节点。 */
+.skip-to-content {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 3000;
+  padding: 8px 14px;
+  border-radius: var(--td-radius-md);
+  border: 1px solid var(--td-border-color);
+  background: var(--td-bg-card);
+  color: var(--td-text-primary);
+  font-family: var(--td-font-sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  box-shadow: var(--td-elevation-3);
+  transform: translateY(calc(-100% - 16px));
+  transition: transform 150ms ease-out;
+
+  &:focus-visible {
+    transform: translateY(0);
+    outline: var(--td-focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap * { transition: none !important; }
+}

@@ -459,7 +459,9 @@ func (r *reportRepository) GetSLAStatsByPriority(ctx context.Context, projectID 
 		query = query.Where("project_id = ?", *projectID)
 	}
 
-	err := query.Group("priority").Find(&results).Error
+	// 不加 ORDER BY 时 MySQL 的分组结果顺序不保证，前端表格会出现 P0/P1/P3/P2。
+	// 优先级是 P0..P3，字典序即严重程度序。
+	err := query.Group("priority").Order("priority").Find(&results).Error
 	if err != nil {
 		return nil, err
 	}

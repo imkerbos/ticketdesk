@@ -44,7 +44,7 @@ func NewRequirementPoolHandler(
 func (h *RequirementPoolHandler) HandleCreate(c *gin.Context) {
 	var req dto.CreateRequirementPoolRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -79,7 +79,7 @@ func (h *RequirementPoolHandler) HandleCreate(c *gin.Context) {
 func (h *RequirementPoolHandler) HandleGetByID(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的需求池ID")
+		response.BadRequest(c, "requirement.invalid_pool_id")
 		return
 	}
 
@@ -117,13 +117,13 @@ func (h *RequirementPoolHandler) HandleGetByID(c *gin.Context) {
 func (h *RequirementPoolHandler) HandleUpdate(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的需求池ID")
+		response.BadRequest(c, "requirement.invalid_pool_id")
 		return
 	}
 
 	var req dto.UpdateRequirementPoolRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -143,7 +143,7 @@ func (h *RequirementPoolHandler) HandleUpdate(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"message": "更新成功"})
+	response.Success(c, gin.H{"message": response.T(c, "requirement.updated")})
 }
 
 // HandleDelete 删除需求池
@@ -162,7 +162,7 @@ func (h *RequirementPoolHandler) HandleUpdate(c *gin.Context) {
 func (h *RequirementPoolHandler) HandleDelete(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的需求池ID")
+		response.BadRequest(c, "requirement.invalid_pool_id")
 		return
 	}
 
@@ -188,7 +188,7 @@ func (h *RequirementPoolHandler) HandleDelete(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"message": "删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "requirement.deleted")})
 }
 
 // HandleList 获取需求池列表
@@ -211,7 +211,7 @@ func (h *RequirementPoolHandler) HandleDelete(c *gin.Context) {
 func (h *RequirementPoolHandler) HandleList(c *gin.Context) {
 	var req dto.RequirementPoolListRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 

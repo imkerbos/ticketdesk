@@ -14,6 +14,7 @@ import (
 
 	"github.com/kerbos/ticketdesk/internal/core-project/repository"
 	"github.com/kerbos/ticketdesk/internal/model"
+	"github.com/kerbos/ticketdesk/pkg/i18n"
 	"github.com/kerbos/ticketdesk/pkg/logger"
 )
 
@@ -290,7 +291,7 @@ func buildDigestData(project *model.Project, rows []digestIssueRow) map[string]a
 		userMissing := r.AssigneeID != nil && *r.AssigneeID != 0 && r.AssigneeName == ""
 		if r.AssigneeID == nil || *r.AssigneeID == 0 || userMissing {
 			if unassigned == nil {
-				unassigned = &group{AssigneeName: "未指派"}
+				unassigned = &group{AssigneeName: i18n.B("notify.digest_unassigned")}
 			}
 			unassigned.Items = append(unassigned.Items, item)
 			continue
@@ -308,7 +309,7 @@ func buildDigestData(project *model.Project, rows []digestIssueRow) map[string]a
 		if !ok {
 			name := r.AssigneeName
 			if name == "" {
-				name = fmt.Sprintf("用户#%d", *r.AssigneeID)
+				name = i18n.Bf("notify.digest_user_fallback", *r.AssigneeID)
 			}
 			g = &group{
 				AssigneeID:   r.AssigneeID,

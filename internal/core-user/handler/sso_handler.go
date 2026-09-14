@@ -47,10 +47,10 @@ func (h *SSOHandler) HandleSSOAuthorize(c *gin.Context) {
 	result, err := h.ssoService.GetAuthURL(c.Request.Context())
 	if err != nil {
 		if errors.Is(err, service.ErrSSODisabled) {
-			response.BadRequest(c, "SSO 未启用")
+			response.BadRequest(c, "user.sso_disabled")
 			return
 		}
-		response.InternalError(c, "获取 SSO 授权地址失败")
+		response.InternalError(c, "user.sso_url_failed")
 		return
 	}
 
@@ -72,7 +72,7 @@ func (h *SSOHandler) HandleSSOAuthorize(c *gin.Context) {
 func (h *SSOHandler) HandleSSOCallback(c *gin.Context) {
 	var req dto.SSOCallbackRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -80,21 +80,21 @@ func (h *SSOHandler) HandleSSOCallback(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrSSODisabled):
-			response.BadRequest(c, "SSO 未启用")
+			response.BadRequest(c, "user.sso_disabled")
 		case errors.Is(err, service.ErrSSOInvalidState):
-			response.BadRequest(c, "无效的认证请求，请重新登录")
+			response.BadRequest(c, "user.auth_request_invalid")
 		case errors.Is(err, service.ErrSSOCodeExchange):
-			response.Unauthorized(c, "SSO 认证失败")
+			response.Unauthorized(c, "user.sso_auth_failed")
 		case errors.Is(err, service.ErrSSOTokenVerify):
-			response.Unauthorized(c, "SSO 令牌验证失败")
+			response.Unauthorized(c, "user.sso_token_failed")
 		case errors.Is(err, service.ErrSSONonceMismatch):
-			response.Unauthorized(c, "SSO 认证请求已过期，请重新登录")
+			response.Unauthorized(c, "user.sso_expired")
 		case errors.Is(err, service.ErrSSOUserDisabled):
-			response.Forbidden(c, "用户已被禁用")
+			response.Forbidden(c, "user.disabled")
 		case errors.Is(err, service.ErrSSOUserNotAllowed):
-			response.Forbidden(c, "用户不允许登录，请联系管理员")
+			response.Forbidden(c, "user.login_not_allowed")
 		default:
-			response.InternalError(c, "SSO 登录失败")
+			response.InternalError(c, "user.sso_login_failed")
 		}
 		return
 	}

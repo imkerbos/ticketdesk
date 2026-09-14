@@ -2,26 +2,21 @@
   <div class="error-page">
     <div class="error-content">
       <div class="error-code">404</div>
-      <div class="error-illustration">
-        <svg viewBox="0 0 200 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="100" cy="60" r="50" fill="#f0f5ff" stroke="#d6e4ff" stroke-width="2" />
-          <path d="M80 50 L90 60 L80 70" stroke="#4f6ef7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M120 50 L110 60 L120 70" stroke="#4f6ef7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
-          <path d="M88 82 Q100 75 112 82" stroke="#4f6ef7" stroke-width="2.5" stroke-linecap="round" fill="none" />
-        </svg>
-      </div>
-      <h2 class="error-title">页面不存在</h2>
-      <p class="error-desc">你访问的页面可能已被移除或地址有误</p>
+      <h2 class="error-title">{{ t('error.notFoundTitle') }}</h2>
+      <p class="error-desc">{{ t('error.notFoundDesc') }}</p>
       <div class="error-actions">
-        <el-button type="primary" @click="router.push('/dashboard')">返回首页</el-button>
-        <el-button @click="router.back()">返回上页</el-button>
+        <el-button type="primary" @click="router.push('/dashboard')">{{ t('error.goHome') }}</el-button>
+        <el-button @click="router.back()">{{ t('error.goBack') }}</el-button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+
+const { t } = useI18n()
 const router = useRouter()
 </script>
 
@@ -31,43 +26,52 @@ const router = useRouter()
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 24px;
   background: var(--td-bg-page);
 }
 
 .error-content {
   text-align: center;
-  padding: 40px;
+  max-width: 420px;
 }
 
+/* 状态码是背景信息，不是这一屏的重点：真正要读的是下面那句说明和两个出口按钮。
+   缩成一行小字标签，把视觉重量全部让给标题。 */
 .error-code {
-  font-size: 120px;
-  font-weight: 800;
-  color: var(--td-color-primary);
+  font-size: 12px;
+  font-weight: 590;
+  letter-spacing: 0.06em;
+  color: var(--td-text-placeholder);
   line-height: 1;
-  margin-bottom: 8px;
-}
-
-.error-illustration {
-  width: 200px;
-  margin: 0 auto 24px;
+  margin-bottom: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .error-title {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 600;
+  letter-spacing: -0.022em;
+  line-height: 1.15;
   color: var(--td-text-primary);
   margin: 0 0 8px;
 }
 
 .error-desc {
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 1.5;
   color: var(--td-text-secondary);
-  margin: 0 0 32px;
+  margin: 0 0 24px;
 }
 
 .error-actions {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
+}
+
+.error-actions :deep(.el-button) {
+  border-radius: 8px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }
 </style>

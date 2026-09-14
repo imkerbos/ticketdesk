@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/subtle"
 	"encoding/base32"
 	"encoding/base64"
 	"errors"
@@ -19,15 +20,17 @@ import (
 
 	"github.com/kerbos/ticketdesk/internal/core-user/dto"
 	"github.com/kerbos/ticketdesk/internal/core-user/repository"
+	"github.com/kerbos/ticketdesk/pkg/cache"
 	"github.com/kerbos/ticketdesk/pkg/logger"
 )
 
 // MFA 相关错误
 var (
-	ErrMFAAlreadyEnabled  = errors.New("MFA 已启用")
-	ErrMFANotEnabled      = errors.New("MFA 未启用")
-	ErrMFAInvalidCode     = errors.New("验证码错误")
-	ErrMFASetupNotStarted = errors.New("MFA 设置未开始")
+	ErrMFAAlreadyEnabled  = errors.New("user.mfa_enabled")
+	ErrMFANotEnabled      = errors.New("user.mfa_not_enabled")
+	ErrMFAInvalidCode     = errors.New("user.code_wrong")
+	ErrMFASetupNotStarted = errors.New("user.mfa_not_started")
+	ErrMFACodeReused      = errors.New("user.code_used")
 )
 
 // TOTP 配置
@@ -135,7 +138,8 @@ func (s *mfaService) VerifyAndEnableMFA(ctx context.Context, userID uint64, code
 	}
 
 	// 验证码
-	if !verifyTOTP(user.MFASecret, code) {
+	ok, _ := verifyTOTP(user.MFASecret, code)
+	if !ok {
 		return ErrMFAInvalidCode
 	}
 
@@ -167,7 +171,8 @@ func (s *mfaService) DisableMFA(ctx context.Context, userID uint64, code string)
 	}
 
 	// 验证码
-	if !verifyTOTP(user.MFASecret, code) {
+	ok, _ := verifyTOTP(user.MFASecret, code)
+	if !ok {
 		return ErrMFAInvalidCode
 	}
 
@@ -198,8 +203,14 @@ func (s *mfaService) VerifyMFA(ctx context.Context, userID uint64, code string) 
 		return ErrMFANotEnabled
 	}
 
-	if !verifyTOTP(user.MFASecret, code) {
+	ok, counter := verifyTOTP(user.MFASecret, code)
+	if !ok {
 		return ErrMFAInvalidCode
+	}
+
+	// 同一个验证码只允许用一次，防止在 ±1 窗口内被重放
+	if !consumeTOTPCounter(ctx, userID, counter) {
+		return ErrMFACodeReused
 	}
 
 	return nil
@@ -261,28 +272,47 @@ func generateOTPAuthURL(account, secret string) string {
 }
 
 // verifyTOTP 验证 TOTP 码
-// 使用简单的实现，支持当前时间窗口和前后各一个窗口
-func verifyTOTP(secret, code string) bool {
+// 支持当前时间窗口和前后各一个窗口，返回是否通过及命中的计数器值
+//
+// 比较使用 subtle.ConstantTimeCompare：字符串 == 会在首个不同字节处提前返回，
+// 攻击者可据此逐位推导正确验证码。
+func verifyTOTP(secret, code string) (bool, uint64) {
 	// 解码密钥
 	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(secret)
 	if err != nil {
-		return false
+		return false, 0
 	}
 
 	// 当前时间戳
 	now := time.Now().Unix()
 
-	// 检查当前窗口和前后各一个窗口
+	matched := false
+	var matchedCounter uint64
+
+	// 检查当前窗口和前后各一个窗口；不提前 break，避免命中位置造成时间差
 	for _, offset := range []int64{-1, 0, 1} {
 		timestamp := now + offset*TOTPPeriod
 		counter := uint64(timestamp / TOTPPeriod)
 		expectedCode := generateHOTP(key, counter)
-		if expectedCode == code {
-			return true
+		if subtle.ConstantTimeCompare([]byte(expectedCode), []byte(code)) == 1 {
+			matched = true
+			matchedCounter = counter
 		}
 	}
 
-	return false
+	return matched, matchedCounter
+}
+
+// consumeTOTPCounter 标记某个 TOTP 时间片已被使用，返回 true 表示本次是首次使用
+//
+// TOTP 码在 ±1 窗口内有效（约 90 秒），期间同一个码可以重复提交。
+// 攻击者只要窃取到一次验证码（肩窥、钓鱼页面、中间人）即可在这段时间内重放登录。
+// 这里用 Redis SETNX 把「用户 + 时间片」标记为已消费，做到一次性。
+// Redis 不可用时返回 true 放行，避免把 MFA 变成单点故障。
+func consumeTOTPCounter(ctx context.Context, userID uint64, counter uint64) bool {
+	key := fmt.Sprintf("mfa:used:%d:%d", userID, counter)
+	// TTL 略大于 ±1 窗口跨度，确保覆盖该码的完整有效期
+	return cache.SetNX(ctx, key, 1, time.Duration(TOTPPeriod*3)*time.Second)
 }
 
 // generateHOTP 生成 HOTP 码

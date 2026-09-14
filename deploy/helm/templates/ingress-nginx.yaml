@@ -1,0 +1,72 @@
+{{- if and .Values.ingress.enabled (eq .Values.ingress.className "nginx") }}
+{{- /*
+  标准 Kubernetes Ingress（ingress-nginx 控制器）。
+
+  chart 原先只提供 Gateway API 与 Istio VirtualService 两种入口，
+  但相当多集群（含 docker-desktop / kind / 云托管的默认安装）用的是 ingress-nginx，
+  缺这个模板就没法部署。三种入口的路由规则保持一致：
+    /ws     -> 后端（WebSocket，需要单独的超时与 Upgrade 处理）
+    /health -> 后端
+    /api    -> 后端（含 /api/v1/swagger UI）
+    /       -> 前端（catch-all，交给 SPA 自己路由）
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "ticketdesk.labels" . | nindent 4 }}
+  annotations:
+    # WebSocket 长连接：默认 60s 会把 /ws 打断，站内通知随之失效
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # 附件上传上限，与后端 MaxAttachmentSize（10MB）对齐，留一点余量
+    nginx.ingress.kubernetes.io/proxy-body-size: "12m"
+    {{- with .Values.ingress.nginx.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: nginx
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /ws
+            pathType: Exact
+            backend:
+              service:
+                name: {{ .Release.Name }}-backend
+                port:
+                  number: {{ .Values.backend.port }}
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: {{ .Release.Name }}-backend
+                port:
+                  number: {{ .Values.backend.port }}
+          # 必须带结尾斜杠。写成 /api 时这条会把前端路由 /api-docs 也吃掉
+          # （转给后端 → 后端没有这个路由 → 直接访问或刷新就是 404，
+          # 从侧边栏点进去因为不刷新反而看不出来）。
+          # 前端所有请求都是 /api/v1/... ，带斜杠不影响。
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-backend
+                port:
+                  number: {{ .Values.backend.port }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}-frontend
+                port:
+                  number: 80
+{{- end }}

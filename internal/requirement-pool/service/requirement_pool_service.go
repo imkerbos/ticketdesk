@@ -47,12 +47,12 @@ func NewRequirementPoolService(
 func (s *requirementPoolService) Create(ctx context.Context, req *dto.CreateRequirementPoolRequest, userID uint64) (*dto.RequirementPoolResponse, error) {
 	// 验证项目级需求池必须关联项目
 	if req.Type == model.RequirementPoolTypeProject && req.ProjectID == nil {
-		return nil, errors.New("项目级需求池必须关联项目")
+		return nil, errors.New("requirement.project_needs_project")
 	}
 
 	// 验证全局需求池不能关联项目
 	if req.Type == model.RequirementPoolTypeGlobal && req.ProjectID != nil {
-		return nil, errors.New("全局需求池不能关联项目")
+		return nil, errors.New("requirement.global_no_project")
 	}
 
 	pool := &model.RequirementPool{
@@ -87,7 +87,7 @@ func (s *requirementPoolService) GetByID(ctx context.Context, id uint64) (*dto.R
 	pool, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("需求池不存在")
+			return nil, errors.New("requirement.pool_not_found")
 		}
 		s.logger.Error("failed to get requirement pool",
 			zap.Error(err),
@@ -113,7 +113,7 @@ func (s *requirementPoolService) Update(ctx context.Context, id uint64, req *dto
 	pool, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("需求池不存在")
+			return errors.New("requirement.pool_not_found")
 		}
 		return fmt.Errorf("获取需求池失败: %w", err)
 	}
@@ -155,7 +155,7 @@ func (s *requirementPoolService) Delete(ctx context.Context, id, userID uint64) 
 	pool, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("需求池不存在")
+			return errors.New("requirement.pool_not_found")
 		}
 		return fmt.Errorf("获取需求池失败: %w", err)
 	}
@@ -283,7 +283,7 @@ func (s *requirementPoolService) toPoolResponse(pool *model.RequirementPool, req
 	}
 
 	if pool.Owner != nil {
-		resp.OwnerName = pool.Owner.Username
+		resp.OwnerName = pool.Owner.DisplayName
 	}
 
 	if pool.Project != nil {

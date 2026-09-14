@@ -12,15 +12,15 @@
         <div class="feature-list">
           <div class="feature-item stagger" style="--i: 0">
             <el-icon class="feature-icon"><Tickets /></el-icon>
-            <span>项目化工单管理</span>
+            <span>{{ t('auth.featureIssue') }}</span>
           </div>
           <div class="feature-item stagger" style="--i: 1">
             <el-icon class="feature-icon"><Bell /></el-icon>
-            <span>告警自动建单</span>
+            <span>{{ t('auth.featureAlert') }}</span>
           </div>
           <div class="feature-item stagger" style="--i: 2">
             <el-icon class="feature-icon"><Connection /></el-icon>
-            <span>审批工作流引擎</span>
+            <span>{{ t('auth.featureWorkflow') }}</span>
           </div>
         </div>
       </div>
@@ -33,11 +33,14 @@
     <div class="login-section">
       <div :class="['login-container', { shake: shaking }]" @animationend="shaking = false">
         <div class="login-header fade-up" style="--i: 0">
-          <h2 class="login-title">欢迎回来</h2>
-          <p class="login-subtitle">请登录您的账户</p>
+          <h2 class="login-title">{{ mfaRequired ? t('auth.mfaTitle') : t('auth.welcomeBack') }}</h2>
+          <p class="login-subtitle">
+            {{ mfaRequired ? t('auth.mfaSubtitle') : t('auth.loginSubtitle') }}
+          </p>
         </div>
 
         <el-form
+          v-if="!mfaRequired"
           ref="formRef"
           :model="form"
           :rules="rules"
@@ -46,10 +49,10 @@
           hide-required-asterisk
           @submit.prevent="handleLogin"
         >
-          <el-form-item prop="username" label="用户名" class="fade-up" style="--i: 1">
+          <el-form-item prop="username" :label="t('auth.username')" class="fade-up" style="--i: 1">
             <el-input
               v-model="form.username"
-              placeholder="请输入用户名"
+              :placeholder="t('auth.usernamePlaceholder')"
               size="large"
               class="form-input"
             >
@@ -59,11 +62,11 @@
             </el-input>
           </el-form-item>
 
-          <el-form-item prop="password" label="密码" class="fade-up" style="--i: 2">
+          <el-form-item prop="password" :label="t('auth.password')" class="fade-up" style="--i: 2">
             <el-input
               v-model="form.password"
               type="password"
-              placeholder="请输入密码"
+              :placeholder="t('auth.passwordPlaceholder')"
               size="large"
               show-password
               class="form-input"
@@ -77,8 +80,8 @@
 
           <el-form-item class="remember-row fade-up" style="--i: 3">
             <div class="remember-forgot">
-              <el-checkbox v-model="rememberMe">记住我</el-checkbox>
-              <router-link to="/forgot-password" class="forgot-link">忘记密码？</router-link>
+              <el-checkbox v-model="rememberMe">{{ t('auth.rememberMe') }}</el-checkbox>
+              <router-link to="/forgot-password" class="forgot-link">{{ t('auth.forgotPassword') }}</router-link>
             </div>
           </el-form-item>
 
@@ -90,15 +93,54 @@
               :loading="loading"
               @click="handleLogin"
             >
-              {{ loading ? '登录中...' : '登录' }}
+              {{ loading ? t('auth.loggingIn') : t('auth.login') }}
             </el-button>
           </el-form-item>
         </el-form>
 
+        <!-- 两步验证：密码校验通过后凭挑战令牌提交 TOTP 码 -->
+        <el-form v-else class="login-form" label-position="top" @submit.prevent="handleVerifyMFA">
+          <el-form-item :label="t('auth.mfaCode')">
+            <el-input
+              ref="mfaInputRef"
+              v-model="mfaCode"
+              :placeholder="t('auth.mfaPlaceholder')"
+              size="large"
+              maxlength="6"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              class="form-input"
+              @input="mfaCode = mfaCode.replace(/\D/g, '')"
+              @keyup.enter="handleVerifyMFA"
+            >
+              <template #prefix>
+                <el-icon class="input-icon"><Key /></el-icon>
+              </template>
+            </el-input>
+          </el-form-item>
+
+          <el-form-item>
+            <el-button
+              type="primary"
+              size="large"
+              class="login-button"
+              :loading="loading"
+              :disabled="mfaCode.length !== 6"
+              @click="handleVerifyMFA"
+            >
+              {{ t('auth.mfaSubmit') }}
+            </el-button>
+          </el-form-item>
+
+          <el-form-item>
+            <el-button link class="mfa-back" @click="cancelMFA">{{ t('auth.mfaBack') }}</el-button>
+          </el-form-item>
+        </el-form>
+
         <!-- SSO 登录区域 -->
-        <div v-if="ssoConfig?.enabled" class="sso-section fade-up" style="--i: 5">
+        <div v-if="ssoConfig?.enabled && !mfaRequired" class="sso-section fade-up" style="--i: 5">
           <div class="sso-divider">
-            <span class="sso-divider-text">或</span>
+            <span class="sso-divider-text">{{ t('auth.or') }}</span>
           </div>
           <el-button
             size="large"
@@ -106,7 +148,7 @@
             :loading="ssoLoading"
             @click="handleSSOLogin"
           >
-            {{ ssoConfig.provider_name || 'SSO 登录' }}
+            {{ ssoConfig.provider_name || t('auth.ssoLogin') }}
           </el-button>
         </div>
       </div>
@@ -115,13 +157,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { applyAccountLocale } from '@/i18n'
+import { useI18n } from 'vue-i18n'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { User, Lock, Tickets, Bell, Connection } from '@element-plus/icons-vue'
-import { login, getSSOConfig, getSSOAuthorizeURL, type SSOConfigResponse } from '@/api/auth'
+import { User, Lock, Key, Tickets, Bell, Connection } from '@element-plus/icons-vue'
+import { login, verifyMFALogin, getSSOConfig, getSSOAuthorizeURL, type SSOConfigResponse, type LoginResponse } from '@/api/auth'
 import { useUserStore } from '@/stores/user'
 import { useBrandStore } from '@/stores/brand'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -133,8 +179,20 @@ const ssoConfig = ref<SSOConfigResponse | null>(null)
 const ssoLoading = ref(false)
 const shaking = ref(false)
 
+// 品牌描述来自后台可配置项，经公开的 GET /api/v1/brand 下发。
+// 之前直接把原文交给 v-html，只替换了换行 —— 任何能改品牌配置的人都能把脚本
+// 注入到所有人的登录页（此时 token 就存在 localStorage 里，可被直接读走）。
+// 这里先做 HTML 转义，再把换行还原成 <br />，保证只有换行是「标签」。
+const escapeHtml = (raw: string): string =>
+  raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+
 const brandDescriptionHtml = computed(() => {
-  return brandStore.loginDescription.replace(/\n/g, '<br />')
+  return escapeHtml(brandStore.loginDescription ?? '').replace(/\n/g, '<br />')
 })
 
 const form = reactive({
@@ -144,12 +202,54 @@ const form = reactive({
 
 const rules: FormRules = {
   username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { required: true, message: t('auth.usernameRequired'), trigger: ['blur', 'change'] },
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度至少为 6 位', trigger: 'blur' },
+    { required: true, message: t('auth.passwordRequired'), trigger: ['blur', 'change'] },
+    { min: 6, message: t('auth.passwordMinLen'), trigger: 'blur' },
   ],
+}
+
+// 两步验证状态：mfaToken 是密码校验通过后由后端下发的短期挑战令牌
+const mfaRequired = ref(false)
+const mfaToken = ref('')
+const mfaCode = ref('')
+const mfaInputRef = ref()
+
+// 登录成功的收尾动作（普通登录与两步验证共用）
+const finishLogin = (data: LoginResponse) => {
+  if (!data.access_token || !data.refresh_token || !data.user) {
+    ElMessage.error(t('auth.loginRespError'))
+    return
+  }
+  userStore.login(data.access_token, data.refresh_token, data.user)
+  // 账号里存的语言优先于本机选择：换设备登录要跟上账号设置
+  applyAccountLocale(data.user.locale)
+  ElMessage.success(t('auth.welcomeUser', { name: data.user.display_name || data.user.username }))
+  router.push('/')
+}
+
+const cancelMFA = () => {
+  mfaRequired.value = false
+  mfaToken.value = ''
+  mfaCode.value = ''
+  form.password = ''
+}
+
+const handleVerifyMFA = async () => {
+  if (mfaCode.value.length !== 6 || loading.value) return
+
+  loading.value = true
+  try {
+    const res = await verifyMFALogin({ mfa_token: mfaToken.value, code: mfaCode.value })
+    finishLogin(res.data.data)
+  } catch {
+    // 错误提示已由 request 拦截器统一处理
+    mfaCode.value = ''
+    shaking.value = true
+  } finally {
+    loading.value = false
+  }
 }
 
 const handleLogin = async () => {
@@ -168,12 +268,19 @@ const handleLogin = async () => {
         password: form.password,
       })
 
-      // 使用 store 保存用户信息
-      const { access_token, refresh_token, user } = res.data.data
-      userStore.login(access_token, refresh_token, user)
+      const data = res.data.data
 
-      ElMessage.success(`欢迎回来，${user.display_name || user.username}`)
-      router.push('/')
+      // 账号启用了 MFA：此时尚未登录，切到第二步
+      if (data.requires_mfa && data.mfa_token) {
+        mfaToken.value = data.mfa_token
+        mfaRequired.value = true
+        mfaCode.value = ''
+        await nextTick()
+        mfaInputRef.value?.focus()
+        return
+      }
+
+      finishLogin(data)
     } catch {
       // 错误已在 request 拦截器中处理
       shaking.value = true
@@ -191,7 +298,7 @@ const handleSSOLogin = async () => {
     const { authorize_url } = res.data.data
     window.location.href = authorize_url
   } catch {
-    ElMessage.error('获取 SSO 登录地址失败')
+    ElMessage.error(t('auth.ssoUrlFailed'))
     ssoLoading.value = false
   }
 }
@@ -221,8 +328,11 @@ onMounted(async () => {
   flex-direction: column;
   justify-content: space-between;
   padding: 48px;
-  background: var(--td-sidebar-bg);
-  color: var(--td-text-white);
+  /* 侧边栏翻成浅色之后，这里再用 --td-sidebar-bg 配白字就是白底白字。
+     品牌面板改成分区底色 + 正常文字色，和应用内保持一套。 */
+  background: var(--td-bg-section);
+  color: var(--td-text-primary);
+  border-right: 1px solid var(--td-border-color);
 }
 
 .brand-content {
@@ -258,7 +368,7 @@ onMounted(async () => {
 .brand-description {
   font-size: 16px;
   line-height: 1.8;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--td-text-secondary);
   margin: 0 0 48px;
 }
 
@@ -273,14 +383,14 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   font-size: 15px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--td-text-regular);
 }
 
+/* 只留图标，不套方块（§3.1 不放装饰性图标色块） */
 .feature-icon {
-  width: 40px;
-  height: 40px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  width: 18px;
+  height: 18px;
+  color: var(--td-text-placeholder);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -289,7 +399,7 @@ onMounted(async () => {
 
 .brand-footer {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--td-text-placeholder);
 }
 
 /* 右侧登录表单区域 */
@@ -311,8 +421,9 @@ onMounted(async () => {
 }
 
 .login-title {
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.022em;
   color: var(--td-text-primary);
   margin: 0 0 8px;
 }
@@ -325,6 +436,12 @@ onMounted(async () => {
 
 .login-form {
   width: 100%;
+}
+
+.mfa-back {
+  width: 100%;
+  justify-content: center;
+  color: var(--td-text-secondary);
 }
 
 .login-form :deep(.el-form-item__label) {
@@ -365,7 +482,7 @@ onMounted(async () => {
 }
 
 .form-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  box-shadow: var(--td-focus-ring);
 }
 
 .input-icon {
@@ -397,9 +514,9 @@ onMounted(async () => {
   transition: background-color 150ms ease-out, box-shadow 150ms ease-out;
 }
 
+/* hover 只换底色，不加光晕（方向 A / Apple 都是这条） */
 .login-button:hover {
   background: var(--td-color-primary-hover);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
 }
 
 .login-button:active {

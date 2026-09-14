@@ -128,7 +128,8 @@ const handleChange = (value: number | undefined) => {
 }
 
 .epic-key {
-  color: var(--el-color-primary);
+  color: var(--td-color-primary);
+  font-family: var(--td-font-mono);
   font-weight: 500;
 }
 

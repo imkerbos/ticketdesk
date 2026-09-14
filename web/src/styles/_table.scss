@@ -9,24 +9,40 @@
   --el-table-border: 1px solid var(--td-border-color);
   --el-table-text-color: var(--td-text-primary);
 
-  border-radius: var(--td-radius-lg);
-  overflow: hidden;
+  border-radius: 0;
   background: var(--td-bg-card);
   font-size: var(--td-font-base);
 
   // 头部
   .el-table__header-wrapper {
     th.el-table__cell {
-      background: var(--td-bg-section) !important;
-      color: var(--td-text-regular) !important;
-      font-weight: var(--td-weight-semibold);
-      font-size: var(--td-font-sm);
+      // 表头是"列名"不是"区块标题"：不加底色，靠字重与一条实线站住即可。
+      //
+      // 这里必须写显式色值而不是 transparent：固定列浮在横向滚动的内容之上，
+      // 透明会让滚到它下面的那一列透上来（两个列名叠在一起）。所以固定列
+      // 一定要有自己的底色；而普通单元格若是 transparent，两者就永远是
+      // "一个透出卡片底、一个是自己的色"，只要这两个值不完全相等就会看出
+      // 两个方框——先前它比周围亮一档，换过一次值之后又暗一档。
+      // 两边锁死成同一个卡片底色，这个框才真正消失。
+      background: var(--td-bg-card) !important;
+      color: var(--td-text-secondary) !important;
+
+      &.el-table-fixed-column--left,
+      &.el-table-fixed-column--right {
+        background: var(--td-bg-card) !important;
+      }
+
+      font-weight: var(--td-weight-medium);
+      font-size: var(--td-font-xs);
       letter-spacing: var(--td-tracking-wide);
-      padding: var(--td-space-2) 0;
+      // 高度锁 32px，内边距归零：留着 padding 会让实际高度变成 38px，
+      // 下面每一行都跟着往下挪
+      padding: 0;
       border-bottom: 1px solid var(--td-border-color);
+      height: 32px;
 
       .cell {
-        padding: 0 var(--td-space-4);
+        padding: 0 var(--td-space-3);
         line-height: var(--td-leading-tight);
       }
     }
@@ -35,15 +51,31 @@
   // 单元格
   .el-table__body-wrapper {
     td.el-table__cell {
-      padding: var(--td-space-3) 0;
+      // 行高从约 63px 压到约 44px：这是每天要扫几百行的主力视图，
+      // 密度直接决定一屏能看到多少工单
+      padding: var(--td-space-2) 0;
+      height: 44px;
       border-bottom: 1px solid var(--td-border-color-light, var(--td-divider-color));
 
       .cell {
-        padding: 0 var(--td-space-4);
-        line-height: var(--td-leading-normal);
+        padding: 0 var(--td-space-3);
+        line-height: var(--td-leading-tight);
         word-break: normal;
+        font-size: var(--td-font-base);
       }
     }
+  }
+
+  // 只放一个标签的格子不做截断：标签本身完全放得下（70px < 76px 可用宽），
+  // 但浏览器给出的 scrollWidth 偏大，Element 默认的 text-overflow 就会在标签后面
+  // 吊一个孤立的省略号，读起来像数据被截断了
+  .cell:has(> .el-tag) {
+    text-overflow: clip;
+  }
+
+  td.el-table-fixed-column--left,
+  td.el-table-fixed-column--right {
+    background: var(--td-bg-card);
   }
 
   // 行 hover 节奏
@@ -89,6 +121,37 @@
   }
 }
 
+// 排序箭头：常驻 → 悬停出现。八个列头挂八组上下三角是纯噪音，
+// 而多数时候用户并不在排序。已经按某列排序时那一列常显，
+// 否则看不出当前依据的是哪一列。
+// 绝对定位：箭头不占列宽。只设 opacity 的话它仍然占着 24px，
+// 窄列（优先级 62px）的列名会被挤到换行，那一列的表头就比别人高一截。
+.el-table th.el-table__cell.is-sortable .cell {
+  position: relative;
+  padding-right: var(--td-space-3);
+}
+
+.el-table th.el-table__cell.is-sortable .caret-wrapper {
+  position: absolute;
+  right: -2px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity var(--td-duration-fast) var(--td-ease-out);
+}
+
+.el-table th.el-table__cell.is-sortable:hover .caret-wrapper,
+.el-table th.el-table__cell.ascending .caret-wrapper,
+.el-table th.el-table__cell.descending .caret-wrapper {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .el-table th.el-table__cell.is-sortable .caret-wrapper {
+    opacity: 1;
+  }
+}
+
 // 表格内的按钮统一更紧凑
 .el-table .el-button + .el-button {
   margin-left: var(--td-space-1);
@@ -102,5 +165,44 @@
 @media (prefers-reduced-motion: reduce) {
   .el-table .el-table__row {
     transition: none;
+  }
+}
+
+// ============ 行内操作：常驻 → 悬停出现 ============
+// 每一行右侧常驻一个红色「删除」，一屏就是十几个删除按钮，
+// 既是视觉噪音，也提高了误触概率。
+//
+// 选择器针对 td.el-table-fixed-column--right —— 这是 Element Plus 当前
+// 渲染固定列的方式。早先这里写的是 .el-table__fixed-right 容器，
+// 那是旧版本的结构，新版根本不生成，所以整段规则一直没有生效过
+// （用浏览器打出真实 DOM 链才发现，光看代码看不出来）。
+//
+// 各页面把按钮包在不同的容器里（.action-buttons / .action-group），
+// 只认 .el-button 直接子元素会漏掉一半页面，所以容器名要一起列出。
+// 不用 `> *` 通配：报表页的固定列装的是合计数据，不是操作。
+//
+// 用 opacity 而非 display：列宽保持稳定，悬停时不发生布局跳动。
+@each $sel in '.el-button', '.el-dropdown', '.el-button-group', '.action-group', '.action-buttons' {
+  .el-table td.el-table-fixed-column--right .cell > #{$sel} {
+    opacity: 0;
+    transition: opacity var(--td-duration-fast) var(--td-ease-out);
+  }
+
+  .el-table__row:hover td.el-table-fixed-column--right .cell > #{$sel},
+  .el-table td.el-table-fixed-column--right .cell:focus-within > #{$sel} {
+    opacity: 1;
+  }
+
+  // 触屏没有 hover，常显，否则功能不可达
+  @media (hover: none) {
+    .el-table td.el-table-fixed-column--right .cell > #{$sel} {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .el-table td.el-table-fixed-column--right .cell > #{$sel} {
+      transition: none;
+    }
   }
 }

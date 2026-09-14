@@ -15,6 +15,7 @@ import (
 	"github.com/kerbos/ticketdesk/internal/integration-alert/repository"
 	"github.com/kerbos/ticketdesk/pkg/config"
 	"github.com/kerbos/ticketdesk/pkg/logger"
+	"github.com/kerbos/ticketdesk/pkg/safego"
 )
 
 // ============ N9eClient — 夜莺 API 客户端 ============
@@ -176,7 +177,7 @@ func (p *N9ePoller) Start() {
 		zap.Duration("interval", p.interval),
 	)
 
-	go p.run()
+	safego.Go("nightingale.poller", p.run)
 }
 
 // Stop 停止轮询器
@@ -192,7 +193,7 @@ func (p *N9ePoller) run() {
 	defer close(p.doneCh)
 
 	// 启动后立即执行一次
-	p.poll()
+	safego.Run("nightingale.poll", p.poll)
 
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
@@ -202,7 +203,8 @@ func (p *N9ePoller) run() {
 		case <-p.stopCh:
 			return
 		case <-ticker.C:
-			p.poll()
+			// 单次轮询 panic 不应终止轮询循环
+			safego.Run("nightingale.poll", p.poll)
 		}
 	}
 }

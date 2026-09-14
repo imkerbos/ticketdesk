@@ -205,6 +205,8 @@ type UserRoleRepository interface {
 	Delete(ctx context.Context, userID, roleID uint64) error
 	GetUserRoles(ctx context.Context, userID uint64) ([]*model.Role, error)
 	GetUserRoleNames(ctx context.Context, userID uint64) ([]string, error)
+	// GetRoleNamesByUserIDs 批量获取多个用户的角色名，避免列表场景 N+1
+	GetRoleNamesByUserIDs(ctx context.Context, userIDs []uint64) (map[uint64][]string, error)
 	HasRole(ctx context.Context, userID uint64, roleName string) (bool, error)
 	AssignRole(ctx context.Context, userID uint64, roleName string) error
 }
@@ -238,6 +240,36 @@ func (r *userRoleRepository) GetUserRoles(ctx context.Context, userID uint64) ([
 		Where("user_roles.user_id = ?", userID).
 		Find(&roles).Error
 	return roles, err
+}
+
+// GetRoleNamesByUserIDs 批量获取多个用户的角色名称
+//
+// 用户列表原先对每条记录单独查一次角色：一页 20 条就是 1 + 20 次查询。
+// 这里一次 JOIN 取回全部，再在内存里按用户分组。
+func (r *userRoleRepository) GetRoleNamesByUserIDs(ctx context.Context, userIDs []uint64) (map[uint64][]string, error) {
+	result := make(map[uint64][]string, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+
+	var rows []struct {
+		UserID uint64
+		Name   string
+	}
+	err := r.db.WithContext(ctx).
+		Table("roles").
+		Select("user_roles.user_id AS user_id, roles.name AS name").
+		Joins("INNER JOIN user_roles ON roles.id = user_roles.role_id").
+		Where("user_roles.user_id IN ?", userIDs).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		result[row.UserID] = append(result[row.UserID], row.Name)
+	}
+	return result, nil
 }
 
 // GetUserRoleNames 获取用户的所有角色名称

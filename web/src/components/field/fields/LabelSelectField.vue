@@ -20,7 +20,7 @@
       <div class="label-option">
         <span
           class="label-color"
-          :style="{ backgroundColor: label.color || '#909399' }"
+          :style="{ backgroundColor: label.color || 'var(--td-color-info)' }"
         ></span>
         <span class="label-name">{{ label.name }}</span>
       </div>

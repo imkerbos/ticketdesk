@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 
+	"github.com/kerbos/ticketdesk/internal/api/middleware"
 	"github.com/kerbos/ticketdesk/internal/api/response"
 	"github.com/kerbos/ticketdesk/internal/core-issue/dto"
 	"github.com/kerbos/ticketdesk/internal/core-issue/service"
@@ -22,10 +23,22 @@ type FieldServiceInterface interface {
 	GetIssueIDsByEpicLink(ctx context.Context, epicID uint64) ([]uint64, error)
 }
 
+// ProjectPermissionChecker 校验用户在指定项目下是否拥有某权限
+type ProjectPermissionChecker interface {
+	CheckUserPermission(ctx context.Context, projectKey string, userID uint64, permission string) (bool, error)
+}
+
 // IssueHandler 工单处理器
 type IssueHandler struct {
 	issueService service.IssueService
 	fieldService FieldServiceInterface
+	// permChecker 建单权限校验；项目标识在请求体里，路由中间件取不到，只能在此处校验
+	permChecker ProjectPermissionChecker
+}
+
+// SetPermissionChecker 注入项目权限校验器
+func (h *IssueHandler) SetPermissionChecker(c ProjectPermissionChecker) {
+	h.permChecker = c
 }
 
 // NewIssueHandler 创建工单处理器实例
@@ -33,6 +46,27 @@ func NewIssueHandler(issueService service.IssueService) *IssueHandler {
 	return &IssueHandler{
 		issueService: issueService,
 	}
+}
+
+// canCreateInProject 校验当前用户能否在该项目建单；不通过时已写入响应
+func (h *IssueHandler) canCreateInProject(c *gin.Context, projectKey string, userID uint64) bool {
+	if h.permChecker == nil {
+		return true
+	}
+	// 系统管理员直接放行，与其它权限中间件保持一致
+	if middleware.IsAdmin(c) {
+		return true
+	}
+	has, err := h.permChecker.CheckUserPermission(c.Request.Context(), strings.ToUpper(projectKey), userID, "issue:create")
+	if err != nil {
+		response.InternalErrorT(c, "perm.check_failed")
+		return false
+	}
+	if !has {
+		response.ForbiddenT(c, "perm.denied")
+		return false
+	}
+	return true
 }
 
 // SetFieldService 设置字段服务（避免循环依赖）
@@ -79,20 +113,20 @@ func (h *IssueHandler) HandleCreateIssue(c *gin.Context) {
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		dataStr := c.PostForm("data")
 		if dataStr == "" {
-			response.BadRequest(c, "缺少表单字段 data")
+			response.BadRequestT(c, "issue.missing_form_data")
 			return
 		}
 		if err := json.Unmarshal([]byte(dataStr), &req); err != nil {
-			response.BadRequest(c, "请求参数错误: "+err.Error())
+			response.BadRequestValidation(c, err)
 			return
 		}
 		if err := binding.Validator.ValidateStruct(&req); err != nil {
-			response.BadRequest(c, "请求参数错误: "+err.Error())
+			response.BadRequestValidation(c, err)
 			return
 		}
 		form, err := c.MultipartForm()
 		if err != nil {
-			response.BadRequest(c, "解析 multipart 表单失败: "+err.Error())
+			response.BadRequest(c, response.T(c, "issue.multipart_failed_detail")+err.Error())
 			return
 		}
 		if form != nil {
@@ -100,9 +134,15 @@ func (h *IssueHandler) HandleCreateIssue(c *gin.Context) {
 		}
 	} else {
 		if err := c.ShouldBindJSON(&req); err != nil {
-			response.BadRequest(c, "请求参数错误: "+err.Error())
+			response.BadRequestValidation(c, err)
 			return
 		}
+	}
+
+	// 建单权限校验：项目标识来自请求体，无法在路由中间件里判定，
+	// 缺了这道校验任何登录用户都能往任意项目建单
+	if !h.canCreateInProject(c, req.ProjectKey, userID) {
+		return
 	}
 
 	var (
@@ -122,11 +162,11 @@ func (h *IssueHandler) HandleCreateIssue(c *gin.Context) {
 		case errors.Is(err, service.ErrIssueTypeNotFound):
 			response.BadRequest(c, err.Error())
 		case errors.Is(err, service.ErrFileTooLarge):
-			response.BadRequest(c, "文件大小超过限制（最大10MB）")
+			response.BadRequestT(c, "issue.file_too_large_10mb")
 		case errors.Is(err, service.ErrInvalidFileType):
-			response.BadRequest(c, "不支持的文件类型")
+			response.BadRequestT(c, "issue.invalid_file_type")
 		default:
-			response.InternalError(c, "创建工单失败")
+			response.InternalErrorT(c, "issue.create_failed")
 		}
 		return
 	}
@@ -153,7 +193,7 @@ func (h *IssueHandler) HandleGetIssue(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取工单失败")
+		response.InternalErrorT(c, "issue.load_failed")
 		return
 	}
 
@@ -178,7 +218,7 @@ func (h *IssueHandler) HandleUpdateIssue(c *gin.Context) {
 
 	var req dto.UpdateIssueRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -190,7 +230,7 @@ func (h *IssueHandler) HandleUpdateIssue(c *gin.Context) {
 		case errors.Is(err, service.ErrIssueTypeNotFound):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "更新工单失败")
+			response.InternalErrorT(c, "issue.update_failed")
 		}
 		return
 	}
@@ -217,11 +257,11 @@ func (h *IssueHandler) HandleDeleteIssue(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "删除工单失败")
+		response.InternalErrorT(c, "issue.delete_failed")
 		return
 	}
 
-	response.Success(c, gin.H{"message": "工单删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "issue.deleted")})
 }
 
 // HandleListIssues 获取工单列表
@@ -251,7 +291,7 @@ func (h *IssueHandler) HandleDeleteIssue(c *gin.Context) {
 func (h *IssueHandler) HandleListIssues(c *gin.Context) {
 	var req dto.ListIssuesRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -268,7 +308,7 @@ func (h *IssueHandler) HandleListIssues(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取工单列表失败")
+		response.InternalErrorT(c, "issue.list_failed")
 		return
 	}
 
@@ -287,7 +327,7 @@ func (h *IssueHandler) HandleListIssues(c *gin.Context) {
 func (h *IssueHandler) HandleGetIssueListStats(c *gin.Context) {
 	var req dto.ListIssuesRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -304,7 +344,7 @@ func (h *IssueHandler) HandleGetIssueListStats(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取工单统计失败")
+		response.InternalErrorT(c, "issue.stats_failed")
 		return
 	}
 
@@ -326,7 +366,7 @@ func (h *IssueHandler) HandleGetIssueListStats(c *gin.Context) {
 func (h *IssueHandler) HandleGetProjectOverviewStats(c *gin.Context) {
 	var req dto.ProjectOverviewStatsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -336,7 +376,7 @@ func (h *IssueHandler) HandleGetProjectOverviewStats(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取项目概述统计失败")
+		response.InternalErrorT(c, "issue.project_stats_failed")
 		return
 	}
 
@@ -359,10 +399,10 @@ func (h *IssueHandler) HandleListIssuesInEpic(c *gin.Context) {
 	issues, err := h.issueService.ListIssuesInEpic(c.Request.Context(), epicKey)
 	if err != nil {
 		if errors.Is(err, service.ErrIssueNotFound) {
-			response.NotFound(c, "Epic 不存在")
+			response.NotFound(c, "issue.epic_not_found")
 			return
 		}
-		response.InternalError(c, "获取 Epic 关联工单失败")
+		response.InternalErrorT(c, "issue.epic_issues_failed")
 		return
 	}
 
@@ -387,7 +427,7 @@ func (h *IssueHandler) HandleAssignIssue(c *gin.Context) {
 
 	var req dto.AssignIssueRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -399,7 +439,7 @@ func (h *IssueHandler) HandleAssignIssue(c *gin.Context) {
 		case errors.Is(err, service.ErrUserNotFound):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "指派工单失败")
+			response.InternalErrorT(c, "issue.assign_failed")
 		}
 		return
 	}
@@ -423,10 +463,10 @@ func (h *IssueHandler) HandleListSubtasks(c *gin.Context) {
 	subtasks, err := h.issueService.ListSubtasks(c.Request.Context(), parentKey)
 	if err != nil {
 		if errors.Is(err, service.ErrIssueNotFound) {
-			response.NotFound(c, "父工单不存在")
+			response.NotFoundT(c, "issue.parent_not_found")
 			return
 		}
-		response.InternalError(c, "获取子任务失败")
+		response.InternalErrorT(c, "issue.subtasks_failed")
 		return
 	}
 
@@ -451,7 +491,7 @@ func (h *IssueHandler) HandleAddComment(c *gin.Context) {
 
 	var req dto.CreateCommentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -462,7 +502,7 @@ func (h *IssueHandler) HandleAddComment(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "添加评论失败")
+		response.InternalErrorT(c, "issue.add_comment_failed")
 		return
 	}
 
@@ -488,7 +528,7 @@ func (h *IssueHandler) HandleListComments(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取评论列表失败")
+		response.InternalErrorT(c, "issue.comments_failed")
 		return
 	}
 
@@ -509,7 +549,7 @@ func (h *IssueHandler) HandleListComments(c *gin.Context) {
 func (h *IssueHandler) HandleDeleteComment(c *gin.Context) {
 	commentID, err := strconv.ParseUint(c.Param("comment_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的评论 ID")
+		response.BadRequest(c, "issue.invalid_comment_id2")
 		return
 	}
 
@@ -524,7 +564,7 @@ func (h *IssueHandler) HandleDeleteComment(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"message": "评论删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "issue.comment_deleted")})
 }
 
 // HandleAddWatcher 添加关注人
@@ -554,16 +594,16 @@ func (h *IssueHandler) HandleAddWatcher(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrIssueNotFound):
-			response.NotFound(c, err.Error())
+			response.NotFoundT(c, "issue.not_found")
 		case errors.Is(err, service.ErrAlreadyWatching):
-			response.BadRequest(c, err.Error())
+			response.BadRequestT(c, "issue.already_watching")
 		default:
-			response.InternalError(c, "添加关注失败")
+			response.InternalErrorT(c, "issue.watch_failed")
 		}
 		return
 	}
 
-	response.Success(c, gin.H{"message": "关注成功"})
+	response.Success(c, gin.H{"message": response.T(c, "issue.watched")})
 }
 
 // HandleRemoveWatcher 移除关注人
@@ -581,7 +621,7 @@ func (h *IssueHandler) HandleRemoveWatcher(c *gin.Context) {
 	key := c.Param("key")
 	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
@@ -591,11 +631,11 @@ func (h *IssueHandler) HandleRemoveWatcher(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "取消关注失败")
+		response.InternalErrorT(c, "issue.unwatch_failed")
 		return
 	}
 
-	response.Success(c, gin.H{"message": "取消关注成功"})
+	response.Success(c, gin.H{"message": response.T(c, "issue.unwatched")})
 }
 
 // HandleListWatchers 获取关注人列表
@@ -617,7 +657,7 @@ func (h *IssueHandler) HandleListWatchers(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取关注人列表失败")
+		response.InternalErrorT(c, "issue.watchers_failed")
 		return
 	}
 
@@ -656,7 +696,7 @@ func (h *IssueHandler) HandleListMyTodoIssues(c *gin.Context) {
 
 	issues, total, hasMore, err := h.issueService.ListMyTodoIssues(c.Request.Context(), userID, page, pageSize, projectIDs)
 	if err != nil {
-		response.InternalError(c, "获取我的待办工单失败")
+		response.InternalErrorT(c, "issue.my_todo_failed")
 		return
 	}
 
@@ -695,7 +735,7 @@ func (h *IssueHandler) HandleListMyCreatedIssues(c *gin.Context) {
 
 	issues, total, hasMore, err := h.issueService.ListMyCreatedIssues(c.Request.Context(), userID, page, pageSize, projectIDs)
 	if err != nil {
-		response.InternalError(c, "获取我创建的工单失败")
+		response.InternalErrorT(c, "issue.my_created_failed")
 		return
 	}
 
@@ -723,7 +763,7 @@ func (h *IssueHandler) HandleAddWorklog(c *gin.Context) {
 
 	var req dto.CreateWorklogRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -735,7 +775,7 @@ func (h *IssueHandler) HandleAddWorklog(c *gin.Context) {
 		case errors.Is(err, service.ErrInvalidTimeFormat):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "添加工作日志失败")
+			response.InternalErrorT(c, "issue.add_worklog_failed")
 		}
 		return
 	}
@@ -762,7 +802,7 @@ func (h *IssueHandler) HandleUpdateWorklog(c *gin.Context) {
 	worklogIDStr := c.Param("worklog_id")
 	worklogID, err := strconv.ParseUint(worklogIDStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工作日志ID")
+		response.BadRequestT(c, "issue.invalid_worklog_id")
 		return
 	}
 
@@ -770,7 +810,7 @@ func (h *IssueHandler) HandleUpdateWorklog(c *gin.Context) {
 
 	var req dto.UpdateWorklogRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -780,11 +820,11 @@ func (h *IssueHandler) HandleUpdateWorklog(c *gin.Context) {
 		case errors.Is(err, service.ErrWorklogNotFound):
 			response.NotFound(c, err.Error())
 		case errors.Is(err, service.ErrUnauthorized):
-			response.Forbidden(c, "无权限操作")
+			response.ForbiddenT(c, "perm.denied")
 		case errors.Is(err, service.ErrInvalidTimeFormat):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "更新工作日志失败")
+			response.InternalErrorT(c, "issue.update_worklog_failed")
 		}
 		return
 	}
@@ -809,7 +849,7 @@ func (h *IssueHandler) HandleDeleteWorklog(c *gin.Context) {
 	worklogIDStr := c.Param("worklog_id")
 	worklogID, err := strconv.ParseUint(worklogIDStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工作日志ID")
+		response.BadRequestT(c, "issue.invalid_worklog_id")
 		return
 	}
 
@@ -821,9 +861,9 @@ func (h *IssueHandler) HandleDeleteWorklog(c *gin.Context) {
 		case errors.Is(err, service.ErrWorklogNotFound):
 			response.NotFound(c, err.Error())
 		case errors.Is(err, service.ErrUnauthorized):
-			response.Forbidden(c, "无权限操作")
+			response.ForbiddenT(c, "perm.denied")
 		default:
-			response.InternalError(c, "删除工作日志失败")
+			response.InternalErrorT(c, "issue.delete_worklog_failed")
 		}
 		return
 	}
@@ -850,7 +890,7 @@ func (h *IssueHandler) HandleListWorklogs(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取工作日志列表失败")
+		response.InternalErrorT(c, "issue.worklogs_failed")
 		return
 	}
 

@@ -6,7 +6,7 @@
         <div class="header-left">
           <div v-if="!embedded" class="issue-breadcrumb">
             <el-breadcrumb separator="/">
-              <el-breadcrumb-item :to="{ path: '/issues' }">工单列表</el-breadcrumb-item>
+              <el-breadcrumb-item :to="{ path: '/issues' }">{{ t('issue.listTitle') }}</el-breadcrumb-item>
               <el-breadcrumb-item :to="{ path: '/issues?project_key=' + issue.project_key }">{{ issue.project_key }}</el-breadcrumb-item>
               <el-breadcrumb-item>{{ issue.issue_key }}</el-breadcrumb-item>
             </el-breadcrumb>
@@ -24,26 +24,25 @@
               <el-icon class="type-icon"><Document /></el-icon>
               <span class="type-text">{{ issue.issue_type.display_name }}</span>
             </div>
-            <el-tag :type="getPriorityType(issue.priority)" size="small" effect="dark">{{ issue.priority }}</el-tag>
-            <div class="status-badge" :class="issue.status">
-              <span class="status-dot"></span>
-              <span>{{ getStatusText(issue.status) }}</span>
-            </div>
-            <span class="meta-item">
-              <el-icon><User /></el-icon>
-              {{ issue.reporter?.display_name || '未知' }}
+            <span class="prio">
+              <span class="dot" :style="{ background: priorityColor(issue.priority) }"></span>{{ issue.priority }}
             </span>
-            <span class="meta-item">
-              <el-icon><Clock /></el-icon>
-              {{ formatTime(issue.created_at) }}
-            </span>
+            <span class="pill" :class="statusTone(issue.status)">{{ getStatusText(issue.status) }}</span>
+            <!--
+              创建人与创建时间只在右侧「详细信息」里出现一次。
+              页头留给扫读最需要的三项：类型、优先级、状态。
+            -->
           </div>
         </div>
         <div class="header-actions">
           <!-- 工作流快捷操作按钮 -->
           <el-dropdown v-if="workflowInstance" trigger="hover" @command="handleWorkflowCommand">
+            <!--
+              这颗按钮是工作流下拉菜单的入口，和下面工作流卡片里的
+              「流转至 XXX」是同一个动作的两个入口。实心填充留给那颗真正
+              提交的按钮，这里用默认样式，一屏就只剩一个主操作。
+            -->
             <el-button
-              :type="canOperateWorkflow ? 'primary' : 'info'"
               :disabled="!canOperateWorkflow && !isWorkflowOperable"
               class="workflow-action-btn"
             >
@@ -60,14 +59,14 @@
                     :disabled="!isCurrentUserApprover"
                   >
                     <el-icon style="color: var(--td-color-success)"><Check /></el-icon>
-                    审批通过
+                    {{ t('issue.detail.approveAction') }}
                   </el-dropdown-item>
                   <el-dropdown-item
                     command="reject"
                     :disabled="!isCurrentUserApprover"
                   >
                     <el-icon style="color: var(--td-color-danger)"><Delete /></el-icon>
-                    审批拒绝
+                    {{ t('issue.detail.rejectAction') }}
                   </el-dropdown-item>
                 </template>
                 <!-- 工作节点操作 -->
@@ -79,7 +78,7 @@
                       :key="action.conditionExpr"
                       :command="`complete-condition:${action.conditionExpr}`"
                     >
-                      <el-icon :style="{ color: action.conditionExpr === 'rejected' ? '#f56c6c' : '#67c23a' }">
+                      <el-icon :style="{ color: action.conditionExpr === 'rejected' ? 'var(--td-color-danger)' : 'var(--td-color-success)' }">
                         <component :is="action.conditionExpr === 'rejected' ? Delete : Check" />
                       </el-icon>
                       {{ action.label }}{{ action.targetNodeName ? ` → ${action.targetNodeName}` : '' }}
@@ -89,7 +88,7 @@
                   <template v-else>
                     <el-dropdown-item command="complete">
                       <el-icon style="color: var(--td-color-primary)"><Check /></el-icon>
-                      {{ nextNodeName ? `流转至: ${nextNodeName}` : '完成节点' }}
+                      {{ nextNodeName ? t('issue.detail.transitTo', { name: nextNodeName }) : t('issue.detail.completeNode') }}
                     </el-dropdown-item>
                   </template>
                 </template>
@@ -97,24 +96,32 @@
                 <template v-else-if="isWorkflowOperable">
                   <el-dropdown-item command="complete">
                     <el-icon style="color: var(--td-color-primary)"><Check /></el-icon>
-                    确认完成
+                    {{ t('issue.detail.confirmComplete') }}
                   </el-dropdown-item>
                 </template>
                 <!-- 工作流已结束提示 -->
                 <template v-else>
                   <el-dropdown-item disabled>
-                    工作流{{ getWorkflowStatusText(workflowInstance.status) }}
+                    {{ t('issue.detail.workflowState', { state: getWorkflowStatusText(workflowInstance.status) }) }}
                   </el-dropdown-item>
                 </template>
                 <el-dropdown-item divided command="view-workflow">
                   <el-icon style="color: var(--td-color-info)"><View /></el-icon>
-                  查看工作流
+                  {{ t('issue.detail.viewWorkflow') }}
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
-          <el-button :icon="Edit" @click="handleEdit">编辑</el-button>
-          <el-button type="danger" :icon="Delete" @click="handleDelete">删除</el-button>
+          <button class="btn secondary" @click="handleEdit">{{ t('common.edit') }}</button>
+          <!-- 删除收进 ··· 菜单：页头一进来就摆一个删除按钮，既是噪音也提高误触 -->
+          <el-dropdown trigger="click">
+            <button class="more" :aria-label="t('common.operation')">···</button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="handleDelete">{{ t('common.delete') }}</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </div>
 
@@ -122,34 +129,24 @@
         <!-- 左侧：描述和评论 -->
         <el-col :xs="24" :lg="16">
           <!-- 描述 -->
-          <el-card shadow="never" class="content-card">
-            <template #header>
-              <div class="card-header-group">
-                <div class="card-icon desc">
-                  <el-icon><Document /></el-icon>
-                </div>
-                <span class="card-title">描述</span>
-              </div>
-            </template>
+          <section class="card">
+            <div class="card-head">
+              <h2>{{ t('issue.description') }}</h2>
+            </div>
             <div v-if="issue.description" class="description-content">
               {{ issue.description }}
             </div>
-            <div v-else class="empty-placeholder">暂无描述</div>
-          </el-card>
+            <div v-else class="empty-placeholder">{{ t('issue.detail.noDescription') }}</div>
+          </section>
 
           <!-- Epic 下的 Issues（仅当当前工单是 Epic 类型时显示）-->
-          <el-card v-if="issue.issue_type?.name?.toLowerCase() === 'epic'" shadow="never" class="content-card epic-issues-card">
-            <template #header>
-              <div class="card-header-group">
-                <div class="card-icon epic">
-                  <el-icon><Document /></el-icon>
-                </div>
-                <span class="card-title">长篇故事中的事物 ({{ epicIssues.length }})</span>
-              </div>
-            </template>
+          <section v-if="issue.issue_type?.name?.toLowerCase() === 'epic'" class="card epic-issues-card">
+            <div class="card-head">
+              <h2>{{ t('issue.detail.epicIssues', { n: epicIssues.length }) }}</h2>
+            </div>
             <div class="epic-issues-list">
               <div v-if="epicIssues.length === 0" class="empty-state">
-                <TdEmptyState preset="no-data" title="暂无关联的工单" />
+                <TdEmptyState preset="no-data" :title="t('issue.detail.noEpicIssues')" />
               </div>
               <div v-for="epicIssue in epicIssues" :key="epicIssue.id" class="epic-issue-item">
                 <div class="issue-left">
@@ -176,59 +173,54 @@
                     <span class="assignee-name">{{ epicIssue.assignee.display_name }}</span>
                   </div>
                   <div v-else class="assignee-info">
-                    <div class="assignee-avatar unassigned" title="未分配">?</div>
-                    <span class="assignee-name unassigned">未分配</span>
+                    <div class="assignee-avatar unassigned" :title="t('common.unassigned')">?</div>
+                    <span class="assignee-name unassigned">{{ t('common.unassigned') }}</span>
                   </div>
                 </div>
               </div>
             </div>
-          </el-card>
+          </section>
 
           <!-- 工作流卡片 -->
-          <el-card v-if="workflowInstance" shadow="never" class="content-card workflow-card">
-            <template #header>
-              <div class="card-header-group" style="flex: 1;">
-                <div class="card-icon workflow">
-                  <el-icon><Promotion /></el-icon>
-                </div>
-                <span class="card-title">工作流</span>
-                <el-tag :type="getWorkflowStatusType(workflowInstance.status)" size="small" effect="dark">
-                  {{ getWorkflowStatusText(workflowInstance.status) }}
-                </el-tag>
-                <el-button
-                  v-if="(workflowInstance.approvals && workflowInstance.approvals.length > 0) || workflowHistoryList.length > 0"
-                  link
-                  size="small"
-                  style="margin-left: auto;"
-                  @click.stop="workflowExpanded = !workflowExpanded"
-                >
-                  {{ workflowExpanded ? '收起' : '展开详情' }}
-                  <el-icon><component :is="workflowExpanded ? ArrowUp : ArrowDown" /></el-icon>
-                </el-button>
-              </div>
-            </template>
+          <section v-if="workflowInstance" class="card workflow-card">
+            <div class="card-head">
+              <h2>{{ t('issue.detail.workflow') }}</h2>
+              <span class="pill" :class="workflowTone(workflowInstance.status)">
+                {{ getWorkflowStatusText(workflowInstance.status) }}
+              </span>
+              <el-button
+                v-if="(workflowInstance.approvals && workflowInstance.approvals.length > 0) || workflowHistoryList.length > 0"
+                link
+                size="small"
+                style="margin-left: auto;"
+                @click.stop="workflowExpanded = !workflowExpanded"
+              >
+                {{ workflowExpanded ? t('issue.detail.collapse') : t('issue.detail.expand') }}
+                <el-icon><component :is="workflowExpanded ? ArrowUp : ArrowDown" /></el-icon>
+              </el-button>
+            </div>
 
             <!-- 当前节点信息 -->
             <div class="workflow-current-node">
-              <div class="current-node-label">当前节点</div>
+              <div class="current-node-label">{{ t('issue.detail.currentNode') }}</div>
               <div class="current-node-info">
                 <el-tag size="default" effect="plain">
-                  {{ workflowInstance.current_node?.name || `节点#${workflowInstance.current_node_id}` }}
+                  {{ workflowInstance.current_node?.name || t('issue.detail.nodeFallback', { id: workflowInstance.current_node_id }) }}
                 </el-tag>
                 <el-tag v-if="workflowInstance.current_node?.node_type" size="small" type="info">
-                  {{ workflowInstance.current_node.node_type === 'approval' ? '审批节点' : workflowInstance.current_node.node_type === 'work' ? '工作节点' : workflowInstance.current_node.node_type }}
+                  {{ workflowInstance.current_node.node_type === 'approval' ? t('issue.detail.approvalNode') : workflowInstance.current_node.node_type === 'work' ? t('issue.detail.workNode') : workflowInstance.current_node.node_type }}
                 </el-tag>
               </div>
             </div>
 
             <!-- 审批记录（默认折叠） -->
             <div v-show="workflowExpanded" v-if="workflowInstance.approvals && workflowInstance.approvals.length > 0" class="workflow-approvals">
-              <div class="approvals-label">审批记录</div>
+              <div class="approvals-label">{{ t('issue.detail.approvalRecords') }}</div>
               <div class="approvals-list">
                 <div v-for="approval in workflowInstance.approvals" :key="approval.id" class="approval-item">
                   <div class="approval-user">
                     <div class="mini-avatar">{{ approval.approver_name?.charAt(0) || '?' }}</div>
-                    <span>{{ approval.approver_name || `用户#${approval.approver_id}` }}</span>
+                    <span>{{ approval.approver_name || t('issue.detail.userFallback', { id: approval.approver_id }) }}</span>
                   </div>
                   <el-tag :type="getApprovalStatusType(approval.status)" size="small">
                     {{ getApprovalStatusText(approval.status) }}
@@ -240,25 +232,28 @@
 
             <!-- 审批操作按钮（仅审批节点显示） -->
             <div v-if="isCurrentUserApprover && isWorkflowOperable && workflowInstance.current_node?.node_type === 'approval'" class="workflow-actions">
-              <div class="actions-label">审批操作</div>
+              <div class="actions-label">{{ t('issue.detail.approvalActions') }}</div>
               <div class="actions-row">
-                <el-input v-model="approveComment" placeholder="审批意见（可选）" size="default" style="flex: 1; margin-right: 12px;" />
-                <el-button type="success" :loading="approveLoading" @click="handleApprove">
+                <el-input v-model="approveComment" :placeholder="t('issue.detail.approvalCommentPlaceholder')" size="default" style="flex: 1; margin-right: 12px;" />
+                <!-- 一组里只有「通过」是主操作，实心留给它；「拒绝」是破坏性的那一个，
+                     不常驻红（CLAUDE.md 3.1），中性描边，悬停才亮出红色。
+                     图标也从垃圾桶换成叉 —— 拒绝不是删除。 -->
+                <el-button type="primary" :loading="approveLoading" @click="handleApprove">
                   <el-icon><Check /></el-icon>
-                  通过
+                  {{ t('issue.detail.approve') }}
                 </el-button>
-                <el-button type="danger" @click="showRejectDialog">
-                  <el-icon><Delete /></el-icon>
-                  拒绝
+                <el-button class="reject-btn" @click="showRejectDialog">
+                  <el-icon><Close /></el-icon>
+                  {{ t('issue.detail.reject') }}
                 </el-button>
               </div>
             </div>
 
             <!-- 工作节点完成按钮 -->
             <div v-if="isWorkNode" class="workflow-actions">
-              <div class="actions-label">{{ workNodeHasBranching ? '节点操作' : (nextNodeName ? '流转操作' : '节点操作') }}</div>
+              <div class="actions-label">{{ workNodeHasBranching || !nextNodeName ? t('issue.detail.nodeActions') : t('issue.detail.transitActions') }}</div>
               <div class="actions-row">
-                <el-input v-model="completeComment" placeholder="备注（可选）" size="default" style="flex: 1; margin-right: 12px;" />
+                <el-input v-model="completeComment" :placeholder="t('issue.detail.remarkPlaceholder')" size="default" style="flex: 1; margin-right: 12px;" />
                 <!-- 有条件分支的工作节点：动态生成操作按钮 -->
                 <template v-if="workNodeHasBranching">
                   <el-button
@@ -276,7 +271,7 @@
                 <template v-else>
                   <el-button type="primary" :loading="completeLoading" @click="handleComplete">
                     <el-icon><Check /></el-icon>
-                    {{ nextNodeName ? `流转至: ${nextNodeName}` : '完成节点' }}
+                    {{ nextNodeName ? t('issue.detail.transitTo', { name: nextNodeName }) : t('issue.detail.completeNode') }}
                   </el-button>
                 </template>
               </div>
@@ -284,7 +279,7 @@
 
             <!-- 流转历史时间线（默认折叠） -->
             <div v-show="workflowExpanded" v-if="workflowHistoryList.length > 0" class="workflow-history">
-              <div class="history-label">流转历史</div>
+              <div class="history-label">{{ t('issue.detail.transitHistory') }}</div>
               <el-timeline class="workflow-timeline">
                 <el-timeline-item
                   v-for="item in workflowHistoryList"
@@ -294,7 +289,7 @@
                   :type="item.action === 'reject' ? 'danger' : item.action === 'complete' ? 'success' : 'primary'"
                 >
                   <div class="history-content">
-                    <span class="history-user">{{ item.operator_name || (item.operator_id === 0 ? '系统' : `用户#${item.operator_id}`) }}</span>
+                    <span class="history-user">{{ item.operator_name || (item.operator_id === 0 ? t('common.system') : t('issue.detail.userFallback', { id: item.operator_id })) }}</span>
                     <span class="history-action">{{ getHistoryActionText(item.action) }}</span>
                     <template v-if="item.to_node">
                       <span class="history-arrow">→</span>
@@ -305,18 +300,13 @@
                 </el-timeline-item>
               </el-timeline>
             </div>
-          </el-card>
+          </section>
 
           <!-- 扩展字段 - 显示在主体区域 -->
-          <el-card v-if="customFields.length > 0" shadow="never" class="content-card custom-fields-card">
-            <template #header>
-              <div class="card-header-group">
-                <div class="card-icon custom">
-                  <el-icon><Document /></el-icon>
-                </div>
-                <span class="card-title">扩展字段</span>
-              </div>
-            </template>
+          <section v-if="customFields.length > 0" class="card custom-fields-card">
+            <div class="card-head">
+              <h2>{{ t('issue.detail.customFields') }}</h2>
+            </div>
             <div class="custom-fields-grid">
               <div v-for="field in customFields" :key="field.field_id" class="field-item">
                 <div class="field-label">{{ field.field_name }}</div>
@@ -338,31 +328,25 @@
                       {{ field.display_value || field.value }}
                     </template>
                   </template>
-                  <span v-else class="empty-value">未设置</span>
+                  <span v-else class="empty-value">{{ t('common.unset') }}</span>
                 </div>
               </div>
             </div>
-          </el-card>
+          </section>
 
           <!-- 子任务列表 -->
-          <el-card v-if="subtasks.length > 0 || issue.issue_type?.name?.toLowerCase() === 'task'" shadow="never" class="content-card subtasks-card">
-            <template #header>
-              <div class="card-header-with-action">
-                <div class="card-header-group">
-                  <div class="card-icon subtask">
-                    <el-icon><Document /></el-icon>
-                  </div>
-                  <span class="card-title">子任务 ({{ subtasks.length }})</span>
-                </div>
-                <el-button link type="primary" size="small" @click="handleCreateSubtask">
-                  <el-icon><Plus /></el-icon>
-                  创建子任务
-                </el-button>
-              </div>
-            </template>
+          <section v-if="subtasks.length > 0 || issue.issue_type?.name?.toLowerCase() === 'task'" class="card subtasks-card">
+            <div class="card-head">
+              <h2>{{ t('issue.detail.subtasks', { n: subtasks.length }) }}</h2>
+              <div class="grow"></div>
+              <el-button link type="primary" size="small" @click="handleCreateSubtask">
+                <el-icon><Plus /></el-icon>
+                {{ t('issue.detail.createSubtask') }}
+              </el-button>
+            </div>
             <div class="subtasks-list">
               <div v-if="subtasks.length === 0" class="empty-state-compact">
-                <span class="empty-text">暂无子任务</span>
+                <span class="empty-text">{{ t('issue.detail.noSubtasks') }}</span>
               </div>
               <div v-for="subtask in subtasks" :key="subtask.id" class="subtask-item">
                 <div class="issue-left">
@@ -389,43 +373,37 @@
                     <span class="assignee-name">{{ subtask.assignee.display_name }}</span>
                   </div>
                   <div v-else class="assignee-info">
-                    <div class="assignee-avatar unassigned" title="未分配">?</div>
-                    <span class="assignee-name unassigned">未分配</span>
+                    <div class="assignee-avatar unassigned" :title="t('common.unassigned')">?</div>
+                    <span class="assignee-name unassigned">{{ t('common.unassigned') }}</span>
                   </div>
                 </div>
               </div>
             </div>
-          </el-card>
+          </section>
 
           <!-- 关联告警 -->
-          <el-card v-if="issueAlerts.length > 0" shadow="never" class="content-card alert-card">
-            <template #header>
-              <div class="card-header-with-action">
-                <div class="card-header-group">
-                  <div class="card-icon alert">
-                    <el-icon><Bell /></el-icon>
-                  </div>
-                  <span class="card-title">关联告警 ({{ issueAlerts.length }})</span>
-                </div>
-                <el-button link type="primary" size="small" @click="$router.push(`/alerts?issue_id=${issue!.id}`)">
-                  在告警列表中查看
-                </el-button>
-              </div>
-            </template>
+          <section v-if="issueAlerts.length > 0" class="card alert-card">
+            <div class="card-head">
+              <h2>{{ t('issue.detail.linkedAlerts', { n: issueAlerts.length }) }}</h2>
+              <div class="grow"></div>
+              <el-button link type="primary" size="small" @click="$router.push(`/alerts?issue_id=${issue!.id}`)">
+                {{ t('issue.detail.viewInAlertList') }}
+              </el-button>
+            </div>
             <el-table :data="issueAlerts" style="width: 100%" size="small" :row-class-name="() => 'clickable-row'" @row-click="(row: Alert) => $router.push(`/alerts/${row.id}`)">
-              <el-table-column prop="alert_name" label="告警名称" min-width="180">
+              <el-table-column prop="alert_name" :label="t('alert.name')" min-width="180">
                 <template #default="{ row }">
                   <span class="alert-name-text">{{ row.alert_name }}</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="severity" label="严重程度" width="90" align="center">
+              <el-table-column prop="severity" :label="t('alert.severity')" width="90" align="center">
                 <template #default="{ row }">
                   <el-tag :type="getAlertSeverityType(row.severity)" size="small" effect="dark">
                     {{ getAlertSeverityText(row.severity) }}
                   </el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="status" label="状态" width="90" align="center">
+              <el-table-column prop="status" :label="t('issue.status')" width="90" align="center">
                 <template #default="{ row }">
                   <div class="alert-status-badge" :class="row.status">
                     <span class="status-dot"></span>
@@ -433,183 +411,52 @@
                   </div>
                 </template>
               </el-table-column>
-              <el-table-column label="实例" min-width="140">
+              <el-table-column :label="t('alert.instance')" min-width="140">
                 <template #default="{ row }">
                   <span class="text-muted">{{ row.labels?.instance || row.labels?.target_ident || '-' }}</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="starts_at" label="开始时间" width="150">
+              <el-table-column prop="starts_at" :label="t('alert.startsAt')" width="150">
                 <template #default="{ row }">
                   <span class="text-muted">{{ formatTime(row.starts_at) }}</span>
                 </template>
               </el-table-column>
             </el-table>
-          </el-card>
+          </section>
 
           <!-- 附件 -->
-          <el-card shadow="never" class="content-card attachment-card">
-            <template #header>
-              <div class="card-header-with-action">
-                <div class="card-header-group">
-                  <div class="card-icon attachment">
-                    <el-icon><Paperclip /></el-icon>
-                  </div>
-                  <span class="card-title">附件</span>
-                  <span class="card-count">{{ attachments.length }}</span>
-                </div>
-                <el-button v-if="!showAttachmentUpload && attachments.length === 0" link type="primary" size="small" @click="showAttachmentUpload = true">
-                  <el-icon><Plus /></el-icon>
-                  上传附件
-                </el-button>
-              </div>
-            </template>
+          <section class="card attachment-card">
+            <div class="card-head">
+              <h2>{{ t('issue.detail.attachments') }}</h2>
+              <span class="n">{{ attachments.length }}</span>
+              <div class="grow"></div>
+              <el-button v-if="!showAttachmentUpload && attachments.length === 0" link type="primary" size="small" @click="showAttachmentUpload = true">
+                <el-icon><Plus /></el-icon>
+                {{ t('issue.detail.uploadAttachment') }}
+              </el-button>
+            </div>
             <div class="attachment-section">
               <AttachmentUpload v-if="issue && (showAttachmentUpload || attachments.length > 0)" :issue-key="issue.issue_key" @success="loadAttachments(issue.issue_key)" />
               <AttachmentList v-if="issue && attachments.length > 0" :issue-key="issue.issue_key" :attachments="attachments" @refresh="loadAttachments(issue.issue_key)" />
-              <div v-if="attachments.length === 0 && !showAttachmentUpload" class="empty-placeholder sm">暂无附件</div>
+              <div v-if="attachments.length === 0 && !showAttachmentUpload" class="empty-placeholder sm">{{ t('issue.detail.noAttachments') }}</div>
             </div>
-          </el-card>
+          </section>
+
+          <IssueActivityPanel
+            :issue-key="issue.issue_key"
+            :comments="comments"
+            :worklogs="worklogs"
+            :work-type-options="workTypeOptions"
+            :total-time-spent="totalTimeSpent"
+            @comments-changed="loadComments(issue!.issue_key)"
+            @worklogs-changed="loadWorklogs(issue!.issue_key)"
+          />
 
           <!-- 评论和工作日志 -->
-          <el-card shadow="never" class="content-card">
-            <el-tabs v-model="activeTab" class="detail-tabs">
-              <el-tab-pane name="comments">
-                <template #label>
-                  <span class="tab-label"><el-icon><ChatLineRound /></el-icon> 评论 ({{ comments.length }})</span>
-                </template>
-
-                <!-- 添加评论 -->
-                <div class="add-comment">
-                  <el-input
-                    v-model="newComment"
-                    type="textarea"
-                    :rows="3"
-                    placeholder="添加评论..."
-                  />
-                  <div class="comment-actions">
-                    <el-button type="primary" :loading="commentLoading" :disabled="!newComment.trim()" @click="submitComment">
-                      <el-icon><ChatLineRound /></el-icon>
-                      发表评论
-                    </el-button>
-                  </div>
-                </div>
-
-                <!-- 评论列表 -->
-                <div class="comment-list">
-                  <div v-for="comment in comments" :key="comment.id" :class="['comment-item', { 'system-comment': comment.user_id === 0 }]">
-                    <div :class="['comment-avatar', { 'system-avatar': comment.user_id === 0 }]">
-                      {{ comment.user_id === 0 ? '系' : (comment.user?.display_name?.charAt(0) || '?') }}
-                    </div>
-                    <div class="comment-body">
-                      <div class="comment-header">
-                        <span :class="['comment-author', { 'system-author': comment.user_id === 0 }]">{{ comment.user_id === 0 ? '系统' : (comment.user?.display_name || '未知用户') }}</span>
-                        <span class="comment-time">{{ formatTime(comment.created_at) }}</span>
-                      </div>
-                      <div class="comment-text">{{ comment.content }}</div>
-                    </div>
-                  </div>
-                  <div v-if="comments.length === 0" class="empty-placeholder">
-                    暂无评论
-                  </div>
-                </div>
-              </el-tab-pane>
-
-              <el-tab-pane name="worklogs">
-                <template #label>
-                  <span class="tab-label"><el-icon><Clock /></el-icon> 工作日志 ({{ worklogs.length }})</span>
-                </template>
-
-                <!-- 添加工作日志 -->
-                <div class="add-worklog">
-                  <el-form :model="worklogForm" label-position="top" size="default">
-                    <el-form-item label="工作描述">
-                      <el-input
-                        v-model="worklogForm.description"
-                        type="textarea"
-                        :rows="3"
-                        placeholder="描述本次工作内容..."
-                      />
-                    </el-form-item>
-                    <el-row :gutter="16">
-                      <el-col :span="8">
-                        <el-form-item label="工作时长">
-                          <el-input v-model="worklogForm.time_spent" placeholder="如: 2h 30m" />
-                          <div class="form-hint">格式：1d 2h 30m</div>
-                        </el-form-item>
-                      </el-col>
-                      <el-col :span="8">
-                        <el-form-item label="工作日期">
-                          <el-date-picker
-                            v-model="worklogForm.worked_at"
-                            type="datetime"
-                            placeholder="选择日期时间"
-                            style="width: 100%"
-                          />
-                        </el-form-item>
-                      </el-col>
-                      <el-col :span="8">
-                        <el-form-item label="工作类型">
-                          <el-select v-model="worklogForm.work_type" placeholder="选择类型" style="width: 100%" clearable>
-                            <el-option v-for="opt in workTypeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-                          </el-select>
-                        </el-form-item>
-                      </el-col>
-                    </el-row>
-                    <el-button type="primary" :loading="worklogLoading" :disabled="!canSubmitWorklog" @click="submitWorklog">
-                      <el-icon><Plus /></el-icon>
-                      添加工作日志
-                    </el-button>
-                  </el-form>
-                </div>
-
-                <!-- 工作日志列表 -->
-                <div class="worklog-list">
-                  <div v-if="totalTimeSpent > 0" class="worklog-summary">
-                    <el-icon><Clock /></el-icon>
-                    <span>总工作时长：{{ formatTimeSpent(totalTimeSpent) }}</span>
-                  </div>
-                  <div v-for="worklog in worklogs" :key="worklog.id" class="worklog-item">
-                    <div class="worklog-avatar">
-                      {{ worklog.user?.display_name?.charAt(0) || '?' }}
-                    </div>
-                    <div class="worklog-body">
-                      <div class="worklog-header">
-                        <div class="worklog-meta">
-                          <span class="worklog-author">{{ worklog.user?.display_name || '未知用户' }}</span>
-                          <el-tag size="small" type="info">{{ worklog.time_spent }}</el-tag>
-                          <el-tag v-if="worklog.work_type" size="small" type="success">{{ worklog.work_type }}</el-tag>
-                        </div>
-                        <div class="worklog-actions">
-                          <span class="worklog-time">{{ formatTime(worklog.worked_at) }}</span>
-                          <el-button v-if="canEditWorklog(worklog)" link type="primary" size="small" @click="handleEditWorklog(worklog)">
-                            编辑
-                          </el-button>
-                          <el-button v-if="canEditWorklog(worklog)" link type="danger" size="small" @click="handleDeleteWorklog(worklog.id)">
-                            删除
-                          </el-button>
-                        </div>
-                      </div>
-                      <div class="worklog-text">{{ worklog.description }}</div>
-                    </div>
-                  </div>
-                  <div v-if="worklogs.length === 0" class="empty-placeholder">
-                    暂无工作日志
-                  </div>
-                </div>
-              </el-tab-pane>
-            </el-tabs>
-          </el-card>
-
-          <!-- 评论和工作日志 -->
-          <el-card shadow="never" class="content-card">
-            <template #header>
-              <div class="card-header-group">
-                <div class="card-icon activity">
-                  <el-icon><Clock /></el-icon>
-                </div>
-                <span class="card-title">活动记录</span>
-              </div>
-            </template>
+          <section class="card">
+            <div class="card-head">
+              <h2>{{ t('issue.detail.activity') }}</h2>
+            </div>
             <el-timeline v-if="activities.length > 0" class="activity-timeline">
               <el-timeline-item
                 v-for="activity in activities"
@@ -620,10 +467,10 @@
                 <div class="activity-content">
                   <span class="activity-user">{{ activity.user_name }}</span>
                   <template v-if="activity.details">
-                    <span class="activity-details">{{ activity.details }}</span>
+                    <span class="activity-details">{{ formatActivityDetails(activity.details) }}</span>
                   </template>
                   <template v-else>
-                    <span class="activity-action">{{ activity.action }}</span>
+                    <span class="activity-action">{{ formatActivityAction(activity.action) }}</span>
                     <template v-if="activity.field">
                       <span class="activity-field">{{ activity.field }}</span>
                       <span v-if="activity.old_value" class="activity-old-value">{{ activity.old_value }}</span>
@@ -634,263 +481,45 @@
                 </div>
               </el-timeline-item>
             </el-timeline>
-            <div v-else class="empty-placeholder">暂无活动记录</div>
-          </el-card>
+            <div v-else class="empty-placeholder">{{ t('issue.detail.noActivity') }}</div>
+          </section>
         </el-col>
 
         <!-- 右侧：详细信息 -->
         <el-col :xs="24" :lg="8">
-          <!-- 基本信息 -->
-          <el-card shadow="never" class="info-card">
-            <template #header>
-              <div class="card-header-group">
-                <div class="card-icon info">
-                  <el-icon><InfoFilled /></el-icon>
-                </div>
-                <span class="card-title">详细信息</span>
-              </div>
-            </template>
-            <div class="info-list">
-              <div v-if="issue.parent_key" class="info-item">
-                <span class="info-label">父工单</span>
-                <el-link type="primary" @click="navigateToIssue(issue.parent_key!)">
-                  {{ issue.parent_key }}
-                </el-link>
-              </div>
-              <div v-if="issue.epic_key" class="info-item">
-                <span class="info-label">Epic</span>
-                <el-link type="primary" @click="navigateToIssue(issue.epic_key!)">
-                  <el-icon><Link /></el-icon>
-                  {{ issue.epic_key }}{{ issue.epic_title ? ' - ' + issue.epic_title : '' }}
-                </el-link>
-              </div>
-              <div v-if="issue.merged_into_issue_key" class="info-item">
-                <span class="info-label">已合并到</span>
-                <el-link type="primary" @click="navigateToIssue(issue.merged_into_issue_key!)">
-                  <el-icon><Link /></el-icon>
-                  {{ issue.merged_into_issue_key }}
-                </el-link>
-              </div>
-              <div v-if="issue.merged_from_issue_keys?.length" class="info-item">
-                <span class="info-label">合并来源</span>
-                <div class="merged-from-links">
-                  <el-link
-                    v-for="mKey in issue.merged_from_issue_keys"
-                    :key="mKey"
-                    type="primary"
-                    style="margin-right: 8px;"
-                    @click="navigateToIssue(mKey)"
-                  >
-                    {{ mKey }}
-                  </el-link>
-                </div>
-              </div>
-              <div class="info-item">
-                <span class="info-label">状态</span>
-                <div class="status-badge sm" :class="issue.status">
-                  <span class="status-dot"></span>
-                  <span>{{ getStatusText(issue.status) }}</span>
-                </div>
-              </div>
-              <div v-if="slaStatus" class="info-item">
-                <span class="info-label">SLA 状态</span>
-                <div class="sla-status-wrap">
-                  <el-tag v-if="slaStatus.level === 'overdue'" type="danger" size="small" effect="dark">已超时</el-tag>
-                  <el-tag v-else-if="slaStatus.level === 'due_soon'" type="warning" size="small" effect="dark">即将超时</el-tag>
-                  <el-tag v-else type="success" size="small" effect="dark">进行中</el-tag>
-                  <span class="sla-hint">{{ slaStatus.hint }}</span>
-                </div>
-              </div>
-              <div class="info-item">
-                <span class="info-label">优先级</span>
-                <el-tag :type="getPriorityType(issue.priority)" size="small" effect="dark">{{ issue.priority }}</el-tag>
-              </div>
-              <div v-if="issue.resolution" class="info-item">
-                <span class="info-label">解决结果</span>
-                <el-tag size="small" type="success">{{ getResolutionText(issue.resolution) }}</el-tag>
-              </div>
-              <div class="info-item">
-                <span class="info-label">项目</span>
-                <el-link type="primary" @click="embedded ? router.push(`/projects/${issue.project_key}`) : router.push(`/issues?project_key=${issue.project_key}`)">
-                  {{ issue.project_key }}
-                </el-link>
-              </div>
-              <div class="info-item">
-                <span class="info-label">类型</span>
-                <span>{{ issue.issue_type?.display_name || '-' }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">指派人</span>
-                <div class="assignee-with-action">
-                  <template v-if="!editingAssignee">
-                    <template v-if="issue.assignee">
-                      <div class="user-info">
-                        <div class="mini-avatar">{{ issue.assignee.display_name?.charAt(0) || '?' }}</div>
-                        <span>{{ issue.assignee.display_name }}</span>
-                      </div>
-                    </template>
-                    <span v-else class="text-muted">未指派</span>
-                    <el-button
-                      v-if="issue.assignee?.id !== userStore.user?.id"
-                      link
-                      type="primary"
-                      size="small"
-                      @click="handleAssignToMe"
-                    >
-                      分配给我
-                    </el-button>
-                    <el-button
-                      v-if="userStore.isProjectAdmin"
-                      link
-                      size="small"
-                      @click="startEditAssignee"
-                    >
-                      <el-icon><Edit /></el-icon>
-                    </el-button>
-                  </template>
-                  <template v-else>
-                    <el-select
-                      v-model="editAssigneeId"
-                      placeholder="选择指派人"
-                      filterable
-                      clearable
-                      size="small"
-                      style="width: 160px;"
-                      @change="handleAssigneeChange"
-                    >
-                      <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
-                    </el-select>
-                    <el-button link size="small" @click="editingAssignee = false">取消</el-button>
-                  </template>
-                </div>
-              </div>
-              <div class="info-item">
-                <span class="info-label">创建者</span>
-                <span>{{ issue.reporter?.display_name || '未知' }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">创建时间</span>
-                <span>{{ formatTime(issue.created_at) }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">更新时间</span>
-                <span>{{ formatTime(issue.updated_at) }}</span>
-              </div>
-              <div v-if="issue.due_date" class="info-item">
-                <span class="info-label">截止时间</span>
-                <span>{{ formatDate(issue.due_date) }}</span>
-                <el-tag v-if="dueDateStatus === 'overdue'" type="danger" size="small" style="margin-left: 6px;">已超时</el-tag>
-                <el-tag v-else-if="dueDateStatus === 'due_soon'" type="warning" size="small" style="margin-left: 6px;">即将超时</el-tag>
-              </div>
-              <div v-if="issue.planned_start_date" class="info-item">
-                <span class="info-label">预计开始</span>
-                <span>{{ formatDate(issue.planned_start_date) }}</span>
-              </div>
-              <div v-if="issue.planned_end_date" class="info-item">
-                <span class="info-label">预计交付</span>
-                <span>{{ formatDate(issue.planned_end_date) }}</span>
-              </div>
-              <div v-if="issue.actual_start_date" class="info-item">
-                <span class="info-label">实际开始</span>
-                <span>{{ formatTime(issue.actual_start_date) }}</span>
-              </div>
-              <div v-if="issue.actual_end_date" class="info-item">
-                <span class="info-label">实际完成</span>
-                <span>{{ formatTime(issue.actual_end_date) }}</span>
-              </div>
-            </div>
-          </el-card>
-
-          <!-- 时间跟踪 -->
-          <el-card v-if="showTimeTracking" shadow="never" class="info-card">
-            <template #header>
-              <div class="card-header-group">
-                <div class="card-icon time">
-                  <el-icon><Timer /></el-icon>
-                </div>
-                <span class="card-title">时间跟踪</span>
-              </div>
-            </template>
-            <div class="info-list">
-              <div v-if="estimatedTimeSec > 0" class="time-progress-wrap">
-                <el-progress
-                  :percentage="timeProgress"
-                  :color="remainingTimeSec < 0 ? '#ef4444' : '#3b82f6'"
-                  :stroke-width="10"
-                />
-              </div>
-              <div v-if="estimatedTimeSec > 0" class="info-item">
-                <span class="info-label">预估时间</span>
-                <span>{{ formatTimeSpent(estimatedTimeSec) }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">已用时间</span>
-                <span>{{ formatTimeSpent(totalTimeSpent) }}</span>
-              </div>
-              <div v-if="estimatedTimeSec > 0" class="info-item">
-                <span class="info-label">剩余时间</span>
-                <span :style="{ color: remainingTimeSec < 0 ? '#ef4444' : undefined }">
-                  {{ remainingTimeSec < 0 ? '已超出 ' + formatTimeSpent(Math.abs(remainingTimeSec)) : formatTimeSpent(remainingTimeSec) }}
-                </span>
-              </div>
-            </div>
-          </el-card>
-
-          <!-- 关注人 -->
-          <el-card shadow="never" class="info-card">
-            <template #header>
-              <div class="card-header-with-action">
-                <div class="card-header-group">
-                  <div class="card-icon watcher">
-                    <el-icon><View /></el-icon>
-                  </div>
-                  <span class="card-title">关注人</span>
-                  <span class="card-count">{{ watchers.length }}</span>
-                </div>
-                <div class="watcher-header-actions">
-                  <el-button v-if="!isWatching" link type="primary" size="small" @click="handleWatchIssue">
-                    <el-icon><View /></el-icon>
-                    关注
-                  </el-button>
-                  <el-button v-else link type="danger" size="small" @click="handleUnwatchIssue">
-                    取消关注
-                  </el-button>
-                  <el-button link type="primary" size="small" @click="showAddWatcherDialog">
-                    <el-icon><Plus /></el-icon>
-                  </el-button>
-                </div>
-              </div>
-            </template>
-            <div class="watcher-list">
-              <div v-for="watcher in watchers" :key="watcher.id" class="watcher-item">
-                <div class="watcher-info">
-                  <div class="mini-avatar">{{ watcher.user?.display_name?.charAt(0) || '?' }}</div>
-                  <span class="watcher-name">{{ watcher.user?.display_name || '未知用户' }}</span>
-                </div>
-                <el-button
-                  v-if="canRemoveWatcher(watcher)"
-                  link
-                  type="danger"
-                  size="small"
-                  @click="handleRemoveWatcher(watcher.user_id)"
-                >
-                  移除
-                </el-button>
-              </div>
-              <div v-if="watchers.length === 0" class="empty-placeholder sm">
-                暂无关注人
-              </div>
-            </div>
-          </el-card>
+          <IssueInfoSidebar
+            v-model:editing-assignee="editingAssignee"
+            v-model:edit-assignee-id="editAssigneeId"
+            :issue="issue"
+            :watchers="watchers"
+            :users="users"
+            :is-watching="isWatching"
+            :show-time-tracking="showTimeTracking"
+            :estimated-time-sec="estimatedTimeSec"
+            :total-time-spent="totalTimeSpent"
+            :time-progress="timeProgress"
+            :remaining-time-sec="remainingTimeSec"
+            :sla-status="slaStatus"
+            :due-date-status="dueDateStatus"
+            :embedded="embedded"
+            @navigate="navigateToIssue"
+            @assign-to-me="handleAssignToMe"
+            @start-edit-assignee="startEditAssignee"
+            @assignee-change="handleAssigneeChange"
+            @watch="handleWatchIssue"
+            @unwatch="handleUnwatchIssue"
+            @add-watcher="showAddWatcherDialog"
+            @remove-watcher="handleRemoveWatcher"
+          />
         </el-col>
       </el-row>
     </template>
 
     <!-- 添加关注人对话框 -->
-    <el-dialog v-model="addWatcherDialogVisible" title="添加关注人" width="400px" destroy-on-close>
+    <el-dialog v-model="addWatcherDialogVisible" :title="t('issue.detail.addWatcher')" width="400px" destroy-on-close>
       <el-select
         v-model="selectedWatcherUserId"
-        placeholder="请选择用户"
+        :placeholder="t('issue.detail.selectUser')"
         style="width: 100%"
         filterable
       >
@@ -902,45 +531,45 @@
         />
       </el-select>
       <template #footer>
-        <el-button @click="addWatcherDialogVisible = false">取消</el-button>
+        <el-button @click="addWatcherDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="watcherLoading" :disabled="!selectedWatcherUserId" @click="handleAddWatcher">
-          添加
+          {{ t('common.add') }}
         </el-button>
       </template>
     </el-dialog>
 
     <!-- 拒绝审批对话框 -->
-    <el-dialog v-model="rejectDialogVisible" title="拒绝审批" width="450px" destroy-on-close>
+    <el-dialog v-model="rejectDialogVisible" :title="t('issue.detail.rejectApproval')" width="450px" destroy-on-close>
       <el-form label-position="top">
-        <el-form-item label="拒绝原因（必填）">
-          <el-input v-model="rejectComment" type="textarea" :rows="3" placeholder="请输入拒绝原因" />
+        <el-form-item :label="t('issue.detail.rejectReason')">
+          <el-input v-model="rejectComment" type="textarea" :rows="3" :placeholder="t('issue.detail.rejectReasonPlaceholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="rejectDialogVisible = false">取消</el-button>
+        <el-button @click="rejectDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="danger" :loading="rejectLoading" :disabled="!rejectComment.trim()" @click="handleReject">
-          确认拒绝
+          {{ t('issue.detail.confirmReject') }}
         </el-button>
       </template>
     </el-dialog>
 
     <!-- 编辑对话框 -->
-    <el-dialog v-model="editDialogVisible" title="编辑工单" width="640px" destroy-on-close class="edit-dialog">
+    <el-dialog v-model="editDialogVisible" :title="t('issue.detail.editIssue')" width="640px" destroy-on-close class="edit-dialog">
       <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-position="top">
-        <el-form-item label="标题" prop="title">
+        <el-form-item :label="t('issue.title')" prop="title">
           <el-input v-model="editForm.title" maxlength="200" show-word-limit />
         </el-form-item>
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="解决结果">
-              <el-select v-model="editForm.resolution" placeholder="请选择" style="width: 100%" clearable>
-                <el-option label="已解决" value="fixed" />
-                <el-option label="不予修复" value="wont_fix" />
-                <el-option label="重复工单" value="duplicate" />
-                <el-option label="无法复现" value="cannot_reproduce" />
-                <el-option label="按设计工作" value="works_as_designed" />
-                <el-option label="信息不完整" value="incomplete" />
-                <el-option label="已完成" value="done" />
+            <el-form-item :label="t('issue.detail.resolution')">
+              <el-select v-model="editForm.resolution" :placeholder="t('common.select')" style="width: 100%" clearable>
+                <el-option :label="t('issue.resolutionMap.fixed')" value="fixed" />
+                <el-option :label="t('issue.resolutionMap.wont_fix')" value="wont_fix" />
+                <el-option :label="t('issue.resolutionMap.duplicate')" value="duplicate" />
+                <el-option :label="t('issue.resolutionMap.cannot_reproduce')" value="cannot_reproduce" />
+                <el-option :label="t('issue.resolutionMap.works_as_designed')" value="works_as_designed" />
+                <el-option :label="t('issue.resolutionMap.incomplete')" value="incomplete" />
+                <el-option :label="t('issue.resolutionMap.done')" value="done" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -971,7 +600,7 @@
                     :project-key="issue.project_key"
                     style="flex: 1;"
                   />
-                  <el-button @click="assignToMeField(item.field_id)">分配给我</el-button>
+                  <el-button @click="assignToMeField(item.field_id)">{{ t('issue.detail.assignToMe') }}</el-button>
                 </div>
                 <FieldRenderer
                   v-else-if="item.field && issue"
@@ -986,10 +615,10 @@
         </div>
       </el-form>
       <template #footer>
-        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button @click="editDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="editLoading" @click="submitEdit">
           <el-icon><Check /></el-icon>
-          保存
+          {{ t('common.save') }}
         </el-button>
       </template>
     </el-dialog>
@@ -997,85 +626,37 @@
     <!-- 创建子任务对话框 -->
     <CreateIssueDialog
       v-model="createSubtaskDialogVisible"
-      title="创建子任务"
+      :title="t('issue.detail.createSubtask')"
       :default-project-key="issue?.project_key || ''"
       :parent-id="issue?.id"
       @created="() => issue && loadSubtasks(issue.issue_key)"
     />
 
-    <!-- 工作流流程图对话框 -->
-    <el-dialog v-model="diagramVisible" title="工单流程" width="860px" destroy-on-close>
-      <div v-loading="diagramLoading" class="workflow-diagram">
-        <div v-if="diagramLayout.nodes.length > 0" class="diagram-graph" :style="{ minHeight: diagramLayout.height + 'px', minWidth: diagramLayout.width + 'px' }">
-          <!-- SVG 连线层 -->
-          <svg class="diagram-edges" :width="diagramLayout.width" :height="diagramLayout.height">
-            <defs>
-              <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-                <polygon points="0 0, 8 3, 0 6" fill="#c0c4cc" />
-              </marker>
-              <marker id="arrowhead-visited" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-                <polygon points="0 0, 8 3, 0 6" fill="#67c23a" />
-              </marker>
-            </defs>
-            <template v-for="edge in diagramLayout.edges" :key="`${edge.from}-${edge.to}`">
-              <line
-                :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
-                :stroke="edge.visited ? '#67c23a' : '#c0c4cc'"
-                stroke-width="2"
-                :marker-end="edge.visited ? 'url(#arrowhead-visited)' : 'url(#arrowhead)'"
-              />
-              <text
-                v-if="edge.label"
-                :x="(edge.x1 + edge.x2) / 2"
-                :y="(edge.y1 + edge.y2) / 2 - 6"
-                text-anchor="middle"
-                :fill="edge.visited ? '#67c23a' : '#909399'"
-                font-size="11"
-              >{{ edge.label }}</text>
-            </template>
-          </svg>
-          <!-- 节点层 -->
-          <div
-            v-for="ln in diagramLayout.nodes"
-            :key="ln.node.id"
-            class="diagram-node"
-            :class="getNodeDiagramClass(ln.node)"
-            :style="{ left: ln.x + 'px', top: ln.y + 'px' }"
-          >
-            <div class="diagram-node-icon">
-              <span v-if="ln.node.node_type === 'start'">▶</span>
-              <span v-else-if="ln.node.node_type === 'end'">◉</span>
-              <span v-else-if="ln.node.node_type === 'approval'">✓</span>
-              <span v-else-if="ln.node.node_type === 'work'">⚙</span>
-              <span v-else>●</span>
-            </div>
-            <div class="diagram-node-name">{{ ln.node.name }}</div>
-            <div class="diagram-node-type">{{ getNodeTypeText(ln.node.node_type) }}</div>
-            <div v-if="getNodeDiagramClass(ln.node).visited" class="diagram-node-check">✓</div>
-          </div>
-        </div>
-        <div v-else-if="!diagramLoading" class="diagram-empty">
-          <TdEmptyState preset="no-data" title="暂无流程节点" />
-        </div>
-      </div>
-    </el-dialog>
+    <!-- 流程图连同布局算法与样式已拆到子组件，此处只负责传数据 -->
+    <WorkflowDiagramDialog
+      v-model="diagramVisible"
+      :nodes="diagramNodes"
+      :edges="diagramEdges"
+      :instance="workflowInstance"
+      :history="workflowHistoryList"
+      :loading="diagramLoading"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
-  User, Clock, Edit, ArrowDown, ArrowUp, ArrowRight, Plus, Document, Bell,
-  ChatLineRound, InfoFilled, View, Check, Link, Delete, Paperclip, Promotion, QuestionFilled, Timer, TopRight
+  ArrowDown, ArrowUp, ArrowRight, Plus, Document, View, Check, Close, Link, Delete, Promotion, QuestionFilled, TopRight
 } from '@element-plus/icons-vue'
 import {
   getIssueDetail, updateIssue, deleteIssue,
-  getIssueComments, addIssueComment, getIssueActivities, getIssueWatchers,
-  getWorklogs, addWorklog, deleteWorklog,
-  addIssueWatcher, removeIssueWatcher, getEpicIssues, getSubtasks,
-} from '@/api/issue'
+  getIssueComments, getIssueActivities, getIssueWatchers,
+  getWorklogs,
+  addIssueWatcher, removeIssueWatcher, getEpicIssues, getSubtasks } from '@/api/issue'
 import { getAlertList } from '@/api/alert'
 import type { Alert } from '@/types/alert'
 import { listAttachments, uploadAttachment } from '@/api/attachment'
@@ -1089,13 +670,18 @@ import { getPublicConfig } from '@/api/system'
 import { getIssueFieldValues, getFieldScheme } from '@/api/field'
 import CreateIssueDialog from '@/components/CreateIssueDialog.vue'
 import { useUserStore } from '@/stores/user'
-import type { Issue, IssueComment, IssueActivity, IssueWatcher, IssueResolution, UpdateIssueRequest, Worklog, CreateWorklogRequest } from '@/types/issue'
+import type { Issue, IssueComment, IssueActivity, IssueWatcher, IssueResolution, UpdateIssueRequest, Worklog } from '@/types/issue'
 import type { UserOption } from '@/types/user'
 import type { FieldValue, FieldSchemeItem, FieldTypeValue } from '@/types/field'
 import FieldRenderer from '@/components/field/FieldRenderer.vue'
 import { isBuiltinField } from '@/types/field'
 import { extractBuiltinFields, backfillBuiltinFields } from '@/utils/builtin-fields'
 import dayjs from 'dayjs'
+import { getSlaState } from '@/utils/sla'
+import { formatActivityAction, formatActivityDetails } from '@/utils/activity'
+import WorkflowDiagramDialog from './components/WorkflowDiagramDialog.vue'
+import IssueActivityPanel from './components/IssueActivityPanel.vue'
+import IssueInfoSidebar from './components/IssueInfoSidebar.vue'
 
 interface Props {
   embedded?: boolean
@@ -1103,12 +689,14 @@ interface Props {
   onNavigateIssue?: (key: string) => void
   onDeleted?: () => void
 }
+
+const { t } = useI18n()
+
 const props = withDefaults(defineProps<Props>(), {
   embedded: false,
   issueKey: '',
   onNavigateIssue: undefined,
-  onDeleted: undefined,
-})
+  onDeleted: undefined })
 
 const route = useRoute()
 const router = useRouter()
@@ -1122,7 +710,6 @@ const watchers = ref<IssueWatcher[]>([])
 const worklogs = ref<Worklog[]>([])
 const customFields = ref<FieldValue[]>([])
 const users = ref<UserOption[]>([])
-const activeTab = ref('comments')
 const epicIssues = ref<Issue[]>([])
 const subtasks = ref<Issue[]>([])
 const attachments = ref<Attachment[]>([])
@@ -1142,18 +729,14 @@ const rejectDialogVisible = ref(false)
 // 创建子任务
 const createSubtaskDialogVisible = ref(false)
 
-const newComment = ref('')
-const commentLoading = ref(false)
 const editDialogVisible = ref(false)
 const editLoading = ref(false)
 const editFormRef = ref<FormInstance>()
 const editForm = reactive({
   title: '',
-  resolution: undefined as IssueResolution | undefined,
-})
+  resolution: undefined as IssueResolution | undefined })
 const editRules: FormRules = {
-  title: [{ required: true, message: '请输入标题', trigger: 'blur' }],
-}
+  title: [{ required: true, message: t('issue.msg.titleRequired'), trigger: ['blur', 'change'] }] }
 // 编辑用的字段方案和值
 const editFieldScheme = ref<FieldSchemeItem[]>([])
 const editFieldValues = ref<Record<number, any>>({})
@@ -1180,7 +763,7 @@ const loadIssue = async () => {
       loadIssueAlerts(data.data.id),
     ])
   } catch {
-    ElMessage.error('加载工单失败')
+    ElMessage.error(t('issue.msg.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -1266,15 +849,15 @@ const handlePaste = async (e: ClipboardEvent) => {
 
     // 检查文件大小
     if (namedFile.size > 10 * 1024 * 1024) {
-      ElMessage.error('粘贴的图片超过10MB限制')
+      ElMessage.error(t('issue.msg.pasteTooLarge'))
       continue
     }
 
     try {
       await uploadAttachment(issueKey, namedFile)
-      ElMessage.success('粘贴图片上传成功')
+      ElMessage.success(t('issue.msg.pasteUploaded'))
     } catch {
-      ElMessage.error('粘贴图片上传失败')
+      ElMessage.error(t('issue.msg.pasteFailed'))
     }
   }
   loadAttachments(issueKey)
@@ -1365,11 +948,10 @@ const workNodeOutgoingActions = computed<OutgoingAction[]>(() => {
 
   // 预设条件的显示名称
   const presetLabels: Record<string, string> = {
-    approved: '通过',
-    rejected: '退回',
-    confirmed: '确认完成',
-    continue: '继续处理',
-  }
+    approved: t('issue.conditionMap.approved'),
+    rejected: t('issue.conditionMap.rejected'),
+    confirmed: t('issue.conditionMap.confirmed'),
+    continue: t('issue.conditionMap.continue') }
 
   return outEdges
     .filter(e => e.condition_expr) // 只取有条件的边
@@ -1378,8 +960,7 @@ const workNodeOutgoingActions = computed<OutgoingAction[]>(() => {
       return {
         conditionExpr: e.condition_expr,
         label: presetLabels[e.condition_expr] || e.condition_expr,
-        targetNodeName: targetNode?.name || '',
-      }
+        targetNodeName: targetNode?.name || '' }
     })
 })
 
@@ -1417,14 +998,13 @@ const canOperateWorkflow = computed(() => {
 
 // 工作流快捷按钮文本
 const workflowActionBtnText = computed(() => {
-  if (!workflowInstance.value) return '工作流'
+  if (!workflowInstance.value) return t('issue.detail.workflow')
   const status = workflowInstance.value.status
   if (status === 'completed' || status === 'cancelled') {
-    const statusMap: Record<string, string> = { completed: '已完成', cancelled: '已取消' }
-    return statusMap[status] || status
+    return t(`issue.workflowStatusMap.${status}`)
   }
   // active 和 reviewing 都显示当前节点名
-  const nodeName = workflowInstance.value.current_node?.name || '当前节点'
+  const nodeName = workflowInstance.value.current_node?.name || t('issue.detail.currentNode')
   return nodeName
 })
 
@@ -1456,11 +1036,10 @@ const handleWorkflowCommand = (command: string) => {
 // 快捷审批通过（从下拉菜单触发，弹确认框）
 const handleQuickApprove = async () => {
   try {
-    await ElMessageBox.confirm('确认审批通过？', '审批确认', {
-      confirmButtonText: '通过',
-      cancelButtonText: '取消',
-      type: 'success',
-    })
+    await ElMessageBox.confirm(t('issue.msg.confirmApprove'), t('issue.msg.approveTitle'), {
+      confirmButtonText: t('issue.detail.approve'),
+      cancelButtonText: t('common.cancel'),
+      type: 'success' })
     handleApprove()
   } catch {
     // 用户取消
@@ -1471,13 +1050,12 @@ const handleQuickApprove = async () => {
 const handleQuickComplete = async () => {
   try {
     const confirmMsg = nextNodeName.value
-      ? `确认流转至「${nextNodeName.value}」？`
-      : '确认完成当前节点？'
-    await ElMessageBox.confirm(confirmMsg, '流转确认', {
-      confirmButtonText: '确认',
-      cancelButtonText: '取消',
-      type: 'info',
-    })
+      ? t('issue.msg.confirmTransit', { name: nextNodeName.value })
+      : t('issue.msg.confirmCompleteNode')
+    await ElMessageBox.confirm(confirmMsg, t('issue.msg.transitTitle'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+      type: 'info' })
     handleComplete()
   } catch {
     // 用户取消
@@ -1491,14 +1069,13 @@ const handleQuickCompleteWithResult = async (result: string) => {
   const actionLabel = action?.label || result
   const targetName = action?.targetNodeName || ''
   const confirmMsg = targetName
-    ? `确认「${actionLabel}」并流转至「${targetName}」？`
-    : `确认「${actionLabel}」？`
+    ? t('issue.msg.confirmActionTransit', { action: actionLabel, name: targetName })
+    : t('issue.msg.confirmAction', { action: actionLabel })
   try {
-    await ElMessageBox.confirm(confirmMsg, '操作确认', {
-      confirmButtonText: '确认',
-      cancelButtonText: '取消',
-      type: result === 'rejected' ? 'warning' : 'success',
-    })
+    await ElMessageBox.confirm(confirmMsg, t('issue.msg.actionTitle'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+      type: result === 'rejected' ? 'warning' : 'success' })
     handleCompleteWithResult(result)
   } catch {
     // 用户取消
@@ -1514,11 +1091,11 @@ const handleComplete = async () => {
   completeLoading.value = true
   try {
     await completeWorkflow(issue.value.issue_key, { comment: completeComment.value || undefined })
-    ElMessage.success('工作节点已完成')
+    ElMessage.success(t('issue.msg.nodeCompleted'))
     completeComment.value = ''
     await loadIssue()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '完成操作失败')
+    ElMessage.error(error.response?.data?.message || t('issue.msg.completeFailed'))
   } finally {
     completeLoading.value = false
   }
@@ -1531,16 +1108,15 @@ const handleCompleteWithResult = async (result: string) => {
   try {
     await completeWorkflow(issue.value.issue_key, {
       comment: completeComment.value || undefined,
-      result: result,
-    })
+      result: result })
     // 从出边动作中找到对应的标签
     const action = workNodeOutgoingActions.value.find(a => a.conditionExpr === result)
     const actionLabel = action?.label || result
-    ElMessage.success(`已执行: ${actionLabel}`)
+    ElMessage.success(t('issue.msg.actionDone', { action: actionLabel }))
     completeComment.value = ''
     await loadIssue()
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '操作失败')
+    ElMessage.error(error.response?.data?.message || t('issue.msg.actionFailed'))
   } finally {
     completeLoading.value = false
   }
@@ -1552,11 +1128,11 @@ const handleApprove = async () => {
   approveLoading.value = true
   try {
     await approveWorkflow(issue.value.issue_key, { comment: approveComment.value || undefined })
-    ElMessage.success('审批通过')
+    ElMessage.success(t('issue.approvalStatusMap.approved'))
     approveComment.value = ''
     await loadIssue() // 刷新工单（状态已由工作流联动更新）
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '审批操作失败')
+    ElMessage.error(error.response?.data?.message || t('issue.msg.approveFailed'))
   } finally {
     approveLoading.value = false
   }
@@ -1571,72 +1147,44 @@ const showRejectDialog = () => {
 // 审批拒绝
 const handleReject = async () => {
   if (!issue.value || !rejectComment.value.trim()) {
-    ElMessage.warning('请填写拒绝原因')
+    ElMessage.warning(t('issue.msg.rejectReasonRequired'))
     return
   }
   rejectLoading.value = true
   try {
     await rejectWorkflow(issue.value.issue_key, { comment: rejectComment.value })
-    ElMessage.success('已拒绝')
+    ElMessage.success(t('issue.approvalStatusMap.rejected'))
     rejectComment.value = ''
     rejectDialogVisible.value = false
     await loadIssue() // 刷新工单（状态已由工作流联动更新）
   } catch (error: any) {
-    ElMessage.error(error.response?.data?.message || '拒绝操作失败')
+    ElMessage.error(error.response?.data?.message || t('issue.msg.rejectFailed'))
   } finally {
     rejectLoading.value = false
   }
 }
 
 const getWorkflowStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    active: '进行中',
-    completed: '已完成',
-    cancelled: '已取消',
-    reviewing: '验收中',
-  }
-  return map[status] || status
-}
-
-const getWorkflowStatusType = (status: string): 'success' | 'info' | 'warning' | 'danger' => {
-  const map: Record<string, 'success' | 'info' | 'warning' | 'danger'> = {
-    active: 'warning',
-    completed: 'success',
-    cancelled: 'info',
-    reviewing: 'warning',
-  }
-  return map[status] || 'info'
+  const known = ['active', 'completed', 'cancelled', 'reviewing']
+  return known.includes(status) ? t(`issue.workflowStatusMap.${status}`) : status
 }
 
 const getApprovalStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    pending: '待审批',
-    approved: '已通过',
-    rejected: '已拒绝',
-  }
-  return map[status] || status
+  const known = ['pending', 'approved', 'rejected']
+  return known.includes(status) ? t(`issue.approvalStatusMap.${status}`) : status
 }
 
 const getApprovalStatusType = (status: string): 'success' | 'info' | 'warning' | 'danger' => {
   const map: Record<string, 'success' | 'info' | 'warning' | 'danger'> = {
     pending: 'warning',
     approved: 'success',
-    rejected: 'danger',
-  }
+    rejected: 'danger' }
   return map[status] || 'info'
 }
 
 const getHistoryActionText = (action: string) => {
-  const map: Record<string, string> = {
-    start: '启动工作流',
-    approve: '审批通过',
-    reject: '审批拒绝',
-    forward: '流转到下一节点',
-    advance: '流转到下一节点',
-    complete: '工作流完成',
-    cancel: '工作流取消',
-  }
-  return map[action] || action
+  const known = ['start', 'approve', 'reject', 'forward', 'advance', 'complete', 'cancel']
+  return known.includes(action) ? t(`issue.historyActionMap.${action}`) : action
 }
 
 // 判断字段值是否已设置（支持数组类型）
@@ -1679,17 +1227,6 @@ const loadCustomFields = async (issueId: number) => {
   }
 }
 
-const submitComment = async () => {
-  if (!issue.value || !newComment.value.trim()) return
-  commentLoading.value = true
-  try {
-    await addIssueComment(issue.value.issue_key, { content: newComment.value })
-    ElMessage.success('评论成功')
-    newComment.value = ''
-    loadComments(issue.value.issue_key)
-  } catch { /* ignored */ }
-  finally { commentLoading.value = false }
-}
 
 // 通过 field_id 设置"分配给我"
 const assignToMeField = (fieldId: number) => {
@@ -1711,10 +1248,10 @@ const handleAssignToMe = async () => {
     await updateIssue(issue.value.issue_key, {
       assignee_id: userStore.user.id
     })
-    ElMessage.success('已分配给您')
+    ElMessage.success(t('issue.msg.assignedToYou'))
     loadIssue()
   } catch {
-    ElMessage.error('分配失败')
+    ElMessage.error(t('issue.msg.assignFailed'))
   }
 }
 
@@ -1734,11 +1271,11 @@ const handleAssigneeChange = async (userId: number | undefined) => {
   if (!issue.value) return
   try {
     await updateIssue(issue.value.issue_key, { assignee_id: userId || 0 })
-    ElMessage.success('指派人已更新')
+    ElMessage.success(t('issue.msg.assigneeUpdated'))
     editingAssignee.value = false
     loadIssue()
   } catch {
-    ElMessage.error('更新指派人失败')
+    ElMessage.error(t('issue.msg.assigneeUpdateFailed'))
   }
 }
 
@@ -1746,17 +1283,16 @@ const handleDelete = async () => {
   if (!issue.value) return
   try {
     await ElMessageBox.confirm(
-      `确定要删除工单 ${issue.value.issue_key} 吗？删除后无法恢复。`,
-      '删除工单',
+      t('issue.msg.confirmDelete', { key: issue.value.issue_key }),
+      t('issue.msg.deleteTitle'),
       {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
+        confirmButtonText: t('issue.msg.confirmDeleteBtn'),
+        cancelButtonText: t('common.cancel'),
         type: 'warning',
-        confirmButtonClass: 'el-button--danger',
-      }
+        confirmButtonClass: 'el-button--danger' }
     )
     await deleteIssue(issue.value.issue_key)
-    ElMessage.success('工单已删除')
+    ElMessage.success(t('issue.msg.deleted'))
     if (props.embedded && props.onDeleted) {
       props.onDeleted()
     } else {
@@ -1764,7 +1300,7 @@ const handleDelete = async () => {
     }
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除工单失败')
+      ElMessage.error(t('issue.msg.deleteFailed'))
     }
   }
 }
@@ -1780,8 +1316,7 @@ const handleEdit = async () => {
 
   Object.assign(editForm, {
     title: issue.value.title,
-    resolution: issue.value.resolution || undefined,
-  })
+    resolution: issue.value.resolution || undefined })
 
   // 加载编辑用的字段方案
   try {
@@ -1828,7 +1363,7 @@ const submitEdit = async () => {
           const val = editFieldValues.value[item.field_id]
           const isEmpty = val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)
           if (isEmpty) {
-            ElMessage.error(`请填写 ${item.field?.field_name}`)
+            ElMessage.error(t('issue.msg.fieldRequired', { field: item.field?.field_name }))
             editLoading.value = false
             return
           }
@@ -1847,10 +1382,9 @@ const submitEdit = async () => {
         planned_start_date: builtinValues.planned_start_date || undefined,
         planned_end_date: builtinValues.planned_end_date || undefined,
         epic_id: builtinValues.epic_id || undefined,
-        custom_fields: customFields.length > 0 ? customFields : undefined,
-      }
+        custom_fields: customFields.length > 0 ? customFields : undefined }
       await updateIssue(issue.value!.issue_key, updateData)
-      ElMessage.success('更新成功')
+      ElMessage.success(t('issue.msg.updateSuccess'))
       editDialogVisible.value = false
       loadIssue()
     } catch { /* ignored */ }
@@ -1873,10 +1407,6 @@ const availableWatcherUsers = computed(() => {
   return users.value.filter(u => !watcherUserIds.has(u.id))
 })
 
-const canRemoveWatcher = (watcher: IssueWatcher) => {
-  // 可以移除自己，或者有管理权限
-  return watcher.user_id === userStore.user?.id
-}
 
 const showAddWatcherDialog = async () => {
   if (users.value.length === 0) {
@@ -1884,7 +1414,7 @@ const showAddWatcherDialog = async () => {
       const { data } = await getAllUsers()
       users.value = data.data
     } catch {
-      ElMessage.error('加载用户列表失败')
+      ElMessage.error(t('issue.msg.loadUsersFailed'))
       return
     }
   }
@@ -1897,14 +1427,14 @@ const handleAddWatcher = async () => {
   watcherLoading.value = true
   try {
     await addIssueWatcher(issue.value.issue_key, selectedWatcherUserId.value)
-    ElMessage.success('添加关注人成功')
+    ElMessage.success(t('issue.msg.watcherAdded'))
     addWatcherDialogVisible.value = false
     loadWatchers(issue.value.issue_key)
   } catch (error: any) {
-    if (error.response?.data?.message?.includes('已经关注')) {
-      ElMessage.warning('该用户已经关注此工单')
+    if (error.response?.status === 400) {
+      ElMessage.warning(t('issue.msg.watcherExists'))
     } else {
-      ElMessage.error('添加关注人失败')
+      ElMessage.error(t('issue.msg.watcherAddFailed'))
     }
   } finally {
     watcherLoading.value = false
@@ -1914,17 +1444,16 @@ const handleAddWatcher = async () => {
 const handleRemoveWatcher = async (userId: number) => {
   if (!issue.value) return
   try {
-    await ElMessageBox.confirm('确定要移除此关注人吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(t('issue.msg.confirmRemoveWatcher'), t('issue.msg.tipTitle'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning' })
     await removeIssueWatcher(issue.value.issue_key, userId)
-    ElMessage.success('移除成功')
+    ElMessage.success(t('issue.msg.removeSuccess'))
     loadWatchers(issue.value.issue_key)
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('移除失败')
+      ElMessage.error(t('issue.msg.removeFailed'))
     }
   }
 }
@@ -1933,13 +1462,13 @@ const handleWatchIssue = async () => {
   if (!issue.value || !userStore.user) return
   try {
     await addIssueWatcher(issue.value.issue_key, userStore.user.id)
-    ElMessage.success('关注成功')
+    ElMessage.success(t('issue.msg.watchSuccess'))
     loadWatchers(issue.value.issue_key)
   } catch (error: any) {
-    if (error.response?.data?.message?.includes('已经关注')) {
-      ElMessage.warning('您已经关注此工单')
+    if (error.response?.status === 400) {
+      ElMessage.warning(t('issue.msg.alreadyWatching'))
     } else {
-      ElMessage.error('关注失败')
+      ElMessage.error(t('issue.msg.watchFailed'))
     }
   }
 }
@@ -1948,47 +1477,41 @@ const handleUnwatchIssue = async () => {
   if (!issue.value || !userStore.user) return
   try {
     await removeIssueWatcher(issue.value.issue_key, userStore.user.id)
-    ElMessage.success('取消关注成功')
+    ElMessage.success(t('issue.msg.unwatchSuccess'))
     loadWatchers(issue.value.issue_key)
   } catch {
-    ElMessage.error('取消关注失败')
+    ElMessage.error(t('issue.msg.unwatchFailed'))
   }
 }
 
 // Worklog related
-const defaultWorkTypes = [
-  { value: '开发', label: '开发' }, { value: '测试', label: '测试' },
-  { value: '调试', label: '调试' }, { value: '文档', label: '文档' },
-  { value: '故障排查', label: '故障排查' }, { value: '监控运维', label: '监控运维' },
-  { value: '部署发布', label: '部署发布' }, { value: '配置变更', label: '配置变更' },
-  { value: '巡检', label: '巡检' }, { value: '安全响应', label: '安全响应' },
-  { value: '其他', label: '其他' },
+// value 是落库的字面量，历史数据全是中文，不能随语言变；只有 label 走语言包
+const defaultWorkTypeKeys: { value: string; key: string }[] = [
+  { value: '开发', key: 'dev' }, { value: '测试', key: 'test' },
+  { value: '调试', key: 'debug' }, { value: '文档', key: 'docs' },
+  { value: '故障排查', key: 'troubleshoot' }, { value: '监控运维', key: 'ops' },
+  { value: '部署发布', key: 'deploy' }, { value: '配置变更', key: 'config' },
+  { value: '巡检', key: 'inspection' }, { value: '安全响应', key: 'security' },
+  { value: '其他', key: 'other' },
 ]
-const workTypeOptions = ref<{ value: string; label: string }[]>(defaultWorkTypes)
+// 后端未配置时用内置列表，配置了则原样使用（管理员自定义的文案不翻译）
+const customWorkTypes = ref<{ value: string; label: string }[] | null>(null)
+const workTypeOptions = computed<{ value: string; label: string }[]>(() =>
+  customWorkTypes.value
+    ?? defaultWorkTypeKeys.map(o => ({ value: o.value, label: t(`issue.workTypeMap.${o.key}`) }))
+)
 
 const loadWorkTypeOptions = async () => {
   try {
     const res = await getPublicConfig('worklog.work_types')
     const parsed = JSON.parse(res.data.data.config_value || '[]')
     if (Array.isArray(parsed) && parsed.length > 0) {
-      workTypeOptions.value = parsed
+      customWorkTypes.value = parsed
     }
   } catch {
     // 加载失败时使用默认值，不影响使用
   }
 }
-
-const worklogLoading = ref(false)
-const worklogForm = reactive<CreateWorklogRequest>({
-  description: '',
-  time_spent: '',
-  worked_at: new Date().toISOString(),
-  work_type: '',
-})
-
-const canSubmitWorklog = computed(() => {
-  return worklogForm.description.trim() && worklogForm.time_spent.trim() && worklogForm.worked_at
-})
 
 const totalTimeSpent = computed(() => {
   return worklogs.value.reduce((sum, w) => sum + w.time_spent_sec, 0)
@@ -2015,145 +1538,80 @@ const showTimeTracking = computed(() => {
   return totalTimeSpent.value > 0
 })
 
-const canEditWorklog = (worklog: Worklog) => {
-  return worklog.user_id === userStore.user?.id
-}
 
-const submitWorklog = async () => {
-  if (!issue.value || !canSubmitWorklog.value) return
-  worklogLoading.value = true
-  try {
-    const workedAtDate = new Date(worklogForm.worked_at)
 
-    await addWorklog(issue.value.issue_key, {
-      description: worklogForm.description,
-      time_spent: worklogForm.time_spent,
-      worked_at: workedAtDate.toISOString(),
-      work_type: worklogForm.work_type || undefined,
-    })
-    ElMessage.success('工作日志添加成功')
-    Object.assign(worklogForm, {
-      description: '',
-      time_spent: '',
-      worked_at: new Date().toISOString(),
-      work_type: '',
-    })
-    loadWorklogs(issue.value.issue_key)
-  } catch {
-    ElMessage.error('添加工作日志失败')
-  } finally {
-    worklogLoading.value = false
-  }
-}
 
-const handleEditWorklog = (_worklog: Worklog) => {
-  ElMessage.info('编辑功能开发中')
-}
 
-const handleDeleteWorklog = async (worklogId: number) => {
-  if (!issue.value) return
-  try {
-    await ElMessageBox.confirm('确定要删除这条工作日志吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-    await deleteWorklog(issue.value.issue_key, worklogId)
-    ElMessage.success('删除成功')
-    loadWorklogs(issue.value.issue_key)
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除失败')
-    }
-  }
-}
-
-const formatTimeSpent = (seconds: number) => {
-  const days = Math.floor(seconds / (8 * 3600))
-  const hours = Math.floor((seconds % (8 * 3600)) / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-
-  const parts = []
-  if (days > 0) parts.push(`${days}d`)
-  if (hours > 0) parts.push(`${hours}h`)
-  if (minutes > 0) parts.push(`${minutes}m`)
-
-  return parts.length > 0 ? parts.join(' ') : '0m'
-}
 
 type TagType = 'primary' | 'success' | 'warning' | 'info' | 'danger'
+// 优先级圆点与状态药丸：和列表页共用同一套语义
+const PRIORITY_COLOR: Record<string, string> = {
+  P0: 'var(--td-color-danger)',
+  P1: 'var(--td-color-warning)',
+  P2: 'var(--td-cat-2)',
+  P3: 'var(--td-text-disabled)' }
+
+const priorityColor = (p: string) => PRIORITY_COLOR[p] || 'var(--td-text-disabled)'
+
+const STATUS_TONE: Record<string, string> = {
+  open: 'neutral',
+  reopened: 'neutral',
+  in_progress: 'orange',
+  pending_review: 'blue',
+  resolved: 'green',
+  closed: 'neutral',
+  merged: 'purple' }
+
+const statusTone = (s: string) => STATUS_TONE[s] || 'neutral'
+
+// 工作流实例状态：进行中与待审都给橙（需要有人动手），完成给绿，
+// 取消是中性——取消不是失败，只是不再推进
+const workflowTone = (s: string) =>
+  s === 'active' || s === 'reviewing' ? 'orange' : s === 'completed' ? 'green' : 'neutral'
+
 const getPriorityType = (priority: string): TagType => {
   const map: Record<string, TagType> = { P0: 'danger', P1: 'warning', P2: 'info', P3: 'success' }
   return map[priority] || 'info'
 }
 const getStatusText = (status: string) => {
-  const map: Record<string, string> = { open: '待处理', in_progress: '进行中', pending_review: '待确认', resolved: '已完成', closed: '已终止', reopened: '重新打开', merged: '已合并' }
-  return map[status] || status
+    // 状态文案统一走语言包：它同时出现在列表、详情、报表、看板，
+  // 各处各写一份必然改一处漏三处
+  return t(`issue.statusMap.${status}`)
 }
 
-const getResolutionText = (resolution: string) => {
-  const map: Record<string, string> = {
-    fixed: '已解决',
-    wont_fix: '不予修复',
-    duplicate: '重复工单',
-    cannot_reproduce: '无法复现',
-    works_as_designed: '按设计工作',
-    incomplete: '信息不完整',
-    done: '已完成'
-  }
-  return map[resolution] || resolution
-}
 
 const formatTime = (time: string) => dayjs(time).format('YYYY-MM-DD HH:mm')
-const formatDate = (date: string) => dayjs(date).format('YYYY-MM-DD')
 
-// SLA 目标（分钟），与后端 slaTargets 保持一致
-const SLA_TARGETS: Record<string, number> = { P0: 60, P1: 240, P2: 1440, P3: 4320 }
-
-// SLA 超时状态计算（基于优先级 SLA 或 due_date）
+// SLA 判定走 utils/sla.ts，与工单列表共用一份 ——
+// 之前两边各写一份，都漏了 due_date，导致这张卡左边写「已超时 30 天」、
+// 右边写「截止时间 2026-09-16」（还没到），自相矛盾。
 const slaStatus = computed<{ level: 'overdue' | 'due_soon' | 'normal'; hint: string } | null>(() => {
   if (!issue.value) return null
-  // 已完成/已关闭/已合并不显示
-  if (['resolved', 'closed', 'merged'].includes(issue.value.status)) return null
 
-  const now = dayjs()
+  const state = getSlaState(issue.value)
+  if (!state) return null
 
-  // 优先使用预计交付时间，没有则用优先级默认 SLA
-  let deadline: ReturnType<typeof dayjs>
-  let slaMinutes: number
-
-  if (issue.value.planned_end_date) {
-    deadline = dayjs(issue.value.planned_end_date).endOf('day')
-    slaMinutes = deadline.diff(dayjs(issue.value.created_at), 'minute')
-  } else {
-    slaMinutes = SLA_TARGETS[issue.value.priority] || SLA_TARGETS.P2
-    deadline = dayjs(issue.value.created_at).add(slaMinutes, 'minute')
+  if (state.minutesLeft < 0) {
+    return {
+      level: 'overdue',
+      hint: t('issue.sla.overdueBy', { d: formatSLADuration(Math.abs(Math.round(state.minutesLeft))) }),
+    }
   }
-
-  const minutesLeft = deadline.diff(now, 'minute', true)
-  const threshold = slaMinutes * 0.25 // 剩余不到 25% 时即将超时
-
-  if (minutesLeft < 0) {
-    const overMinutes = Math.abs(Math.round(minutesLeft))
-    return { level: 'overdue', hint: `已超时 ${formatSLADuration(overMinutes)}` }
-  }
-  if (minutesLeft < threshold) {
-    return { level: 'due_soon', hint: `剩余 ${formatSLADuration(Math.round(minutesLeft))}` }
-  }
-  return { level: 'normal', hint: `剩余 ${formatSLADuration(Math.round(minutesLeft))}` }
+  const hint = t('issue.sla.remaining', { d: formatSLADuration(Math.round(state.minutesLeft)) })
+  return { level: state.level === 'due_soon' ? 'due_soon' : 'normal', hint }
 })
 
 // 格式化 SLA 时长
 const formatSLADuration = (minutes: number): string => {
-  if (minutes < 60) return `${minutes}分钟`
+  if (minutes < 60) return t('issue.duration.minutes', { n: minutes })
   const hours = Math.floor(minutes / 60)
   const mins = minutes % 60
   if (hours < 24) {
-    return mins > 0 ? `${hours}小时${mins}分钟` : `${hours}小时`
+    return mins > 0 ? t('issue.duration.hoursMinutes', { h: hours, m: mins }) : t('issue.duration.hours', { h: hours })
   }
   const days = Math.floor(hours / 24)
   const remainHours = hours % 24
-  return remainHours > 0 ? `${days}天${remainHours}小时` : `${days}天`
+  return remainHours > 0 ? t('issue.duration.daysHours', { d: days, h: remainHours }) : t('issue.duration.days', { d: days })
 }
 
 // 截止时间超时状态（仅用于 due_date 字段旁的标签）
@@ -2173,12 +1631,12 @@ const getAlertSeverityType = (severity: string) => {
   return map[severity] || 'info'
 }
 const getAlertSeverityText = (severity: string) => {
-  const map: Record<string, string> = { critical: '严重', warning: '警告', info: '信息' }
-  return map[severity] || severity
+  const known = ['critical', 'warning', 'info']
+  return known.includes(severity) ? t(`alert.severityMap.${severity}`) : severity
 }
 const getAlertStatusText = (status: string) => {
-  const map: Record<string, string> = { firing: '触发中', resolved: '已解决' }
-  return map[status] || status
+  const known = ['firing', 'resolved', 'acked']
+  return known.includes(status) ? t(`alert.statusMap.${status}`) : status
 }
 
 onMounted(() => {
@@ -2209,176 +1667,6 @@ const diagramNodes = ref<WorkflowNode[]>([])
 const diagramEdges = ref<WorkflowEdge[]>([])
 
 // 计算流程图布局（支持分支）
-interface LayoutNode { node: WorkflowNode; x: number; y: number }
-interface LayoutEdge { from: number; to: number; x1: number; y1: number; x2: number; y2: number; visited: boolean; label: string }
-
-const diagramLayout = computed(() => {
-  const nodes = diagramNodes.value
-  const edges = diagramEdges.value
-  const result = { nodes: [] as LayoutNode[], edges: [] as LayoutEdge[], width: 0, height: 0 }
-
-  if (nodes.length === 0) return result
-
-  const nodeW = 110
-  const nodeH = 80
-  const gapX = 160
-  const gapY = 120
-  const padX = 40
-  const padY = 30
-
-  // BFS 分层
-  const nodeMap = new Map<number, WorkflowNode>()
-  nodes.forEach(n => nodeMap.set(n.id, n))
-
-  const adjacency = new Map<number, number[]>()
-  nodes.forEach(n => adjacency.set(n.id, []))
-  edges.forEach(e => {
-    if (adjacency.has(e.source_node_id)) {
-      adjacency.get(e.source_node_id)!.push(e.target_node_id)
-    }
-  })
-
-  // 找开始节点
-  const startNode = nodes.find(n => n.node_type === 'start')
-  if (!startNode) return result
-
-  const levels = new Map<number, number>()
-  const visited = new Set<number>()
-  const queue: { id: number; level: number }[] = [{ id: startNode.id, level: 0 }]
-  visited.add(startNode.id)
-
-  while (queue.length > 0) {
-    const { id, level } = queue.shift()!
-    levels.set(id, Math.max(levels.get(id) || 0, level))
-    for (const next of (adjacency.get(id) || [])) {
-      if (!visited.has(next)) {
-        visited.add(next)
-        queue.push({ id: next, level: level + 1 })
-      }
-    }
-  }
-
-  // 未连接的节点
-  const maxLevel = Math.max(...Array.from(levels.values()), 0)
-  nodes.forEach(n => {
-    if (!levels.has(n.id)) levels.set(n.id, maxLevel + 1)
-  })
-
-  // 按层分组
-  const levelGroups = new Map<number, number[]>()
-  for (const [nodeId, level] of levels) {
-    if (!levelGroups.has(level)) levelGroups.set(level, [])
-    levelGroups.get(level)!.push(nodeId)
-  }
-
-  // 计算节点位置（水平布局）
-  const nodePositions = new Map<number, { x: number; y: number }>()
-  const totalLevels = Math.max(...Array.from(levelGroups.keys())) + 1
-
-  for (let lvl = 0; lvl < totalLevels; lvl++) {
-    const group = levelGroups.get(lvl) || []
-    const startY = padY + (group.length > 1 ? 0 : (gapY - nodeH) / 2)
-
-    group.forEach((nodeId, idx) => {
-      const x = padX + lvl * gapX
-      const y = startY + idx * gapY
-      nodePositions.set(nodeId, { x, y })
-    })
-  }
-
-  // 生成布局节点
-  for (const [nodeId, pos] of nodePositions) {
-    const node = nodeMap.get(nodeId)
-    if (node) {
-      result.nodes.push({ node, x: pos.x, y: pos.y })
-    }
-  }
-
-  // 生成布局边
-  const presetConditionLabels: Record<string, string> = { approved: '通过', rejected: '拒绝', confirmed: '确认完成', continue: '继续处理' }
-  for (const edge of edges) {
-    const fromPos = nodePositions.get(edge.source_node_id)
-    const toPos = nodePositions.get(edge.target_node_id)
-    if (!fromPos || !toPos) continue
-
-    result.edges.push({
-      from: edge.source_node_id,
-      to: edge.target_node_id,
-      x1: fromPos.x + nodeW,
-      y1: fromPos.y + nodeH / 2,
-      x2: toPos.x,
-      y2: toPos.y + nodeH / 2,
-      visited: visitedEdgePairs.value.has(`${edge.source_node_id}-${edge.target_node_id}`),
-      label: presetConditionLabels[edge.condition_expr] || edge.condition_expr || '',
-    })
-  }
-
-  // 计算画布尺寸
-  let maxX = 0, maxY = 0
-  for (const pos of nodePositions.values()) {
-    maxX = Math.max(maxX, pos.x + nodeW)
-    maxY = Math.max(maxY, pos.y + nodeH)
-  }
-  result.width = maxX + padX
-  result.height = maxY + padY
-
-  return result
-})
-
-// 获取已访问的节点 ID 集合（从流转历史中提取）
-const visitedNodeIds = computed(() => {
-  const ids = new Set<number>()
-  workflowHistoryList.value.forEach(h => {
-    if (h.from_node_id) ids.add(h.from_node_id)
-    if (h.to_node_id) ids.add(h.to_node_id)
-  })
-  return ids
-})
-
-// 获取已访问的边（from→to 对）
-const visitedEdgePairs = computed(() => {
-  const pairs = new Set<string>()
-  workflowHistoryList.value.forEach(h => {
-    if (h.from_node_id && h.to_node_id) {
-      pairs.add(`${h.from_node_id}-${h.to_node_id}`)
-    }
-  })
-  return pairs
-})
-
-// 判断节点的流程图样式类
-const getNodeDiagramClass = (node: WorkflowNode) => {
-  const currentNodeId = workflowInstance.value?.current_node_id
-  const isCurrent = node.id === currentNodeId
-  const isVisited = visitedNodeIds.value.has(node.id) && !isCurrent
-  const instanceStatus = workflowInstance.value?.status
-
-  const isOperable = instanceStatus === 'active' || instanceStatus === 'reviewing'
-
-  return {
-    current: isCurrent && isOperable,
-    visited: isVisited || (isCurrent && instanceStatus === 'completed'),
-    cancelled: instanceStatus === 'cancelled' && isCurrent,
-    pending: !isCurrent && !isVisited,
-    'node-start': node.node_type === 'start',
-    'node-end': node.node_type === 'end',
-    'node-approval': node.node_type === 'approval',
-    'node-work': node.node_type === 'work',
-  }
-}
-
-// 获取节点类型文本
-const getNodeTypeText = (nodeType: string) => {
-  const map: Record<string, string> = {
-    start: '开始',
-    end: '结束',
-    approval: '审批',
-    work: '工作',
-    system: '系统',
-  }
-  return map[nodeType] || nodeType
-}
-
 // 显示工作流流程图
 const showWorkflowDiagram = async () => {
   diagramVisible.value = true
@@ -2397,7 +1685,7 @@ const showWorkflowDiagram = async () => {
     diagramNodes.value = (nodesRes.data as any).data || []
     diagramEdges.value = (edgesRes.data as any).data || []
   } catch {
-    ElMessage.error('加载流程图失败')
+    ElMessage.error(t('issue.msg.loadDiagramFailed'))
   } finally {
     diagramLoading.value = false
   }
@@ -2405,6 +1693,8 @@ const showWorkflowDiagram = async () => {
 </script>
 
 <style scoped lang="scss">
+@use './issue-detail-shared.scss' as *;
+
 .issue-detail-container {
   width: 100%;
 
@@ -2486,26 +1776,29 @@ const showWorkflowDiagram = async () => {
 }
 
 // 头部
+// 页头不再是一张浮起的白卡片：和其它页面一样裸放在页面底色上。
+// 面包屑顶栏已经有了，这里留给标题和三项元信息。
 .issue-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 24px;
-  padding: 28px 32px;
-  background: var(--td-bg-card);
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  margin-bottom: 14px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
 
-  .header-left { flex: 1; }
+  .header-left { flex: 1; min-width: 0; }
 
-  .issue-breadcrumb { margin-bottom: 16px; }
+  .issue-breadcrumb { display: none; }
 
   .issue-title {
-    font-size: 24px;
-    font-weight: 700;
-    margin: 0 0 16px 0;
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.022em;
+    margin: 0 0 10px 0;
     color: var(--td-text-primary);
-    line-height: 1.4;
+    line-height: 1.15;
   }
 
   .issue-meta {
@@ -2516,17 +1809,20 @@ const showWorkflowDiagram = async () => {
     font-size: 14px;
     flex-wrap: wrap;
 
+    // 工单类型不是"状态"，只是分类信息，不该用实心主色抢走整屏注意力。
+    // 与 el-tag 的淡底写法保持一致，让同一行里的优先级、状态各自可辨。
     .type-badge {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 5px 14px;
-      background: var(--td-color-primary);
-      color: var(--td-text-white);
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+      gap: 5px;
+      padding: 3px 9px;
+      background: var(--td-tag-info-bg);
+      color: var(--td-tag-info-text);
+      border: 1px solid var(--td-tag-info-border);
+      border-radius: var(--td-radius-sm);
+      font-size: var(--td-font-sm);
+      font-weight: var(--td-weight-medium);
+      box-shadow: none;
 
       .type-icon {
         font-size: 14px;
@@ -2557,103 +1853,15 @@ const showWorkflowDiagram = async () => {
 }
 
 // 状态徽章
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 12px;
-  border-radius: 12px;
-  font-size: 13px;
-  font-weight: 500;
-
-  .status-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-  }
-
-  &.open { background: var(--td-bg-section); color: var(--td-text-secondary); .status-dot { background: var(--td-text-placeholder); } }
-  &.in_progress { background: var(--td-tag-orange-bg); color: var(--td-tag-orange-text); .status-dot { background: var(--td-color-warning); } }
-  &.pending_review { background: var(--td-tag-warning-bg); color: var(--td-tag-orange-text); .status-dot { background: var(--td-color-warning); } }
-  &.resolved { background: var(--td-tag-success-bg); color: var(--td-color-success); .status-dot { background: var(--td-color-success); } }
-  &.closed { background: var(--td-bg-section); color: var(--td-text-secondary); .status-dot { background: var(--td-text-placeholder); } }
-  &.reopened { background: var(--td-tag-danger-bg); color: var(--td-color-danger); .status-dot { background: var(--td-color-danger); } }
-  &.merged { background: var(--td-tag-purple-bg); color: var(--td-tag-purple-text); .status-dot { background: var(--td-tag-purple-text); } }
-
-  &.sm { padding: 2px 10px; font-size: 12px; .status-dot { width: 6px; height: 6px; } }
-}
 
 // 通用卡片
-.content-card, .info-card {
-  margin-bottom: 20px;
-  border-radius: 12px;
 
-  :deep(.el-card__header) {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--td-divider-color);
-  }
-}
 
-.card-header-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 
-.card-header-with-action {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
 
-.card-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  color: var(--td-text-white);
 
-  &.desc { background: var(--td-color-primary); }
-  &.comment { background: var(--td-color-success); }
-  &.activity { background: var(--td-color-primary); }
-  &.info { background: var(--td-color-danger); }
-  &.watcher { background: var(--td-color-warning); }
-  &.custom { background: #8b5cf6; }
-  &.epic { background: var(--td-color-primary); }
-  &.subtask { background: var(--td-color-warning); }
-  &.attachment { background: var(--td-color-warning); }
-  &.workflow { background: #8b5cf6; }
-  &.alert { background: var(--td-color-danger); }
-  &.time { background: var(--td-color-primary); }
-}
+// 侧栏分段：一张卡片内的三段，靠发丝线和小标题区分，不再各起一张卡
 
-.card-title { font-size: 15px; font-weight: 600; color: var(--td-text-primary); }
-
-.card-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  background: var(--td-border-color);
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--td-text-regular);
-}
-
-.empty-placeholder {
-  color: var(--td-text-placeholder);
-  text-align: center;
-  padding: 32px 0;
-  font-size: 14px;
-
-  &.sm { padding: 20px 0; }
-}
 
 // 描述
 .description-content {
@@ -2689,7 +1897,6 @@ const showWorkflowDiagram = async () => {
 
         .empty-value {
           color: var(--td-text-placeholder);
-          font-style: italic;
         }
 
         .epic-link {
@@ -2716,73 +1923,7 @@ const showWorkflowDiagram = async () => {
 }
 
 // 评论区
-.add-comment {
-  padding: 20px;
-  border-bottom: 1px solid var(--td-divider-color);
 
-  .comment-actions {
-    margin-top: 12px;
-    text-align: right;
-  }
-}
-
-.comment-list {
-  .comment-item {
-    display: flex;
-    gap: 14px;
-    padding: 16px 20px;
-    border-bottom: 1px solid #f5f5f5;
-
-    &:last-child { border-bottom: none; }
-
-    .comment-avatar {
-      width: 38px;
-      height: 38px;
-      border-radius: 10px;
-      background: var(--td-color-primary);
-      color: var(--td-text-white);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 15px;
-      font-weight: 600;
-      flex-shrink: 0;
-
-      &.system-avatar {
-        background: #8b5cf6;
-        font-size: 14px;
-      }
-    }
-
-    .comment-body {
-      flex: 1;
-
-      .comment-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 8px;
-
-        .comment-author { font-weight: 600; color: var(--td-text-primary); font-size: 14px; }
-        .system-author { color: var(--td-tag-purple-text); }
-        .comment-time { font-size: 12px; color: var(--td-text-placeholder); }
-      }
-
-      .comment-text {
-        color: var(--td-text-regular);
-        line-height: 1.6;
-        white-space: pre-wrap;
-        font-size: 14px;
-      }
-    }
-
-    &.system-comment {
-      background: var(--td-tag-purple-bg);
-      border-radius: 8px;
-      margin: 4px 0;
-    }
-  }
-}
 
 // 活动时间线
 .activity-timeline {
@@ -2792,7 +1933,10 @@ const showWorkflowDiagram = async () => {
     font-size: 14px;
 
     .activity-user { font-weight: 600; color: var(--td-text-primary); }
-    .activity-action { color: var(--td-text-secondary); margin: 0 4px; }
+    /* 6px 而不是一个空格的 4px：用户名是 600 字重，英文下「adminUpdated」
+       两个词会挤在一起；中文有天然的字面间距，4px 就够，所以一直没暴露。 */
+    .activity-details { color: var(--td-text-secondary); margin-left: 6px; }
+    .activity-action { color: var(--td-text-secondary); margin: 0 6px; }
     .activity-field { color: var(--td-color-info); margin: 0 4px; }
     .activity-old-value { text-decoration: line-through; color: var(--td-color-danger); margin: 0 4px; }
     .activity-new-value { color: var(--td-color-success); margin: 0 4px; }
@@ -2800,232 +1944,16 @@ const showWorkflowDiagram = async () => {
 }
 
 // 时间跟踪进度条
-.time-progress-wrap {
-  padding: 12px 20px 4px;
-}
 
 // 右侧信息
-.info-list {
-  .info-item {
-    display: grid;
-    grid-template-columns: 80px 1fr;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 20px;
-    border-bottom: 1px solid #f5f5f5;
 
-    &:last-child { border-bottom: none; }
-
-    .info-label {
-      color: var(--td-text-placeholder);
-      font-size: 12px;
-      font-weight: 500;
-      text-align: left;
-    }
-
-    .user-info {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      color: var(--td-text-primary);
-      font-size: 13px;
-    }
-
-    .assignee-with-action {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      justify-content: space-between;
-      width: 100%;
-    }
-
-    > span:not(.info-label),
-    > .el-tag,
-    > .el-link,
-    > .status-badge {
-      color: var(--td-text-primary);
-      font-size: 13px;
-      justify-self: start;
-    }
-
-    .sla-status-wrap {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: nowrap;
-      min-width: 0;
-
-      .sla-hint {
-        font-size: 12px;
-        color: var(--td-text-placeholder);
-        white-space: nowrap;
-      }
-    }
-  }
-}
-
-.mini-avatar {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--td-color-primary);
-  color: var(--td-text-white);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.text-muted { color: var(--td-text-placeholder); }
 
 // 关注人列表
-.watcher-list {
-  .watcher-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 20px;
-    border-bottom: 1px solid #f5f5f5;
 
-    &:last-child { border-bottom: none; }
-
-    .watcher-info {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex: 1;
-    }
-
-    .watcher-name { font-size: 14px; color: var(--td-text-regular); }
-  }
-}
-
-.watcher-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
 // 工作日志
-.detail-tabs {
-  :deep(.el-tabs__header) {
-    margin-bottom: 20px;
-  }
 
-  .tab-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
 
-    .el-icon { font-size: 16px; }
-  }
-
-  .tab-badge {
-    margin-left: 4px;
-  }
-}
-
-.add-worklog {
-  padding: 20px;
-  background: var(--td-bg-page);
-  border-radius: 8px;
-  margin-bottom: 20px;
-
-  .form-hint {
-    font-size: 12px;
-    color: var(--td-text-placeholder);
-    margin-top: 4px;
-  }
-}
-
-.worklog-list {
-  .worklog-summary {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 16px;
-    background: var(--td-tag-success-bg);
-    border-radius: 8px;
-    margin-bottom: 16px;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--td-color-success);
-
-    .el-icon { font-size: 16px; }
-  }
-
-  .worklog-item {
-    display: flex;
-    gap: 12px;
-    padding: 16px 0;
-    border-bottom: 1px solid var(--td-divider-color);
-
-    &:last-child { border-bottom: none; }
-
-    .worklog-avatar {
-      width: 36px;
-      height: 36px;
-      border-radius: 8px;
-      background: var(--td-color-primary);
-      color: var(--td-text-white);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      font-weight: 600;
-      flex-shrink: 0;
-    }
-
-    .worklog-body {
-      flex: 1;
-      min-width: 0;
-
-      .worklog-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 8px;
-        gap: 12px;
-
-        .worklog-meta {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex-wrap: wrap;
-
-          .worklog-author {
-            font-weight: 600;
-            color: var(--td-text-primary);
-            font-size: 14px;
-          }
-        }
-
-        .worklog-actions {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex-shrink: 0;
-
-          .worklog-time {
-            font-size: 13px;
-            color: var(--td-text-placeholder);
-          }
-        }
-      }
-
-      .worklog-text {
-        color: var(--td-text-regular);
-        font-size: 14px;
-        line-height: 1.6;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-    }
-  }
-}
 
 // 工作流卡片
 .workflow-card {
@@ -3219,9 +2147,8 @@ const showWorkflowDiagram = async () => {
       cursor: pointer;
 
       &:hover {
-        background: var(--td-bg-page);
-        border-color: var(--td-color-primary);
-        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+        background: var(--td-bg-section);
+        border-color: var(--td-border-color-dark);
       }
 
       &:last-child {
@@ -3236,29 +2163,17 @@ const showWorkflowDiagram = async () => {
         min-width: 0;
 
         .issue-type-icon {
-          width: 24px;
-          height: 24px;
-          border-radius: 4px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          font-size: 14px;
+          font-size: 15px;
           flex-shrink: 0;
+          color: var(--td-color-primary);
 
-          &.task {
-            background: var(--td-color-primary);
-            color: white;
-          }
-
-          &.bug {
-            background: var(--td-color-danger);
-            color: white;
-          }
-
-          &.epic {
-            background: var(--td-color-primary);
-            color: white;
-          }
+          // 只给图标上色，不套实心方块（§3.1 不放装饰性图标色块）
+          &.bug, &.fault { color: var(--td-color-danger); }
+          &.epic { color: var(--td-cat-5); }
+          &.subtask { color: var(--td-text-secondary); }
         }
 
         .issue-link {
@@ -3359,17 +2274,16 @@ const showWorkflowDiagram = async () => {
           flex-shrink: 0;
 
           .assignee-avatar {
-            width: 28px;
-            height: 28px;
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
-            background: var(--td-color-primary);
-            color: white;
+            background: var(--td-tag-primary-bg);
+            color: var(--td-tag-primary-text);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
+            font-size: 10.5px;
             font-weight: 600;
-            transition: all 150ms ease-out;
             flex-shrink: 0;
 
             &.unassigned {
@@ -3386,14 +2300,10 @@ const showWorkflowDiagram = async () => {
 
             &.unassigned {
               color: var(--td-text-placeholder);
-              font-style: italic;
             }
           }
 
-          &:hover .assignee-avatar {
-            transform: scale(1.1);
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-          }
+
         }
       }
     }
@@ -3428,9 +2338,8 @@ const showWorkflowDiagram = async () => {
       cursor: pointer;
 
       &:hover {
-        background: var(--td-bg-page);
-        border-color: var(--td-color-danger);
-        box-shadow: 0 2px 8px rgba(250, 112, 154, 0.1);
+        background: var(--td-bg-section);
+        border-color: var(--td-border-color-dark);
       }
 
       &:last-child {
@@ -3445,24 +2354,17 @@ const showWorkflowDiagram = async () => {
         min-width: 0;
 
         .issue-type-icon {
-          width: 24px;
-          height: 24px;
-          border-radius: 4px;
-          display: flex;
+          display: inline-flex;
           align-items: center;
           justify-content: center;
-          font-size: 14px;
+          font-size: 15px;
           flex-shrink: 0;
+          color: var(--td-color-primary);
 
-          &.task {
-            background: var(--td-color-primary);
-            color: white;
-          }
-
-          &.bug {
-            background: var(--td-color-danger);
-            color: white;
-          }
+          // 只给图标上色，不套实心方块（§3.1 不放装饰性图标色块）
+          &.bug, &.fault { color: var(--td-color-danger); }
+          &.epic { color: var(--td-cat-5); }
+          &.subtask { color: var(--td-text-secondary); }
         }
 
         .issue-link {
@@ -3563,17 +2465,16 @@ const showWorkflowDiagram = async () => {
           flex-shrink: 0;
 
           .assignee-avatar {
-            width: 28px;
-            height: 28px;
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
-            background: var(--td-color-warning);
-            color: white;
+            background: var(--td-tag-orange-bg);
+            color: var(--td-tag-orange-text);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
+            font-size: 10.5px;
             font-weight: 600;
-            transition: all 150ms ease-out;
             flex-shrink: 0;
 
             &.unassigned {
@@ -3590,14 +2491,10 @@ const showWorkflowDiagram = async () => {
 
             &.unassigned {
               color: var(--td-text-placeholder);
-              font-style: italic;
             }
           }
 
-          &:hover .assignee-avatar {
-            transform: scale(1.1);
-            box-shadow: 0 2px 8px rgba(250, 112, 154, 0.3);
-          }
+
         }
       }
     }
@@ -3605,138 +2502,13 @@ const showWorkflowDiagram = async () => {
 }
 
 // 附件区域
+// 卡片 body 本身已经有内边距，这里再套一层就变成每边 36px，
+// 一句"暂无附件"被撑成 130px 高的空块
 .attachment-section {
-  padding: 20px;
+  padding: 0;
 }
 
 // 工作流流程图
-.workflow-diagram {
-  min-height: 120px;
-  overflow: auto;
-  padding: 20px 0;
-
-  .diagram-graph {
-    position: relative;
-    margin: 0 auto;
-  }
-
-  .diagram-edges {
-    position: absolute;
-    top: 0;
-    left: 0;
-    pointer-events: none;
-  }
-
-  .diagram-node {
-    position: absolute;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    width: 110px;
-    height: 80px;
-    border-radius: 10px;
-    border: 2px solid var(--td-border-color);
-    background: var(--td-bg-page);
-    transition: all 150ms ease-out;
-    cursor: default;
-
-    .diagram-node-icon {
-      font-size: 20px;
-      margin-bottom: 4px;
-      color: var(--td-color-info);
-    }
-
-    .diagram-node-name {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--td-text-primary);
-      white-space: nowrap;
-      max-width: 100px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .diagram-node-type {
-      font-size: 11px;
-      color: var(--td-color-info);
-      margin-top: 2px;
-    }
-
-    .diagram-node-check {
-      position: absolute;
-      top: -8px;
-      right: -8px;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: var(--td-color-success);
-      color: var(--td-text-white);
-      font-size: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-    }
-
-    // 节点类型图标颜色
-    &.node-start .diagram-node-icon { color: var(--td-color-success); }
-    &.node-end .diagram-node-icon { color: var(--td-color-info); }
-    &.node-approval .diagram-node-icon { color: var(--td-color-warning); }
-    &.node-work .diagram-node-icon { color: var(--td-color-primary); }
-
-    // 已完成节点
-    &.visited {
-      border-color: var(--td-color-success);
-      background: var(--td-tag-success-bg);
-
-      .diagram-node-name { color: var(--td-color-success); }
-      .diagram-node-icon { color: var(--td-color-success); }
-    }
-
-    // 当前节点
-    &.current {
-      border-color: var(--td-color-primary);
-      background: var(--td-tag-primary-bg);
-      box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.2);
-      animation: pulse-border 2s ease-in-out infinite;
-
-      .diagram-node-name { color: var(--td-color-primary); }
-      .diagram-node-icon { color: var(--td-color-primary); }
-    }
-
-    // 被取消节点
-    &.cancelled {
-      border-color: var(--td-color-danger);
-      background: var(--td-tag-danger-bg);
-
-      .diagram-node-name { color: var(--td-color-danger); }
-      .diagram-node-icon { color: var(--td-color-danger); }
-    }
-
-    // 未到达节点
-    &.pending {
-      border-color: var(--td-border-color);
-      background: var(--td-bg-page);
-      opacity: 0.7;
-    }
-  }
-
-  .diagram-empty {
-    display: flex;
-    justify-content: center;
-    padding: 20px;
-  }
-}
-
-@keyframes pulse-border {
-  0%, 100% {
-    box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.2);
-  }
-  50% {
-    box-shadow: 0 0 0 6px rgba(64, 158, 255, 0.1);
-  }
-}
 
 // 关联告警样式
 .alert-card {
@@ -3758,6 +2530,15 @@ const showWorkflowDiagram = async () => {
 
     &.firing { background: var(--td-tag-danger-bg); color: var(--td-color-danger); .status-dot { background: var(--td-color-danger); } }
     &.resolved { background: var(--td-tag-success-bg); color: var(--td-color-success); .status-dot { background: var(--td-color-success); } }
+  }
+}
+/* 拒绝：破坏性操作不常驻红，中性描边，悬停和按下才亮红 */
+.reject-btn {
+  &:hover,
+  &:focus-visible {
+    color: var(--td-color-danger);
+    border-color: var(--td-color-danger);
+    background: var(--td-tag-danger-bg);
   }
 }
 </style>

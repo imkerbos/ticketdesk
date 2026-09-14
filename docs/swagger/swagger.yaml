@@ -841,6 +841,8 @@ definitions:
           type: string
         minItems: 1
         type: array
+      mention_all:
+        type: boolean
       name:
         maxLength: 100
         type: string
@@ -1645,8 +1647,14 @@ definitions:
         type: string
       expires_in:
         type: integer
+      mfa_token:
+        description: MFAToken 短期挑战令牌（5 分钟），仅能用于 /auth/mfa/verify
+        type: string
       refresh_token:
         type: string
+      requires_mfa:
+        description: RequiresMFA 为 true 表示登录未完成，需要二次验证
+        type: boolean
       user:
         $ref: '#/definitions/dto.UserResponse'
     type: object
@@ -1654,11 +1662,11 @@ definitions:
     properties:
       code:
         type: string
-      user_id:
-        type: integer
+      mfa_token:
+        type: string
     required:
     - code
-    - user_id
+    - mfa_token
     type: object
   dto.MFASetupResponse:
     properties:
@@ -1818,6 +1826,8 @@ definitions:
         type: array
       id:
         type: integer
+      mention_all:
+        type: boolean
       name:
         type: string
       project_id:
@@ -1899,6 +1909,18 @@ definitions:
   dto.ProjectResponse:
     properties:
       created_at:
+        type: string
+      daily_digest_cron:
+        type: string
+      daily_digest_enabled:
+        type: boolean
+      daily_digest_issue_type_ids:
+        items:
+          type: integer
+        type: array
+      daily_digest_scope:
+        type: string
+      daily_digest_tz:
         type: string
       description:
         type: string
@@ -2369,6 +2391,53 @@ definitions:
         description: 会话超时时间（分钟）
         type: integer
     type: object
+  dto.SetupRequest:
+    properties:
+      display_name:
+        maxLength: 100
+        type: string
+      email:
+        maxLength: 100
+        type: string
+      language:
+        enum:
+        - zh-CN
+        - en-US
+        type: string
+      password:
+        maxLength: 50
+        minLength: 6
+        type: string
+      site_url:
+        maxLength: 255
+        type: string
+      system_name:
+        description: 站点配置
+        maxLength: 50
+        type: string
+      token:
+        description: Token 首次部署时下发的一次性令牌
+        type: string
+      username:
+        description: 管理员账号
+        maxLength: 50
+        minLength: 3
+        type: string
+    required:
+    - display_name
+    - email
+    - language
+    - password
+    - site_url
+    - system_name
+    - token
+    - username
+    type: object
+  dto.StatusResponse:
+    properties:
+      initialized:
+        type: boolean
+    type: object
   dto.StatusSummary:
     properties:
       count:
@@ -2793,6 +2862,8 @@ definitions:
           type: string
         minItems: 1
         type: array
+      mention_all:
+        type: boolean
       name:
         maxLength: 100
         type: string
@@ -2813,6 +2884,23 @@ definitions:
     type: object
   dto.UpdateProjectRequest:
     properties:
+      daily_digest_cron:
+        maxLength: 64
+        type: string
+      daily_digest_enabled:
+        type: boolean
+      daily_digest_issue_type_ids:
+        items:
+          type: integer
+        type: array
+      daily_digest_scope:
+        enum:
+        - all_open
+        - assigned_only
+        type: string
+      daily_digest_tz:
+        maxLength: 64
+        type: string
       description:
         maxLength: 1000
         type: string
@@ -2989,6 +3077,20 @@ definitions:
       email:
         maxLength: 100
         type: string
+      lark_open_id:
+        maxLength: 64
+        type: string
+      locale:
+        description: |-
+          Locale 偏好语言。空串是有意义的值 —— 表示"跟随站点设置"，
+          所以用指针区分"没传"和"清空"。
+        enum:
+        - zh-CN
+        - en-US
+        type: string
+      telegram_user_id:
+        maxLength: 32
+        type: string
     type: object
   dto.UpdateVersionRequest:
     properties:
@@ -3097,7 +3199,11 @@ definitions:
         type: string
       id:
         type: integer
+      lark_open_id:
+        type: string
       last_login_at:
+        type: string
+      locale:
         type: string
       mfa_enabled:
         type: boolean
@@ -3110,6 +3216,8 @@ definitions:
         type: string
       status:
         type: integer
+      telegram_user_id:
+        type: string
       updated_at:
         type: string
       username:
@@ -3649,7 +3757,6 @@ definitions:
       message:
         type: string
     type: object
-host: localhost:10010
 info:
   contact:
     name: TicketDesk
@@ -4725,7 +4832,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: 登录流程中验证 MFA 码
+      description: 登录第二步：提交登录第一步下发的挑战令牌与 TOTP 码，换取正式令牌对
       parameters:
       - description: MFA 登录请求
         in: body
@@ -4747,6 +4854,10 @@ paths:
               type: object
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: 挑战令牌无效或已过期
           schema:
             $ref: '#/definitions/response.ErrorResponse'
       summary: 验证 MFA 码
@@ -6682,6 +6793,35 @@ paths:
       summary: 更新项目组件
       tags:
       - Component
+  /api/v1/projects/{key}/daily-digest/run:
+    post:
+      description: 不依赖 cron，立即生成并推送一次未完结工单日报；空 issues 不发送
+      parameters:
+      - description: 项目 Key
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: 项目不存在
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 立即触发项目日报
+      tags:
+      - ProjectDailyDigest
   /api/v1/projects/{key}/fields:
     get:
       description: 获取项目可用的所有字段（系统字段+自定义字段）
@@ -10266,6 +10406,43 @@ paths:
       summary: 获取当前用户信息
       tags:
       - User
+    put:
+      consumes:
+      - application/json
+      description: 当前登录用户更新自己的基本资料（display_name / email / avatar / lark_open_id /
+        telegram_user_id）
+      parameters:
+      - description: 更新当前用户资料请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.UserResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 更新当前用户资料
+      tags:
+      - User
   /api/v1/users/me/mfa:
     get:
       description: 获取当前用户的 MFA 状态
@@ -11119,6 +11296,44 @@ paths:
       summary: 更新工作流节点
       tags:
       - Workflow
+  /setup:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 初始化信息
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: 执行首次初始化
+      tags:
+      - Setup
+  /setup/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dto.StatusResponse'
+              type: object
+      summary: 查询初始化状态
+      tags:
+      - Setup
   /ws:
     get:
       description: 通过 token 查询参数进行认证后升级为 WebSocket 连接，用于接收实时站内通知

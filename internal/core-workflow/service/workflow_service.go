@@ -19,13 +19,13 @@ import (
 
 // 业务错误定义
 var (
-	ErrWorkflowNotFound = errors.New("工作流不存在")
-	ErrNodeNotFound     = errors.New("节点不存在")
-	ErrEdgeNotFound     = errors.New("边不存在")
-	ErrInvalidWorkflow  = errors.New("工作流配置无效")
-	ErrNodeInUse        = errors.New("节点正在使用中")
-	ErrSchemeNotFound   = errors.New("工作流方案不存在")
-	ErrSchemeExists     = errors.New("工作流方案已存在")
+	ErrWorkflowNotFound = errors.New("workflow.not_found")
+	ErrNodeNotFound     = errors.New("workflow.node_not_found")
+	ErrEdgeNotFound     = errors.New("workflow.edge_not_found")
+	ErrInvalidWorkflow  = errors.New("workflow.config_invalid")
+	ErrNodeInUse        = errors.New("workflow.node_in_use")
+	ErrSchemeNotFound   = errors.New("workflow.scheme_not_found")
+	ErrSchemeExists     = errors.New("workflow.scheme_exists")
 )
 
 // WorkflowService 工作流服务接口

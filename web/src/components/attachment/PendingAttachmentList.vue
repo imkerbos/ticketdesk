@@ -8,8 +8,8 @@
   >
     <div class="add-area" @click="triggerFileInput">
       <el-icon class="add-icon"><Plus /></el-icon>
-      <span class="add-text">点击 / 拖拽 / 粘贴 添加附件</span>
-      <span class="add-hint">单文件 ≤ 10MB</span>
+      <span class="add-text">{{ t('component.attachment.addHint') }}</span>
+      <span class="add-hint">{{ t('component.attachment.sizeHint') }}</span>
     </div>
     <input
       ref="fileInputRef"
@@ -34,9 +34,12 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, onBeforeUnmount } from 'vue'
 import { Plus, Close, Document } from '@element-plus/icons-vue'
 import { validateFile, isImage, formatSize } from '@/utils/attachment'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   modelValue: File[]
@@ -117,74 +120,78 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
+/* token 一律不带 #hex 回退：回退值是亮色写死的，暗色下命中回退就是浅底深字。
+   token 本身在 theme.scss 里一定有定义，回退只会掩盖拼错的变量名。 */
 .pending-attachment-list {
-  border: 1px dashed var(--td-border-color, #e5e7eb);
-  border-radius: 6px;
-  padding: 12px;
+  width: 100%;
+  border: 1px dashed var(--td-border-color);
+  border-radius: 8px;
+  padding: 10px;
   transition: border-color 150ms ease-out, background-color 150ms ease-out;
 
   &.is-drag-active {
-    border-color: var(--td-color-primary, #3b82f6);
-    background-color: rgba(59, 130, 246, 0.04);
+    border-color: var(--td-color-primary);
+    background-color: var(--td-tag-primary-bg);
   }
 }
 
 .add-area {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 4px;
+  gap: 7px;
+  padding: 7px 10px;
+  border-radius: 7px;
   cursor: pointer;
-  color: var(--td-text-secondary, #6b7280);
+  font-size: 13px;
+  color: var(--td-text-secondary);
   transition: background-color 150ms ease-out;
 
   &:hover {
-    background-color: var(--el-fill-color-light, #f5f7fa);
+    background-color: var(--td-bg-section);
   }
 
   .add-icon {
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .add-hint {
     margin-left: auto;
-    font-size: 12px;
-    color: var(--td-text-disabled, #9ca3af);
+    font-size: 11.5px;
+    color: var(--td-text-placeholder);
   }
 }
 
 .file-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 4px;
+  margin-top: 6px;
 }
 
 .file-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  background: var(--el-fill-color-light, #f5f7fa);
-  border-radius: 4px;
+  gap: 9px;
+  padding: 5px 9px;
+  background: var(--td-bg-section);
+  border-radius: 7px;
   transition: background-color 150ms ease-out;
 
   &:hover {
-    background: var(--el-fill-color, #f0f2f5);
+    background: var(--td-bg-card-hover);
   }
 
   .thumb {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     object-fit: cover;
-    border-radius: 3px;
+    border-radius: 5px;
     flex-shrink: 0;
   }
 
   .file-icon {
-    font-size: 24px;
-    color: var(--td-text-secondary, #6b7280);
+    font-size: 18px;
+    color: var(--td-text-placeholder);
     flex-shrink: 0;
   }
 
@@ -193,28 +200,29 @@ onBeforeUnmount(() => {
     min-width: 0;
 
     .name {
-      font-size: 13px;
-      color: var(--td-text-primary, #1f2937);
+      font-size: 12.5px;
+      color: var(--td-text-primary);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     .size {
-      font-size: 12px;
-      color: var(--td-text-disabled, #9ca3af);
+      font-size: 11.5px;
+      color: var(--td-text-placeholder);
+      font-variant-numeric: tabular-nums;
     }
   }
 
   .remove {
-    font-size: 16px;
-    color: var(--td-text-disabled, #9ca3af);
+    font-size: 15px;
+    color: var(--td-text-placeholder);
     cursor: pointer;
     flex-shrink: 0;
     transition: color 150ms ease-out;
 
     &:hover {
-      color: var(--td-color-danger, #ef4444);
+      color: var(--td-color-danger);
     }
   }
 }

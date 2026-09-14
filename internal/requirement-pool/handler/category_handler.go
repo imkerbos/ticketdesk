@@ -60,7 +60,7 @@ func (h *CategoryHandler) HandleList(c *gin.Context) {
 func (h *CategoryHandler) HandleCreate(c *gin.Context) {
 	var req dto.CreateCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -95,13 +95,13 @@ func (h *CategoryHandler) HandleCreate(c *gin.Context) {
 func (h *CategoryHandler) HandleUpdate(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的分类ID")
+		response.BadRequest(c, "requirement.invalid_category_id")
 		return
 	}
 
 	var req dto.UpdateCategoryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -115,7 +115,7 @@ func (h *CategoryHandler) HandleUpdate(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"message": "更新成功"})
+	response.Success(c, gin.H{"message": response.T(c, "requirement.updated")})
 }
 
 // HandleDelete 删除需求分类
@@ -133,7 +133,7 @@ func (h *CategoryHandler) HandleUpdate(c *gin.Context) {
 func (h *CategoryHandler) HandleDelete(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的分类ID")
+		response.BadRequest(c, "requirement.invalid_category_id")
 		return
 	}
 
@@ -151,5 +151,5 @@ func (h *CategoryHandler) HandleDelete(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"message": "删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "requirement.deleted")})
 }

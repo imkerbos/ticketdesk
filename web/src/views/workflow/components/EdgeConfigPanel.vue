@@ -1,32 +1,32 @@
 <template>
-  <el-dialog v-model="visible" title="连接配置" width="450px" destroy-on-close @close="$emit('close')">
+  <el-dialog v-model="visible" :title="t('workflow.edge.title')" width="450px" destroy-on-close @close="$emit('close')">
     <el-form label-position="top">
-      <el-form-item label="源节点">
+      <el-form-item :label="t('workflow.sourceNode')">
         <el-input :model-value="sourceNodeName" disabled />
       </el-form-item>
-      <el-form-item label="目标节点">
+      <el-form-item :label="t('workflow.targetNode')">
         <el-input :model-value="targetNodeName" disabled />
       </el-form-item>
 
       <!-- 流转条件：统一使用预设 + 自定义 -->
-      <el-form-item label="流转条件">
+      <el-form-item :label="t('workflow.edge.condition')">
         <!-- 条件模式选择 -->
         <el-radio-group v-model="conditionMode" style="margin-bottom: 8px; width: 100%">
-          <el-radio-button value="none">无条件</el-radio-button>
-          <el-radio-button value="preset">预设条件</el-radio-button>
-          <el-radio-button value="custom">自定义</el-radio-button>
+          <el-radio-button value="none">{{ t('workflow.edge.none') }}</el-radio-button>
+          <el-radio-button value="preset">{{ t('workflow.edge.preset') }}</el-radio-button>
+          <el-radio-button value="custom">{{ t('workflow.edge.custom') }}</el-radio-button>
         </el-radio-group>
 
         <!-- 预设条件选择 -->
         <el-select
           v-if="conditionMode === 'preset'"
           v-model="localCondition"
-          placeholder="请选择流转条件"
+          :placeholder="t('workflow.edge.selectCondition')"
           style="width: 100%"
         >
-          <el-option-group label="常用条件">
-            <el-option label="通过 / 完成" value="approved" />
-            <el-option label="拒绝 / 退回" value="rejected" />
+          <el-option-group :label="t('workflow.edge.commonGroup')">
+            <el-option :label="t('workflow.edge.approvedOption')" value="approved" />
+            <el-option :label="t('workflow.edge.rejectedOption')" value="rejected" />
           </el-option-group>
         </el-select>
 
@@ -34,46 +34,49 @@
         <el-input
           v-if="conditionMode === 'custom'"
           v-model="localCondition"
-          placeholder="输入自定义条件名称，如：验收通过、需要修改、转交等"
+          :placeholder="t('workflow.edge.customPlaceholder')"
           clearable
         />
 
         <!-- 提示信息 -->
         <div class="form-hint">
           <template v-if="conditionMode === 'none'">
-            无条件流转：当源节点完成后，直接流转到「{{ targetNodeName }}」
+            {{ t('workflow.edge.noneHint', { name: targetNodeName }) }}
           </template>
           <template v-else-if="conditionMode === 'preset' || conditionMode === 'custom'">
             <template v-if="localCondition">
-              当操作「{{ conditionDisplayText }}」时，流程将流转到「{{ targetNodeName }}」
+              {{ t('workflow.edge.condHint', { cond: conditionDisplayText, name: targetNodeName }) }}
             </template>
             <template v-else>
-              请设置流转条件
+              {{ t('workflow.edge.setCondition') }}
             </template>
           </template>
         </div>
       </el-form-item>
 
       <!-- 显示标签 -->
-      <el-form-item label="连接标签（可选）">
+      <el-form-item :label="t('workflow.edge.label')">
         <el-input
           v-model="localLabel"
-          placeholder="显示在连接线上的文字（留空则自动使用条件名称）"
+          :placeholder="t('workflow.edge.labelPlaceholder')"
           clearable
         />
-        <div class="form-hint">显示在连接线上的文字，如：通过、拒绝、验收完成等</div>
+        <div class="form-hint">{{ t('workflow.edge.labelHint') }}</div>
       </el-form-item>
     </el-form>
     <template #footer>
-      <el-button @click="visible = false">取消</el-button>
-      <el-button type="danger" plain @click="handleDelete">删除此连接</el-button>
-      <el-button type="primary" @click="handleSave">保存</el-button>
+      <el-button @click="visible = false">{{ t('common.cancel') }}</el-button>
+      <el-button type="danger" plain @click="handleDelete">{{ t('workflow.edge.deleteEdge') }}</el-button>
+      <el-button type="primary" @click="handleSave">{{ t('common.save') }}</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, watch, computed } from 'vue'
+
+const { t } = useI18n()
 
 interface FlowEdge {
   id: string
@@ -113,10 +116,10 @@ const localLabel = ref('')
 const conditionMode = ref<'none' | 'preset' | 'custom'>('none')
 
 // 预设条件的显示名称映射
-const presetDisplayNames: Record<string, string> = {
-  approved: '通过',
-  rejected: '拒绝/退回',
-}
+const presetDisplayNames = (): Record<string, string> => ({
+  approved: t('workflow.edge.approved'),
+  rejected: t('workflow.edge.rejected'),
+})
 
 // 判断条件是否是预设条件
 const isPresetCondition = (condition: string) => {
@@ -126,7 +129,7 @@ const isPresetCondition = (condition: string) => {
 // 条件的显示文本
 const conditionDisplayText = computed(() => {
   if (!localCondition.value) return ''
-  return presetDisplayNames[localCondition.value] || localCondition.value
+  return presetDisplayNames()[localCondition.value] || localCondition.value
 })
 
 watch(
@@ -190,7 +193,7 @@ const handleSave = () => {
   // 自动生成标签：如果用户没有填标签，使用条件的显示名称
   let label = localLabel.value
   if (!label && condition) {
-    label = presetDisplayNames[condition] || condition
+    label = presetDisplayNames()[condition] || condition
   }
 
   emit('update', {

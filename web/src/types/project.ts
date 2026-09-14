@@ -192,3 +192,13 @@ export interface UpdateNotificationChannelRequest {
   enabled?: boolean
 }
 
+
+/** 当前用户在某个项目里的权限，用来决定界面显示哪些操作入口 */
+export interface MyProjectPermissions {
+  /** 系统管理员在所有项目里都拥有全部权限 */
+  is_admin: boolean
+  is_member: boolean
+  /** 项目 owner 拥有全部权限 */
+  is_owner: boolean
+  permissions: string[]
+}

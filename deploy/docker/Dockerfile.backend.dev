@@ -1,32 +1,54 @@
-# 后端开发镜像（支持 Air 热更新）
-FROM golang:1.25
+# 后端开发镜像
+#
+# 构建期编译，运行期只跑二进制 —— 和 deploy/docker/Dockerfile 同一套做法，
+# 区别只是 dev 版保留符号表和 DWARF，方便 dlv / pprof。
+#
+# 为什么不在容器里跑 air 热更新：
+#   1. dev 环境搬到 k8s 之后没有 docker-compose 那层源码 bind mount，
+#      air 监听的只是镜像里的一份快照，改宿主机的代码它看不见；
+#   2. air 启动时要在容器内编译整个项目，backend 的内存限额装不下 Go 编译器
+#      （compile: signal: killed → CrashLoopBackOff）。
+# CLAUDE.md §6.2 写的也是「后端没有热更新，改了 Go 代码要重建镜像」。
+
+# ── 构建阶段 ────────────────────────────────────────────
+FROM golang:1.25 AS builder
 
 WORKDIR /app
 
-# 设置时区
-ENV TZ=Asia/Shanghai
-
-# 安装 curl（用于健康检查）
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
-# 设置 Go 环境
 ENV GO111MODULE=on
 ENV GOPROXY=https://goproxy.cn,https://proxy.golang.org,direct
 
-# 先复制 go.mod 和 go.sum（利用 Docker 层缓存）
+# 先拷 go.mod / go.sum：依赖没变就复用这一层
 COPY go.mod go.sum ./
-
-# 下载依赖（使用 BuildKit 缓存挂载）
-# 只有当 go.mod 或 go.sum 改变时才会重新下载
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
-# 安装 Air 热更新工具（使用缓存）
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go install github.com/air-verse/air@latest
+COPY . .
 
-# 暴露端口
+# 不加 -s -w，留着符号表方便本地排查
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -o /app/bin/ticketdesk ./cmd/ticketdesk
+
+# ── 运行阶段 ────────────────────────────────────────────
+FROM debian:bookworm-slim
+
+WORKDIR /app
+
+# curl 供健康检查用
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tzdata \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=Asia/Shanghai
+
+COPY --from=builder /app/bin/ticketdesk /app/ticketdesk
+COPY --from=builder /app/configs /app/configs
+
+RUN mkdir -p /app/logs /app/uploads
+
 EXPOSE 10010
 
-# 使用 Air 启动（热更新）- 使用 Docker 专用配置
-CMD ["air", "-c", ".air.docker.toml"]
+CMD ["/app/ticketdesk", "-config", "/app/configs/config-dev.yaml"]

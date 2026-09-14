@@ -1,101 +1,129 @@
-// Package storage 提供文件存储服务
+// Package storage: 本地文件系统驱动
 package storage
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // LocalStorage 本地文件存储
+//
+// 保留此驱动是为了兼容既有部署（单副本 + PVC）。
+// 多副本场景请改用 s3 驱动，本驱动的数据只存在于单个 Pod 的卷上。
 type LocalStorage struct {
 	basePath string
 }
 
+// 确保实现了接口
+var _ Storage = (*LocalStorage)(nil)
+
 // NewLocalStorage 创建本地存储实例
 func NewLocalStorage(basePath string) (*LocalStorage, error) {
-	// 确保基础路径存在
-	if err := os.MkdirAll(basePath, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create base path: %w", err)
+	if err := os.MkdirAll(basePath, 0o750); err != nil {
+		return nil, fmt.Errorf("创建存储根目录失败: %w", err)
 	}
-
-	return &LocalStorage{
-		basePath: basePath,
-	}, nil
+	abs, err := filepath.Abs(basePath)
+	if err != nil {
+		return nil, fmt.Errorf("解析存储根目录失败: %w", err)
+	}
+	return &LocalStorage{basePath: abs}, nil
 }
 
-// Save 保存文件
-// 返回相对路径（相对于basePath）
-func (s *LocalStorage) Save(file io.Reader, filename string) (string, error) {
-	// 生成唯一的文件路径（使用时间戳避免冲突）
-	relPath := filepath.Join("attachments", filename)
-	fullPath := filepath.Join(s.basePath, relPath)
+// Driver 返回驱动名
+func (s *LocalStorage) Driver() string { return DriverLocal }
 
-	// 确保目录存在
-	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create directory: %w", err)
+// resolve 把对象键解析为绝对路径，并确保没有逃出存储根
+func (s *LocalStorage) resolve(key string) (string, error) {
+	clean, err := CleanKey(key)
+	if err != nil {
+		return "", err
+	}
+	full := filepath.Join(s.basePath, filepath.FromSlash(clean))
+
+	// 二次兜底：即便 CleanKey 有疏漏，也不允许最终路径落在根目录之外
+	if full != s.basePath && !strings.HasPrefix(full, s.basePath+string(os.PathSeparator)) {
+		return "", ErrInvalidKey
+	}
+	return full, nil
+}
+
+// Save 写入对象
+func (s *LocalStorage) Save(_ context.Context, key string, r io.Reader, _ int64, _ string) error {
+	full, err := s.resolve(key)
+	if err != nil {
+		return err
 	}
 
-	// 创建文件
-	dst, err := os.Create(fullPath)
+	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
+	}
+
+	dst, err := os.Create(full)
 	if err != nil {
-		return "", fmt.Errorf("failed to create file: %w", err)
+		return fmt.Errorf("创建文件失败: %w", err)
 	}
 	defer dst.Close()
 
-	// 复制内容
-	if _, err := io.Copy(dst, file); err != nil {
-		return "", fmt.Errorf("failed to copy file: %w", err)
-	}
-
-	return relPath, nil
-}
-
-// SaveTo 保存文件到指定子路径（支持嵌套目录如 "brand/logo.png"）
-// 返回相对路径（相对于basePath）
-func (s *LocalStorage) SaveTo(file io.Reader, relPath string) (string, error) {
-	fullPath := filepath.Join(s.basePath, relPath)
-
-	// 确保目录存在
-	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create directory: %w", err)
-	}
-
-	// 创建文件
-	dst, err := os.Create(fullPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create file: %w", err)
-	}
-	defer dst.Close()
-
-	// 复制内容
-	if _, err := io.Copy(dst, file); err != nil {
-		return "", fmt.Errorf("failed to copy file: %w", err)
-	}
-
-	return relPath, nil
-}
-
-// Delete 删除文件
-func (s *LocalStorage) Delete(relPath string) error {
-	fullPath := filepath.Join(s.basePath, relPath)
-	if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to delete file: %w", err)
+	if _, err := io.Copy(dst, r); err != nil {
+		// 写了一半失败，清掉残留，避免留下损坏的文件
+		_ = os.Remove(full)
+		return fmt.Errorf("写入文件失败: %w", err)
 	}
 	return nil
 }
 
-// GetFullPath 获取文件的完整路径
-func (s *LocalStorage) GetFullPath(relPath string) string {
-	return filepath.Join(s.basePath, relPath)
+// Open 读取对象
+func (s *LocalStorage) Open(_ context.Context, key string) (*Object, error) {
+	full, err := s.resolve(key)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.Open(full)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("打开文件失败: %w", err)
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("读取文件信息失败: %w", err)
+	}
+
+	return &Object{
+		Body:        f,
+		Size:        info.Size(),
+		ContentType: mime.TypeByExtension(filepath.Ext(full)),
+	}, nil
 }
 
-// Exists 检查文件是否存在
-func (s *LocalStorage) Exists(relPath string) bool {
-	fullPath := filepath.Join(s.basePath, relPath)
-	_, err := os.Stat(fullPath)
+// Delete 删除对象；不存在视为成功
+func (s *LocalStorage) Delete(_ context.Context, key string) error {
+	full, err := s.resolve(key)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(full); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("删除文件失败: %w", err)
+	}
+	return nil
+}
+
+// Exists 判断对象是否存在
+func (s *LocalStorage) Exists(_ context.Context, key string) bool {
+	full, err := s.resolve(key)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(full)
 	return err == nil
 }

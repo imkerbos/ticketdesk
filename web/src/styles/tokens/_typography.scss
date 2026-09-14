@@ -1,14 +1,26 @@
-// 字体标度 — 字号 / 行高 / 字重 / 字间距
+// 字体标度 — 字体栈 / 字号 / 行高 / 字重 / 字间距
 :root {
+  // 正文字体栈：系统字体优先。macOS / iOS 上解析到 SF Pro，
+  // 中文落到苹方；两者的字面高度接近，混排不会一行里高低不齐。
+  // 不引 Web Font：这是每天长时间盯的内部工具，加载抖动比字形收益更伤。
+  --td-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+    "Helvetica Neue", "Segoe UI", "Noto Sans", Arial, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji";
+
   // 字号
-  --td-font-xs: 11px;
-  --td-font-sm: 12px;
+  --td-font-xs: 11.5px;
+  --td-font-sm: 12.5px;
   --td-font-base: 13px;
+  --td-font-body: 13.5px;
   --td-font-md: 14px;
   --td-font-lg: 15px;
   --td-font-xl: 17px;
-  --td-font-2xl: 20px;
-  --td-font-3xl: 24px;
+  --td-font-2xl: 19px;
+  --td-font-3xl: 23px;
+  --td-font-4xl: 26px;
+
+  // 等宽字体：工单号、耗时、计数等需要对齐或强调"这是标识符"的场景
+  --td-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
   // 行高
   --td-leading-tight: 1.25;
@@ -21,7 +33,8 @@
   --td-weight-semibold: 600;
   --td-weight-bold: 700;
 
-  // 字间距
+  // 字间距：字号越大收得越紧，这是 SF 的光学尺寸逻辑
+  --td-tracking-tighter: -0.022em;
   --td-tracking-tight: -0.01em;
   --td-tracking-normal: 0;
   --td-tracking-wide: 0.02em;

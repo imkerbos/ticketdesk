@@ -58,6 +58,24 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-secret
                   key: jwt-secret
+            # 首次初始化令牌。所有副本拿到同一个值，不必去翻某个 Pod 的日志
+            - name: SETUP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secret
+                  key: setup-token
+            {{- if eq .Values.storage.driver "s3" }}
+            - name: STORAGE_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secret
+                  key: s3-access-key
+            - name: STORAGE_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secret
+                  key: s3-secret-key
+            {{- end }}
             {{- if .Values.nightingale.enabled }}
             - name: NIGHTINGALE_TOKEN
               valueFrom:
@@ -65,9 +83,11 @@ spec:
                   name: {{ .Release.Name }}-secret
                   key: n9e-token
             {{- end }}
+          {{- if eq .Values.storage.driver "local" }}
           volumeMounts:
             - name: uploads
               mountPath: /app/uploads
+          {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           readinessProbe:
@@ -82,7 +102,9 @@ spec:
               port: {{ .Values.backend.port }}
             initialDelaySeconds: 15
             periodSeconds: 20
+      {{- if eq .Values.storage.driver "local" }}
       volumes:
         - name: uploads
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-uploads
+      {{- end }}

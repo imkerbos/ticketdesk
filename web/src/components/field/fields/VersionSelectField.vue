@@ -23,8 +23,8 @@
       >
         <div class="version-option">
           <span class="version-name">{{ version.name }}</span>
-          <el-tag v-if="version.status === 'released'" type="success" size="small">已发布</el-tag>
-          <el-tag v-else-if="version.status === 'archived'" type="info" size="small">已归档</el-tag>
+          <el-tag v-if="version.status === 'released'" type="success" size="small">{{ t('component.field.versionReleased') }}</el-tag>
+          <el-tag v-else-if="version.status === 'archived'" type="info" size="small">{{ t('component.field.versionArchived') }}</el-tag>
         </div>
       </el-option>
     </el-option-group>
@@ -32,9 +32,12 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, watch, onMounted, computed } from 'vue'
 import type { FieldDefinition, FieldSchemeItem, ProjectVersion } from '@/types/field'
 import { getVersions } from '@/api/field'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   field: FieldDefinition
@@ -61,13 +64,13 @@ const versionGroups = computed(() => {
 
   const groups = []
   if (unreleased.length > 0) {
-    groups.push({ label: '未发布', versions: unreleased })
+    groups.push({ label: t('component.field.versionUnreleased'), versions: unreleased })
   }
   if (released.length > 0) {
-    groups.push({ label: '已发布', versions: released })
+    groups.push({ label: t('component.field.versionReleased'), versions: released })
   }
   if (archived.length > 0) {
-    groups.push({ label: '已归档', versions: archived })
+    groups.push({ label: t('component.field.versionArchived'), versions: archived })
   }
   return groups
 })

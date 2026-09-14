@@ -10,6 +10,7 @@ import type {
   ProjectIssueType,
   CreateIssueTypeRequest,
   ProjectRole,
+  MyProjectPermissions,
   CreateProjectRoleRequest,
   UpdateProjectRoleRequest,
   ProjectRoleMember,
@@ -97,9 +98,16 @@ export const getAllProjects = () => {
 
 // ========== 项目角色管理 ==========
 
+// 获取我在项目中的权限。
+// 非成员也能调用（返回 is_member: false）—— 前端要能问出「我没有权限」，
+// 不能因为没权限就连问都问不了。
+export const getMyProjectPermissions = (key: string) => {
+  return request.get<ApiResponse<MyProjectPermissions>>(`/projects/${key}/my-permissions`)
+}
+
 // 获取项目角色列表
-export const getProjectRoles = (key: string) => {
-  return request.get<ApiResponse<ProjectRole[]>>(`/projects/${key}/roles`)
+export const getProjectRoles = (key: string, config?: Record<string, unknown>) => {
+  return request.get<ApiResponse<ProjectRole[]>>(`/projects/${key}/roles`, config)
 }
 
 // 创建项目角色

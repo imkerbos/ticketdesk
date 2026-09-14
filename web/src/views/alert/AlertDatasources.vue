@@ -1,220 +1,167 @@
 <template>
-  <div class="datasource-page">
-    <!-- 页头 -->
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><Connection /></el-icon>
-        </div>
-      </template>
-      <template #title>告警数据源</template>
-      <template #subtitle>管理告警数据源连接，支持 Prometheus 和夜莺 (Nightingale) 等监控系统</template>
-      <template #actions>
-        <el-button type="primary" size="large" @click="openCreateDialog">
-          <el-icon><Plus /></el-icon>
-          添加数据源
-        </el-button>
-      </template>
-    </TdPageHeader>
-
-    <!-- 数据源卡片列表 -->
-    <div v-loading="loading" class="datasource-list">
-      <!-- 空状态 -->
-      <div v-if="!loading && datasources.length === 0" class="empty-state">
-        <div class="empty-icon">
-          <svg viewBox="0 0 120 120" width="120" height="120" fill="none">
-            <rect x="20" y="30" width="80" height="60" rx="8" fill="#e0e7ff" stroke="#818cf8" stroke-width="2" />
-            <circle cx="60" cy="55" r="12" fill="#818cf8" opacity="0.3" />
-            <path d="M54 55l4 4 8-8" stroke="#4f46e5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-            <rect x="35" y="70" width="50" height="4" rx="2" fill="#c7d2fe" />
-            <rect x="42" y="78" width="36" height="3" rx="1.5" fill="#e0e7ff" />
-            <path d="M60 20v6M44 24l3 5.2M76 24l-3 5.2" stroke="#818cf8" stroke-width="2" stroke-linecap="round" />
-          </svg>
-        </div>
-        <h3 class="empty-title">暂无数据源</h3>
-        <p class="empty-desc">添加一个告警数据源，开始接收来自 Prometheus 或夜莺的告警事件</p>
-        <el-button type="primary" @click="openCreateDialog">
-          <el-icon><Plus /></el-icon>
-          添加第一个数据源
-        </el-button>
-      </div>
-
-      <!-- 卡片网格 -->
-      <div v-else class="card-grid">
-        <div v-for="ds in datasources" :key="ds.id" class="datasource-card" :class="{ 'card-disabled': ds.status === 0 }">
-          <!-- 卡片顶部：类型色条 -->
-          <div class="card-color-bar" :class="ds.type === 'prometheus' ? 'bar-prometheus' : 'bar-nightingale'"></div>
-
-          <div class="card-body">
-            <!-- 标题行 -->
-            <div class="card-header">
-              <div class="card-title-row">
-                <span class="type-icon" v-html="getTypeLogo(ds.type)"></span>
-                <div class="card-title-info">
-                  <span class="card-name">{{ ds.name }}</span>
-                  <div class="card-tags">
-                    <el-tag size="small" :type="ds.type === 'prometheus' ? 'danger' : 'warning'" effect="light">
-                      {{ getTypeLabel(ds.type) }}
-                    </el-tag>
-                    <el-tag size="small" :type="ds.push_mode ? 'info' : 'success'" effect="light">
-                      {{ ds.push_mode ? 'Webhook 推送' : 'API 轮询' }}
-                    </el-tag>
-                  </div>
-                </div>
-              </div>
-              <el-switch
-                :model-value="ds.status === 1"
-                inline-prompt
-                active-text="ON"
-                inactive-text="OFF"
-                @change="(val: string | number | boolean) => handleToggleStatus(ds, val as boolean)"
-              />
-            </div>
-
-            <!-- 描述 -->
-            <div v-if="ds.description" class="card-desc">{{ ds.description }}</div>
-
-            <!-- 详情网格 -->
-            <div class="card-details">
-              <div class="detail-item">
-                <span class="detail-label">连接状态</span>
-                <span v-if="ds.last_check_ok === true" class="status-badge status-ok">
-                  <span class="status-indicator"></span>正常
-                </span>
-                <span v-else-if="ds.last_check_ok === false" class="status-badge status-fail">
-                  <span class="status-indicator"></span>异常
-                </span>
-                <span v-else class="status-badge status-unknown">
-                  <span class="status-indicator"></span>未检测
-                </span>
-              </div>
-
-              <div v-if="ds.push_mode" class="detail-item detail-item-wide">
-                <span class="detail-label">Webhook URL</span>
-                <div class="webhook-row">
-                  <code class="webhook-url">{{ getFullWebhookUrl(ds.webhook_url) }}</code>
-                  <el-button link type="primary" size="small" @click="copyWebhookUrl(ds.webhook_url)">
-                    复制
-                  </el-button>
-                </div>
-              </div>
-
-              <div v-if="!ds.push_mode" class="detail-item">
-                <span class="detail-label">轮询间隔</span>
-                <span class="detail-value">{{ ds.poll_interval }} 秒</span>
-              </div>
-
-              <div v-if="ds.last_check_at" class="detail-item">
-                <span class="detail-label">最后检测</span>
-                <span class="detail-value">{{ formatTime(ds.last_check_at) }}</span>
-              </div>
-
-              <div v-if="ds.last_check_ok === false && ds.last_check_msg" class="detail-item detail-item-wide">
-                <span class="detail-label">错误信息</span>
-                <span class="detail-value detail-error">{{ ds.last_check_msg }}</span>
-              </div>
-            </div>
-
-            <!-- 操作栏 -->
-            <div class="card-footer">
-              <el-button size="small" @click="handleTestConnection(ds)">
-                <el-icon><Connection /></el-icon>
-                测试连接
-              </el-button>
-              <el-button size="small" @click="openEditDialog(ds)">
-                <el-icon><Edit /></el-icon>
-                编辑
-              </el-button>
-              <el-popconfirm
-                title="确定要删除此数据源吗？如有关联的告警规则，需先删除规则。"
-                confirm-button-text="删除"
-                cancel-button-text="取消"
-                @confirm="handleDelete(ds.id)"
-              >
-                <template #reference>
-                  <el-button size="small" type="danger" plain>
-                    <el-icon><Delete /></el-icon>
-                    删除
-                  </el-button>
-                </template>
-              </el-popconfirm>
-            </div>
-          </div>
-        </div>
-      </div>
+  <!-- 原来是卡片网格：每张卡里塞了连接状态、Webhook、轮询间隔、最后检查四组
+       label/value，纵向拉得很长。字段是固定的，改成表格一屏能看完。 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('alert.datasources.title') }}</h1>
+      <div class="grow"></div>
+      <button v-if="datasources.length > 0" class="btn primary" @click="openCreateDialog">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('alert.datasources.add') }}
+      </button>
     </div>
+
+    <section class="card">
+      <div v-loading="loading" class="table-wrap">
+        <table v-if="datasources.length > 0" class="issues">
+          <colgroup>
+            <col style="width: 200px" /><col style="width: 120px" /><col style="width: 100px" />
+            <col style="width: 110px" /><col /><col style="width: 150px" /><col style="width: 72px" /><col style="width: 120px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ t('alert.datasources.name') }}</th>
+              <th>{{ t('issue.type') }}</th>
+              <th>{{ t('alert.datasources.mode') }}</th>
+              <th>{{ t('alert.datasources.connStatus') }}</th>
+              <th>Webhook / {{ t('alert.datasources.pollInterval') }}</th>
+              <th>{{ t('alert.datasources.lastCheck') }}</th>
+              <th>{{ t('issue.status') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="ds in datasources" :key="ds.id">
+              <td>
+                <div class="title-cell">
+                  <span class="type-icon" v-html="getTypeLogo(ds.type)"></span>
+                  <span class="txt">{{ ds.name }}</span>
+                </div>
+              </td>
+              <!-- 类型和接入方式是分类维度，不占语义色 -->
+              <td><span class="pill neutral">{{ getTypeLabel(ds.type) }}</span></td>
+              <td><span class="pill neutral">{{ ds.push_mode ? t('alert.datasources.modeWebhook') : t('alert.datasources.modePoll') }}</span></td>
+              <td>
+                <span v-if="ds.last_check_ok === true" class="pill green">{{ t('alert.datasources.connOk') }}</span>
+                <span v-else-if="ds.last_check_ok === false" class="pill sla" :title="ds.last_check_msg">{{ t('alert.datasources.connFail') }}</span>
+                <span v-else class="pill neutral">{{ t('alert.datasources.connUnknown') }}</span>
+              </td>
+              <td>
+                <div v-if="ds.push_mode" class="webhook-cell">
+                  <code>{{ getFullWebhookUrl(ds.webhook_url) }}</code>
+                  <button class="link-btn" @click="copyWebhookUrl(ds.webhook_url)">{{ t('common.copy') }}</button>
+                </div>
+                <span v-else class="muted">{{ ds.poll_interval }} {{ t('alert.datasources.seconds') }}</span>
+              </td>
+              <td class="time">{{ ds.last_check_at ? formatTime(ds.last_check_at) : '-' }}</td>
+              <td>
+                <el-switch
+                  :model-value="ds.status === 1"
+                  size="small"
+                  @change="(val: string | number | boolean) => handleToggleStatus(ds, val as boolean)"
+                />
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="link-btn" @click="handleTestConnection(ds)">{{ t('alert.datasources.testConn') }}</button>
+                  <button class="link-btn" @click="openEditDialog(ds)">{{ t('common.edit') }}</button>
+                  <el-dropdown trigger="click">
+                    <button class="more" :aria-label="t('common.operation')" @click.stop>···</button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item @click="handleDelete(ds.id)">{{ t('common.delete') }}</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="!loading && datasources.length === 0" class="empty">
+          <TdEmptyState
+            preset="first-time"
+            :title="t('alert.datasources.empty')"
+            :description="t('alert.datasources.emptyDesc')"
+          >
+            <button class="btn primary" @click="openCreateDialog">{{ t('alert.datasources.addFirst') }}</button>
+          </TdEmptyState>
+        </div>
+      </div>
+    </section>
 
     <!-- 创建/编辑对话框 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="isEdit ? '编辑数据源' : '添加数据源'"
+      :title="isEdit ? t('alert.datasources.editTitle') : t('alert.datasources.add')"
       width="600px"
       :close-on-click-modal="false"
     >
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="100px">
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="form.name" placeholder="如 prod-nightingale、staging-prometheus" :disabled="isEdit" />
-          <div class="form-hint">名称将作为告警来源标识，创建后不可修改</div>
+        <el-form-item :label="t('common.name')" prop="name">
+          <el-input v-model="form.name" :placeholder="t('alert.datasources.namePlaceholder')" :disabled="isEdit" />
+          <div class="form-hint">{{ t('alert.datasources.nameHint') }}</div>
         </el-form-item>
 
-        <el-form-item label="类型" prop="type">
-          <el-select v-model="form.type" placeholder="选择数据源类型" :disabled="isEdit" style="width: 100%">
+        <el-form-item :label="t('issue.type')" prop="type">
+          <el-select v-model="form.type" :placeholder="t('alert.datasources.typePlaceholder')" :disabled="isEdit" style="width: 100%">
             <el-option
-              v-for="t in DatasourceTypes"
-              :key="t.value"
-              :label="t.label"
-              :value="t.value"
+              v-for="dsType in DatasourceTypes"
+              :key="dsType.value"
+              :label="t(dsType.labelKey)"
+              :value="dsType.value"
             />
           </el-select>
         </el-form-item>
 
-        <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="可选描述" />
+        <el-form-item :label="t('issue.description')">
+          <el-input v-model="form.description" type="textarea" :rows="2" :placeholder="t('alert.datasources.descPlaceholder')" />
         </el-form-item>
 
-        <el-form-item label="接入模式">
+        <el-form-item :label="t('alert.datasources.accessMode')">
           <div class="mode-selector">
             <el-radio-group v-model="form.push_mode">
-              <el-radio :value="true">Webhook 推送</el-radio>
-              <el-radio :value="false">API 轮询</el-radio>
+              <el-radio :value="true">{{ t('alert.datasources.modeWebhook') }}</el-radio>
+              <el-radio :value="false">{{ t('alert.datasources.modePoll') }}</el-radio>
             </el-radio-group>
             <div class="form-hint">
-              {{ form.push_mode ? '监控系统主动推送告警到 TicketDesk Webhook 地址' : '由 TicketDesk 定时拉取监控系统的活跃告警' }}
+              {{ form.push_mode ? t('alert.datasources.modeHintPush') : t('alert.datasources.modeHintPoll') }}
             </div>
           </div>
         </el-form-item>
 
         <!-- 夜莺配置 -->
         <template v-if="form.type === 'nightingale'">
-          <el-form-item label="API 地址" prop="config.base_url">
+          <el-form-item :label="t('alert.datasources.apiUrl')" prop="config.base_url">
             <el-input v-model="form.config.base_url" placeholder="http://nightingale:17000" />
           </el-form-item>
           <el-form-item label="Token">
-            <el-input v-model="form.config.token" placeholder="夜莺 API Token（可选）" show-password />
+            <el-input v-model="form.config.token" :placeholder="t('alert.datasources.tokenPlaceholder')" show-password />
           </el-form-item>
         </template>
 
         <!-- Prometheus 配置 -->
         <template v-if="form.type === 'prometheus'">
-          <el-form-item label="API 地址">
-            <el-input v-model="form.config.base_url" placeholder="http://prometheus:9090（推送模式可留空）" />
+          <el-form-item :label="t('alert.datasources.apiUrl')">
+            <el-input v-model="form.config.base_url" :placeholder="t('alert.datasources.baseUrlPlaceholder')" />
           </el-form-item>
         </template>
 
-        <el-form-item v-if="!form.push_mode" label="轮询间隔">
+        <el-form-item v-if="!form.push_mode" :label="t('alert.datasources.pollInterval')">
           <el-input-number v-model="form.poll_interval" :min="5" :max="3600" :step="5" />
-          <span style="margin-left: 8px; color: var(--td-color-info)">秒</span>
+          <span style="margin-left: 8px; color: var(--td-color-info)">{{ t('alert.datasources.seconds') }}</span>
         </el-form-item>
       </el-form>
 
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button :loading="testLoading" @click="handleTestBeforeSave">
           <el-icon><Connection /></el-icon>
-          测试连接
+          {{ t('alert.datasources.testConn') }}
         </el-button>
         <el-button type="primary" :loading="saveLoading" @click="handleSave">
-          {{ isEdit ? '保存' : '创建' }}
+          {{ isEdit ? t('common.save') : t('common.create') }}
         </el-button>
       </template>
     </el-dialog>
@@ -222,8 +169,10 @@
 </template>
 
 <script setup lang="ts">
+import dayjs from 'dayjs'
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted } from 'vue'
-import { Plus, Edit, Delete, Connection } from '@element-plus/icons-vue'
+import { Connection } from '@element-plus/icons-vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
   getDatasourceList,
@@ -231,10 +180,11 @@ import {
   updateDatasource,
   deleteDatasource,
   testDatasource,
-  testDatasourceById,
-} from '@/api/alert'
+  testDatasourceById } from '@/api/alert'
 import { DatasourceTypes } from '@/types/alert'
 import type { AlertDatasource } from '@/types/alert'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const datasources = ref<AlertDatasource[]>([])
@@ -251,17 +201,15 @@ const form = reactive({
   description: '',
   config: {} as Record<string, any>,
   push_mode: false,
-  poll_interval: 30,
-})
+  poll_interval: 30 })
 
 const formRules: FormRules = {
   name: [
-    { required: true, message: '请输入数据源名称', trigger: 'blur' },
-    { min: 1, max: 100, message: '名称长度 1-100 个字符', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9_-]+$/, message: '仅支持字母、数字、下划线和连字符', trigger: 'blur' },
+    { required: true, message: t('alert.datasources.nameRequired'), trigger: ['blur', 'change'] },
+    { min: 1, max: 100, message: t('alert.datasources.nameLength'), trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9_-]+$/, message: t('alert.datasources.namePattern'), trigger: 'blur' },
   ],
-  type: [{ required: true, message: '请选择数据源类型', trigger: 'change' }],
-}
+  type: [{ required: true, message: t('alert.datasources.typeRequired'), trigger: 'change' }] }
 
 const fetchDatasources = async () => {
   loading.value = true
@@ -269,7 +217,7 @@ const fetchDatasources = async () => {
     const res = await getDatasourceList({ page: 1, page_size: 100 })
     datasources.value = res.data?.data?.items || []
   } catch {
-    ElMessage.error('获取数据源列表失败')
+    ElMessage.error(t('alert.datasources.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -281,8 +229,8 @@ const getTypeLogo = (type: string) => {
     return `<svg viewBox="0 0 200 200" width="36" height="36" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="n9e-bg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#6366f1"/>
-          <stop offset="100%" style="stop-color:#8b5cf6"/>
+          <stop offset="0%" style="stop-color:var(--td-cat-2)"/>
+          <stop offset="100%" style="stop-color:var(--td-cat-2)"/>
         </linearGradient>
       </defs>
       <circle cx="100" cy="100" r="96" fill="url(#n9e-bg)"/>
@@ -305,7 +253,7 @@ const getTypeLogo = (type: string) => {
 
 const getTypeLabel = (type: string) => {
   const found = DatasourceTypes.find((t) => t.value === type)
-  return found?.label || type
+  return found ? t(found.labelKey) : type
 }
 
 const getFullWebhookUrl = (path: string) => {
@@ -315,15 +263,17 @@ const getFullWebhookUrl = (path: string) => {
 const copyWebhookUrl = async (path: string) => {
   try {
     await navigator.clipboard.writeText(getFullWebhookUrl(path))
-    ElMessage.success('已复制到剪贴板')
+    ElMessage.success(t('alert.datasources.copied'))
   } catch {
-    ElMessage.error('复制失败')
+    ElMessage.error(t('alert.datasources.copyFailed'))
   }
 }
 
 const formatTime = (time: string) => {
   if (!time) return '-'
-  return new Date(time).toLocaleString('zh-CN')
+  // toLocaleString('zh-CN') 出来是「2026/9/10 18:00:00」—— 斜杠、月份不补零、还带秒，
+  // 和全站其它表格的 YYYY-MM-DD HH:mm 对不上，等宽列也排不齐
+  return dayjs(time).format('YYYY-MM-DD HH:mm')
 }
 
 const resetForm = () => {
@@ -365,9 +315,8 @@ const handleSave = async () => {
         description: form.description,
         config: form.config,
         push_mode: form.push_mode,
-        poll_interval: form.poll_interval,
-      })
-      ElMessage.success('数据源已更新')
+        poll_interval: form.poll_interval })
+      ElMessage.success(t('alert.datasources.updated'))
     } else {
       await createDatasource({
         name: form.name,
@@ -375,14 +324,13 @@ const handleSave = async () => {
         description: form.description,
         config: form.config,
         push_mode: form.push_mode,
-        poll_interval: form.poll_interval,
-      })
-      ElMessage.success('数据源已创建')
+        poll_interval: form.poll_interval })
+      ElMessage.success(t('alert.datasources.created'))
     }
     dialogVisible.value = false
     fetchDatasources()
   } catch (err: any) {
-    ElMessage.error(err?.response?.data?.message || '保存失败')
+    ElMessage.error(err?.response?.data?.message || t('alert.datasources.saveFailed'))
   } finally {
     saveLoading.value = false
   }
@@ -391,20 +339,20 @@ const handleSave = async () => {
 const handleToggleStatus = async (ds: AlertDatasource, enabled: boolean) => {
   try {
     await updateDatasource(ds.id, { status: enabled ? 1 : 0 })
-    ElMessage.success(enabled ? '数据源已启用' : '数据源已禁用')
+    ElMessage.success(enabled ? t('alert.datasources.hasEnabled') : t('alert.datasources.hasDisabled'))
     fetchDatasources()
   } catch {
-    ElMessage.error('操作失败')
+    ElMessage.error(t('common.operationFailed'))
   }
 }
 
 const handleDelete = async (id: number) => {
   try {
     await deleteDatasource(id)
-    ElMessage.success('数据源已删除')
+    ElMessage.success(t('alert.datasources.deleted'))
     fetchDatasources()
   } catch (error: any) {
-    const msg = error?.response?.data?.message || '删除失败'
+    const msg = error?.response?.data?.message || t('alert.datasources.deleteFailed')
     ElMessage.error(msg)
   }
 }
@@ -414,13 +362,13 @@ const handleTestConnection = async (ds: AlertDatasource) => {
     const res = await testDatasourceById(ds.id)
     const result = res.data?.data
     if (result?.success) {
-      ElMessage.success(`连接成功 (${result.latency_ms}ms)`)
+      ElMessage.success(t('alert.datasources.connSuccess', { ms: result.latency_ms }))
     } else {
-      ElMessage.warning(result?.message || '连接失败')
+      ElMessage.warning(result?.message || t('alert.datasources.connFailed'))
     }
     fetchDatasources()
   } catch {
-    ElMessage.error('测试连接失败')
+    ElMessage.error(t('alert.datasources.testFailed'))
   }
 }
 
@@ -429,16 +377,15 @@ const handleTestBeforeSave = async () => {
   try {
     const res = await testDatasource({
       type: form.type,
-      config: form.config,
-    })
+      config: form.config })
     const result = res.data?.data
     if (result?.success) {
-      ElMessage.success(`连接成功 (${result.latency_ms}ms)`)
+      ElMessage.success(t('alert.datasources.connSuccess', { ms: result.latency_ms }))
     } else {
-      ElMessage.warning(result?.message || '连接失败')
+      ElMessage.warning(result?.message || t('alert.datasources.connFailed'))
     }
   } catch {
-    ElMessage.error('测试连接失败')
+    ElMessage.error(t('alert.datasources.testFailed'))
   } finally {
     testLoading.value = false
   }
@@ -449,260 +396,34 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
-.datasource-page {
-  width: 100%;
-}
+<style scoped lang="scss">
+// 列表样式在 _apple.scss 里，这一页只留对话框相关和两处单元格。
 
-/* ===== 页头 icon (TdPageHeader leading slot) ===== */
-.page-header-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--td-tag-primary-bg);
-  border-radius: var(--td-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--td-color-primary);
-  flex-shrink: 0;
-}
-
-/* ===== 空状态 ===== */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 20px;
-  background: var(--td-bg-card);
-  border: 2px dashed var(--td-border-color);
-  border-radius: 12px;
-}
-
-.empty-icon {
-  margin-bottom: 20px;
-  opacity: 0.8;
-}
-
-.empty-title {
-  margin: 0 0 8px 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--td-text-regular);
-}
-
-.empty-desc {
-  margin: 0 0 24px 0;
-  font-size: 14px;
-  color: var(--td-text-placeholder);
-}
-
-/* ===== 卡片列表 ===== */
-.card-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.datasource-card {
-  background: var(--td-bg-card);
-  border: 1px solid var(--td-border-color);
-  border-radius: 12px;
-  overflow: hidden;
-  transition: box-shadow 150ms ease-out;
-}
-
-.datasource-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-}
-
-.datasource-card.card-disabled {
-  opacity: 0.6;
-}
-
-.card-color-bar {
-  height: 4px;
-}
-
-.bar-prometheus {
-  background: var(--td-color-danger);
-}
-
-.bar-nightingale {
-  background: var(--td-color-success);
-}
-
-.card-body {
-  padding: 20px 24px;
-}
-
-/* ===== 卡片头部 ===== */
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-}
-
-.card-title-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  min-width: 0;
-}
-
+// 数据源类型 logo：官方 SVG，尺寸对齐圆点那一档
 .type-icon {
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.card-title-info {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.card-name {
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--td-text-primary);
-  word-break: break-all;
-}
-
-.card-tags {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.card-desc {
-  color: var(--td-text-secondary);
-  font-size: 13px;
-  margin-bottom: 16px;
-  line-height: 1.5;
-}
-
-/* ===== 详情区域 ===== */
-.card-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px 32px;
-  padding: 16px 0;
-  border-top: 1px solid var(--td-border-color);
-  border-bottom: 1px solid var(--td-border-color);
-  margin-bottom: 16px;
-}
-
-.detail-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.detail-item-wide {
-  grid-column: 1 / -1;
-}
-
-.detail-label {
-  font-size: 12px;
-  color: var(--td-text-placeholder);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.detail-value {
-  font-size: 13px;
-  color: var(--td-text-regular);
-}
-
-.detail-error {
-  color: var(--td-color-danger);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-/* ===== 状态徽章 ===== */
-.status-badge {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+
+  :deep(svg) { width: 100%; height: 100%; }
 }
 
-.status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.status-ok .status-indicator {
-  background: var(--td-color-success);
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
-}
-
-.status-ok {
-  color: var(--td-color-success);
-}
-
-.status-fail .status-indicator {
-  background: var(--td-color-danger);
-  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
-}
-
-.status-fail {
-  color: var(--td-color-danger);
-}
-
-.status-unknown .status-indicator {
-  background: var(--td-text-disabled);
-}
-
-.status-unknown {
-  color: var(--td-text-placeholder);
-}
-
-/* ===== Webhook URL ===== */
-.webhook-row {
+// Webhook 地址：等宽 + 截断，后面跟一个复制
+.webhook-cell {
   display: flex;
   align-items: center;
   gap: 8px;
-}
+  min-width: 0;
 
-.webhook-url {
-  background: var(--td-bg-page);
-  border: 1px solid var(--td-border-color);
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--td-text-regular);
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-/* ===== 操作栏 ===== */
-.card-footer {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* ===== 表单 ===== */
-.mode-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 100%;
+  code {
+    font-family: var(--td-font-mono);
+    font-size: 11.5px;
+    color: var(--td-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .form-hint {
@@ -717,5 +438,13 @@ onMounted(() => {
   .card-details {
     grid-template-columns: 1fr 1fr;
   }
+}
+
+/* 接入方式：单选一行、说明另起一行 */
+.mode-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
 }
 </style>

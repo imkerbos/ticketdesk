@@ -13,11 +13,11 @@
     >
       <el-icon class="el-icon--upload"><upload-filled /></el-icon>
       <div class="el-upload__text">
-        将文件拖到此处，或<em>点击上传</em>
+        {{ t('component.attachment.dropHint') }}<em>{{ t('component.attachment.clickUpload') }}</em>
       </div>
       <template #tip>
         <div class="el-upload__tip">
-          支持图片、文档、压缩包等文件，单个文件不超过10MB
+          {{ t('component.attachment.typeHint') }}
         </div>
       </template>
     </el-upload>
@@ -25,10 +25,13 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import type { UploadInstance } from 'element-plus'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   issueKey: string
@@ -55,7 +58,7 @@ const beforeUpload = (file: File) => {
   // 检查文件大小（10MB）
   const maxSize = 10 * 1024 * 1024
   if (file.size > maxSize) {
-    ElMessage.error('文件大小不能超过10MB')
+    ElMessage.error(t('component.attachment.tooLarge'))
     return false
   }
 
@@ -70,7 +73,7 @@ const beforeUpload = (file: File) => {
 
   const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
   if (!allowedTypes.includes(ext)) {
-    ElMessage.error('不支持的文件类型')
+    ElMessage.error(t('component.attachment.typeUnsupported'))
     return false
   }
 
@@ -78,12 +81,12 @@ const beforeUpload = (file: File) => {
 }
 
 const handleSuccess = () => {
-  ElMessage.success('上传成功')
+  ElMessage.success(t('component.attachment.uploadSuccess'))
   emit('success')
 }
 
 const handleError = () => {
-  ElMessage.error('上传失败')
+  ElMessage.error(t('component.attachment.uploadFailed'))
 }
 </script>
 
@@ -94,7 +97,7 @@ const handleError = () => {
 
 .el-icon--upload {
   font-size: 67px;
-  color: #8c939d;
+  color: var(--td-text-placeholder);
   margin: 40px 0 16px;
   line-height: 50px;
 }

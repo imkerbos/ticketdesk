@@ -11,12 +11,14 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/kerbos/ticketdesk/internal/activity/detail"
 	projectRepo "github.com/kerbos/ticketdesk/internal/core-project/repository"
 	userRepo "github.com/kerbos/ticketdesk/internal/core-user/repository"
 	"github.com/kerbos/ticketdesk/internal/core-workflow/dto"
 	"github.com/kerbos/ticketdesk/internal/core-workflow/repository"
 	"github.com/kerbos/ticketdesk/internal/model"
 	"github.com/kerbos/ticketdesk/pkg/logger"
+	"github.com/kerbos/ticketdesk/pkg/safego"
 )
 
 // IssueStatusSyncer 工单状态同步接口（用于告警联动，避免循环依赖）
@@ -27,12 +29,12 @@ type IssueStatusSyncer interface {
 
 // 工作流引擎错误定义
 var (
-	ErrWorkflowInstanceNotFound = errors.New("工作流实例不存在")
-	ErrNotApprover              = errors.New("当前用户不是审批人")
-	ErrAlreadyApproved          = errors.New("已经审批过了")
-	ErrNoApproversConfigured    = errors.New("未配置审批人")
+	ErrWorkflowInstanceNotFound = errors.New("workflow.instance_not_found")
+	ErrNotApprover              = errors.New("workflow.not_approver")
+	ErrAlreadyApproved          = errors.New("workflow.already_approved")
+	ErrNoApproversConfigured    = errors.New("workflow.no_approver")
 	// ErrNotApprovalNode 当前节点不是审批节点，无法执行审批/拒绝操作
-	ErrNotApprovalNode = errors.New("当前节点不是审批节点")
+	ErrNotApprovalNode = errors.New("workflow.not_approval_node")
 )
 
 // WorkflowEngine 工作流引擎接口
@@ -151,6 +153,7 @@ func (e *workflowEngine) logIssueActivity(ctx context.Context, userID uint64, ac
 		issueKey = issue.IssueKey
 	}
 	go func() {
+		defer safego.Recover("workflow.logActivity")
 		logCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = e.activityLogger.LogActivity(logCtx, userID, userName, action, "issue", issueID, issueKey, details)
@@ -516,7 +519,7 @@ func (e *workflowEngine) Reject(ctx context.Context, instanceID, userID uint64, 
 		})
 
 		// 记录状态变更活动日志
-		e.logIssueActivity(ctx, userID, "状态变更", instance.IssueID, "审批拒绝，工单已关闭")
+		e.logIssueActivity(ctx, userID, "status_changed", instance.IssueID, detail.New("activity.detail.approvalRejectedClosed"))
 
 		// 需求联动：工单关闭时同步关联需求状态为已完成
 		result := e.db.WithContext(ctx).
@@ -542,6 +545,7 @@ func (e *workflowEngine) Reject(ctx context.Context, instanceID, userID uint64, 
 		if e.issueStatusSyncer != nil {
 			issueID := instance.IssueID
 			go func() {
+				defer safego.Recover("workflow.syncIssueOnReject")
 				syncCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				if err := e.issueStatusSyncer.SyncIssueStatus(syncCtx, issueID, "closed"); err != nil {
@@ -1144,9 +1148,14 @@ func (e *workflowEngine) syncIssueStatus(ctx context.Context, issueID uint64, fr
 
 	// 记录活动日志
 	if statusChanged {
-		e.logIssueActivity(ctx, 0, "状态变更", issueID, fmt.Sprintf("工作流流转至节点: %s，状态变更为: %s", toNode.Name, statusName))
+		// 状态名走 key，不存译文 —— statusNames 是中文映射，存进去就把语言烧死了
+		e.logIssueActivity(ctx, 0, "status_changed", issueID,
+			detail.NewWithKeys("activity.detail.nodeTransitionedWithStatus",
+				map[string]string{"status": "issue.statusMap." + targetStatus},
+				"node", toNode.Name))
 	} else {
-		e.logIssueActivity(ctx, 0, "节点流转", issueID, fmt.Sprintf("工作流流转至节点: %s", toNode.Name))
+		e.logIssueActivity(ctx, 0, "node_transitioned", issueID,
+			detail.New("activity.detail.nodeTransitioned", "node", toNode.Name))
 	}
 
 	// 项目外部通知：工单流转（始终发送，即使状态未变化）
@@ -1178,6 +1187,7 @@ func (e *workflowEngine) syncIssueStatus(ctx context.Context, issueID uint64, fr
 		}
 
 		go func() {
+			defer safego.Recover("workflow.notifyApprovers")
 			notifCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			notifData := map[string]any{
@@ -1241,6 +1251,7 @@ func (e *workflowEngine) syncIssueStatus(ctx context.Context, issueID uint64, fr
 		syncIssueID := issueID
 		syncStatus := targetStatus
 		go func() {
+			defer safego.Recover("workflow.syncIssueStatus")
 			syncCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := e.issueStatusSyncer.SyncIssueStatus(syncCtx, syncIssueID, syncStatus); err != nil {

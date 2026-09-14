@@ -39,13 +39,13 @@ func NewAPITokenHandler(tokenSvc service.APITokenService) *APITokenHandler {
 func (h *APITokenHandler) HandleCreate(c *gin.Context) {
 	// 拒绝用 PAT 自己创建 PAT
 	if isPAT, _ := c.Get("is_pat"); isPAT == true {
-		response.Forbidden(c, "不能用 API token 创建新 token，请用账号登录")
+		response.Forbidden(c, "user.token_by_token")
 		return
 	}
 
 	var req dto.CreateTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -56,7 +56,7 @@ func (h *APITokenHandler) HandleCreate(c *gin.Context) {
 			response.BadRequest(c, err.Error())
 			return
 		}
-		response.InternalError(c, "创建 token 失败")
+		response.InternalError(c, "user.token_create_failed")
 		return
 	}
 	response.Created(c, result)
@@ -75,7 +75,7 @@ func (h *APITokenHandler) HandleList(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	tokens, err := h.tokenSvc.List(c.Request.Context(), userID)
 	if err != nil {
-		response.InternalError(c, "查询 token 列表失败")
+		response.InternalError(c, "user.token_list_failed")
 		return
 	}
 	response.Success(c, tokens)
@@ -96,7 +96,7 @@ func (h *APITokenHandler) HandleDelete(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的 token ID")
+		response.BadRequest(c, "user.token_invalid_id")
 		return
 	}
 	userID := c.GetUint64("user_id")
@@ -105,7 +105,7 @@ func (h *APITokenHandler) HandleDelete(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "撤销 token 失败")
+		response.InternalError(c, "user.token_revoke_failed")
 		return
 	}
 	response.Success(c, nil)

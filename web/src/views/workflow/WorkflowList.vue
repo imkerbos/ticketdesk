@@ -1,99 +1,99 @@
 <template>
-  <div class="workflow-list-container">
-    <!-- 页面头部 -->
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><Connection /></el-icon>
-        </div>
-      </template>
-      <template #title>工作流管理</template>
-      <template #subtitle>配置和管理工作流程</template>
-      <template #actions>
-        <el-button type="primary" @click="handleCreate">
-          <el-icon><Plus /></el-icon>
-          创建工作流
-        </el-button>
-      </template>
-    </TdPageHeader>
+  <!-- 结构同其它列表页 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('workflow.listTitle') }}</h1>
+      <div class="grow"></div>
+      <button class="btn primary" @click="handleCreate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('workflow.create') }}
+      </button>
+    </div>
 
-    <!-- 工作流列表 -->
-    <el-card shadow="never" class="workflows-card">
-      <div v-loading="loading" class="workflows-list">
-        <div v-for="workflow in workflows" :key="workflow.id" class="workflow-item">
-          <div class="workflow-header">
-            <div class="workflow-info">
-              <div class="workflow-icon">
-                <el-icon><Share /></el-icon>
-              </div>
-              <div class="workflow-details">
-                <h3 class="workflow-name">{{ workflow.name }}</h3>
-                <p v-if="workflow.description" class="workflow-desc">{{ workflow.description }}</p>
-                <div class="workflow-meta">
-                  <el-tag size="small" :type="workflow.status === 1 ? 'success' : 'info'">
-                    {{ workflow.status === 1 ? '启用' : '禁用' }}
-                  </el-tag>
-                  <span class="workflow-project">项目: {{ workflow.project_id || '全局' }}</span>
+    <section class="card">
+      <div v-loading="loading" class="table-wrap">
+        <table v-if="workflows.length > 0" class="issues">
+          <colgroup>
+            <col style="width: 240px" /><col /><col style="width: 140px" /><col style="width: 86px" /><col style="width: 150px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ t('workflow.name') }}</th>
+              <th>{{ t('issue.description') }}</th>
+              <th>{{ t('workflow.project') }}</th>
+              <th>{{ t('issue.status') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="workflow in workflows" :key="workflow.id" @click="handleDesign(workflow)">
+              <td>{{ workflow.name }}</td>
+              <td class="muted desc">{{ workflow.description || '-' }}</td>
+              <!-- 原来直接渲染 project_id，表里出现的是裸的「1001」，看不出是哪个项目 -->
+              <td class="muted">{{ projectLabel(workflow.project_id) }}</td>
+              <td>
+                <span class="pill" :class="workflow.status === 1 ? 'green' : 'neutral'">
+                  {{ workflow.status === 1 ? t('common.enabled') : t('common.disabled') }}
+                </span>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="link-btn" @click.stop="handleDesign(workflow)">{{ t('workflow.design') }}</button>
+                  <el-dropdown trigger="click">
+                    <button class="more" :aria-label="t('common.operation')" @click.stop>···</button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item @click="handleViewNodes(workflow)">{{ t('workflow.viewNodes') }}</el-dropdown-item>
+                        <el-dropdown-item @click="handleEdit(workflow)">{{ t('common.edit') }}</el-dropdown-item>
+                        <el-dropdown-item divided @click="handleDelete(workflow)">{{ t('common.delete') }}</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                 </div>
-              </div>
-            </div>
-            <div class="workflow-actions">
-              <el-button size="small" type="primary" @click="handleDesign(workflow)">
-                <el-icon><EditPen /></el-icon>
-                设计工作流
-              </el-button>
-              <el-button size="small" @click="handleViewNodes(workflow)">
-                <el-icon><View /></el-icon>
-                查看节点
-              </el-button>
-              <el-button size="small" @click="handleEdit(workflow)">
-                <el-icon><Edit /></el-icon>
-                编辑
-              </el-button>
-              <el-button size="small" type="danger" @click="handleDelete(workflow)">
-                <el-icon><Delete /></el-icon>
-                删除
-              </el-button>
-            </div>
-          </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="!loading && workflows.length === 0" class="empty">
+          <TdEmptyState preset="no-data" :title="t('workflow.empty')" />
         </div>
-        <TdEmptyState v-if="!loading && workflows.length === 0" preset="no-data" title="暂无工作流" />
       </div>
-    </el-card>
+    </section>
 
     <!-- 创建/编辑工作流对话框 -->
-    <el-dialog v-model="dialogVisible" :title="isEditMode ? '编辑工作流' : '创建工作流'" width="600px" destroy-on-close>
+    <el-dialog v-model="dialogVisible" :title="isEditMode ? t('workflow.edit') : t('workflow.create')" width="600px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="formRules" label-position="top">
-        <el-form-item label="工作流名称" prop="name">
-          <el-input v-model="form.name" placeholder="请输入工作流名称" />
+        <el-form-item :label="t('workflow.name')" prop="name">
+          <el-input v-model="form.name" :placeholder="t('workflow.namePlaceholder')" />
         </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="工作流描述" />
+        <el-form-item :label="t('issue.description')">
+          <el-input v-model="form.description" type="textarea" :rows="3" :placeholder="t('workflow.descPlaceholder')" />
         </el-form-item>
-        <el-form-item label="所属项目">
-          <el-select v-model="form.project_id" placeholder="选择项目（留空为全局）" clearable style="width: 100%">
+        <el-form-item :label="t('workflow.project')">
+          <el-select v-model="form.project_id" :placeholder="t('workflow.projectPlaceholder')" clearable style="width: 100%">
             <el-option v-for="p in projects" :key="p.id" :label="p.name" :value="p.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="状态">
-          <el-switch v-model="form.status" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="禁用" />
+        <el-form-item :label="t('issue.status')">
+          <el-switch v-model="form.status" :active-value="1" :inactive-value="0" :active-text="t('common.enabled')" :inactive-text="t('common.disabled')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="submitForm">确定</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitLoading" @click="submitForm">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 节点查看对话框 -->
-    <el-dialog v-model="nodesDialogVisible" :title="`${currentWorkflow?.name} - 节点与边管理`" width="900px" destroy-on-close>
+    <el-dialog v-model="nodesDialogVisible" :title="t('workflow.nodesTitle', { name: currentWorkflow?.name })" width="900px" destroy-on-close>
       <div v-loading="nodesLoading" class="nodes-content">
         <!-- 节点管理 -->
         <div class="section-header">
-          <h4>节点列表</h4>
+          <h4>{{ t('workflow.nodeList') }}</h4>
           <el-button type="primary" size="small" @click="handleAddNode">
             <el-icon><Plus /></el-icon>
-            添加节点
+            {{ t('workflow.addNode') }}
           </el-button>
         </div>
         <div class="nodes-list">
@@ -117,19 +117,19 @@
               </div>
             </div>
             <div class="node-actions">
-              <el-button size="small" @click="handleEditNode(node)">编辑</el-button>
-              <el-button size="small" type="danger" :disabled="node.node_type === 'start' || node.node_type === 'end'" @click="handleDeleteNode(node)">删除</el-button>
+              <el-button size="small" @click="handleEditNode(node)">{{ t('common.edit') }}</el-button>
+              <el-button size="small" type="danger" :disabled="node.node_type === 'start' || node.node_type === 'end'" @click="handleDeleteNode(node)">{{ t('common.delete') }}</el-button>
             </div>
           </div>
-          <TdEmptyState v-if="!nodesLoading && workflowNodes.length === 0" preset="no-data" title="暂无节点" />
+          <TdEmptyState v-if="!nodesLoading && workflowNodes.length === 0" preset="no-data" :title="t('workflow.noNodes')" />
         </div>
 
         <!-- 边管理 -->
         <div class="section-header" style="margin-top: 24px;">
-          <h4>边列表（流转路径）</h4>
+          <h4>{{ t('workflow.edgeList') }}</h4>
           <el-button type="primary" size="small" :disabled="workflowNodes.length < 2" @click="handleAddEdge">
             <el-icon><Plus /></el-icon>
-            添加边
+            {{ t('workflow.addEdge') }}
           </el-button>
         </div>
         <div v-loading="edgesLoading" class="edges-list">
@@ -141,42 +141,42 @@
               <el-tag v-if="edge.condition_expr" size="small" type="info" class="edge-condition">{{ edge.condition_expr }}</el-tag>
             </div>
             <div class="edge-actions">
-              <el-button size="small" type="danger" @click="handleDeleteEdge(edge)">删除</el-button>
+              <el-button size="small" type="danger" @click="handleDeleteEdge(edge)">{{ t('common.delete') }}</el-button>
             </div>
           </div>
-          <TdEmptyState v-if="!edgesLoading && workflowEdges.length === 0" preset="no-data" title="暂无边" />
+          <TdEmptyState v-if="!edgesLoading && workflowEdges.length === 0" preset="no-data" :title="t('workflow.noEdges')" />
         </div>
       </div>
     </el-dialog>
 
     <!-- 添加/编辑节点对话框 -->
-    <el-dialog v-model="nodeDialogVisible" :title="isEditNodeMode ? '编辑节点' : '添加节点'" width="600px" destroy-on-close>
+    <el-dialog v-model="nodeDialogVisible" :title="isEditNodeMode ? t('workflow.editNode') : t('workflow.addNode')" width="600px" destroy-on-close>
       <el-form ref="nodeFormRef" :model="nodeForm" :rules="nodeFormRules" label-position="top">
-        <el-form-item label="节点名称" prop="name">
-          <el-input v-model="nodeForm.name" placeholder="请输入节点名称" />
+        <el-form-item :label="t('workflow.nodeName')" prop="name">
+          <el-input v-model="nodeForm.name" :placeholder="t('workflow.nodeNamePlaceholder')" />
         </el-form-item>
-        <el-form-item v-if="!isEditNodeMode" label="节点类型" prop="node_type">
-          <el-select v-model="nodeForm.node_type" placeholder="请选择节点类型" style="width: 100%" @change="handleNodeTypeChange">
-            <el-option label="审批节点" value="approval" />
-            <el-option label="工作节点" value="work" />
-            <el-option label="系统节点" value="system" />
+        <el-form-item v-if="!isEditNodeMode" :label="t('workflow.nodeType')" prop="node_type">
+          <el-select v-model="nodeForm.node_type" :placeholder="t('workflow.nodeTypePlaceholder')" style="width: 100%" @change="handleNodeTypeChange">
+            <el-option :label="t('workflow.nodeTypeFullMap.approval')" value="approval" />
+            <el-option :label="t('workflow.nodeTypeFullMap.work')" value="work" />
+            <el-option :label="t('workflow.nodeTypeFullMap.system')" value="system" />
           </el-select>
         </el-form-item>
-        <el-form-item v-else label="节点类型">
+        <el-form-item v-else :label="t('workflow.nodeType')">
           <el-tag>{{ getNodeTypeText(nodeForm.node_type) }}</el-tag>
         </el-form-item>
 
         <!-- 审批节点配置 -->
         <template v-if="nodeForm.node_type === 'approval'">
-          <el-form-item label="审批类型">
-            <el-select v-model="nodeForm.config.approval_type" placeholder="请选择审批类型" style="width: 100%">
-              <el-option label="单人审批" value="single" />
-              <el-option label="会签（所有人通过）" value="countersign" />
-              <el-option label="或签（任一人通过）" value="or_sign" />
+          <el-form-item :label="t('workflow.approvalType')">
+            <el-select v-model="nodeForm.config.approval_type" :placeholder="t('workflow.approvalTypePlaceholder')" style="width: 100%">
+              <el-option :label="t('workflow.approvalTypeMap.single')" value="single" />
+              <el-option :label="t('workflow.approvalTypeOption.countersign')" value="countersign" />
+              <el-option :label="t('workflow.approvalTypeOption.or_sign')" value="or_sign" />
             </el-select>
           </el-form-item>
-          <el-form-item label="审批人">
-            <el-select v-model="nodeForm.config.approvers" multiple placeholder="请选择审批人" style="width: 100%" filterable>
+          <el-form-item :label="t('workflow.approvers')">
+            <el-select v-model="nodeForm.config.approvers" multiple :placeholder="t('workflow.approversPlaceholder')" style="width: 100%" filterable>
               <el-option v-for="u in allUsers" :key="u.id" :label="u.display_name" :value="u.id" />
             </el-select>
           </el-form-item>
@@ -184,89 +184,83 @@
 
         <!-- 工作节点配置 -->
         <template v-if="nodeForm.node_type === 'work'">
-          <el-form-item label="指派类型">
-            <el-select v-model="nodeForm.config.assignee_type" placeholder="请选择指派类型" style="width: 100%">
-              <el-option label="指定用户" value="user" />
-              <el-option label="指定角色" value="role" />
-              <el-option label="报告人" value="reporter" />
-              <el-option label="项目负责人" value="project_lead" />
+          <el-form-item :label="t('workflow.assigneeType')">
+            <el-select v-model="nodeForm.config.assignee_type" :placeholder="t('workflow.assigneeTypePlaceholder')" style="width: 100%">
+              <el-option :label="t('workflow.assigneeTypeMap.user')" value="user" />
+              <el-option :label="t('workflow.assigneeTypeMap.role')" value="role" />
+              <el-option :label="t('workflow.assigneeTypeMap.reporter')" value="reporter" />
+              <el-option :label="t('workflow.assigneeTypeMap.project_lead')" value="project_lead" />
             </el-select>
           </el-form-item>
-          <el-form-item v-if="nodeForm.config.assignee_type === 'user'" label="指派人">
-            <el-select v-model="nodeForm.config.assignees" multiple placeholder="请选择指派人" style="width: 100%" filterable>
+          <el-form-item v-if="nodeForm.config.assignee_type === 'user'" :label="t('workflow.assignees')">
+            <el-select v-model="nodeForm.config.assignees" multiple :placeholder="t('workflow.assigneesPlaceholder')" style="width: 100%" filterable>
               <el-option v-for="u in allUsers" :key="u.id" :label="u.display_name" :value="u.id" />
             </el-select>
           </el-form-item>
-          <el-form-item v-if="nodeForm.config.assignee_type === 'role'" label="角色名称">
-            <el-input v-model="nodeForm.config.assignee_role" placeholder="请输入角色名称" />
+          <el-form-item v-if="nodeForm.config.assignee_type === 'role'" :label="t('workflow.assigneeRole')">
+            <el-input v-model="nodeForm.config.assignee_role" :placeholder="t('workflow.assigneeRolePlaceholder')" />
           </el-form-item>
         </template>
 
         <!-- 系统节点配置 -->
         <template v-if="nodeForm.node_type === 'system'">
-          <el-form-item label="系统动作">
-            <el-input v-model="nodeForm.config.action" placeholder="请输入系统动作" />
+          <el-form-item :label="t('workflow.systemAction')">
+            <el-input v-model="nodeForm.config.action" :placeholder="t('workflow.actionPlaceholder')" />
           </el-form-item>
         </template>
 
         <!-- 通用配置 -->
-        <el-form-item label="超时时间（小时）">
-          <el-input-number v-model="nodeForm.config.timeout_hours" :min="0" :max="720" placeholder="0 表示不超时" />
+        <el-form-item :label="t('workflow.timeout')">
+          <el-input-number v-model="nodeForm.config.timeout_hours" :min="0" :max="720" :placeholder="t('workflow.timeoutPlaceholder')" />
         </el-form-item>
-        <el-form-item label="节点说明">
-          <el-input v-model="nodeForm.config.description" type="textarea" :rows="2" placeholder="节点说明" />
+        <el-form-item :label="t('workflow.nodeDesc')">
+          <el-input v-model="nodeForm.config.description" type="textarea" :rows="2" :placeholder="t('workflow.nodeDesc')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="nodeDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="nodeSubmitLoading" @click="submitNodeForm">确定</el-button>
+        <el-button @click="nodeDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="nodeSubmitLoading" @click="submitNodeForm">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 添加边对话框 -->
-    <el-dialog v-model="edgeDialogVisible" title="添加边" width="500px" destroy-on-close>
+    <el-dialog v-model="edgeDialogVisible" :title="t('workflow.addEdge')" width="500px" destroy-on-close>
       <el-form ref="edgeFormRef" :model="edgeForm" :rules="edgeFormRules" label-position="top">
-        <el-form-item label="源节点" prop="source_node_id">
-          <el-select v-model="edgeForm.source_node_id" placeholder="请选择源节点" style="width: 100%">
+        <el-form-item :label="t('workflow.sourceNode')" prop="source_node_id">
+          <el-select v-model="edgeForm.source_node_id" :placeholder="t('workflow.sourcePlaceholder')" style="width: 100%">
             <el-option v-for="node in workflowNodes" :key="node.id" :label="`${node.name} (${getNodeTypeText(node.node_type)})`" :value="node.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="目标节点" prop="target_node_id">
-          <el-select v-model="edgeForm.target_node_id" placeholder="请选择目标节点" style="width: 100%">
+        <el-form-item :label="t('workflow.targetNode')" prop="target_node_id">
+          <el-select v-model="edgeForm.target_node_id" :placeholder="t('workflow.targetPlaceholder')" style="width: 100%">
             <el-option v-for="node in workflowNodes" :key="node.id" :label="`${node.name} (${getNodeTypeText(node.node_type)})`" :value="node.id" :disabled="node.id === edgeForm.source_node_id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="条件表达式（可选）">
-          <el-input v-model="edgeForm.condition_expr" placeholder="如: status == 'approved'" />
+        <el-form-item :label="t('workflow.conditionExpr')">
+          <el-input v-model="edgeForm.condition_expr" :placeholder="t('workflow.conditionExprPlaceholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="edgeDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="edgeSubmitLoading" @click="submitEdgeForm">确定</el-button>
+        <el-button @click="edgeDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="edgeSubmitLoading" @click="submitEdgeForm">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
-  Connection,
   Plus,
-  Share,
-  View,
-  Edit,
-  EditPen,
-  Delete,
   VideoPlay,
   CircleCheck,
   Checked,
   Operation,
   Setting,
-  Right,
-} from '@element-plus/icons-vue'
+  Right } from '@element-plus/icons-vue'
 import { getAllProjects } from '@/api/project'
 import { getAllUsers } from '@/api/user'
 import type { Project } from '@/types/project'
@@ -282,9 +276,10 @@ import {
   deleteNode,
   getWorkflowEdges,
   createEdge,
-  deleteEdge,
-} from '@/api/workflow'
+  deleteEdge } from '@/api/workflow'
 import type { Workflow, WorkflowNode, WorkflowEdge, NodeConfig } from '@/types/workflow'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const workflows = ref<Workflow[]>([])
@@ -296,15 +291,20 @@ const isEditMode = ref(false)
 const editingId = ref<number | null>(null)
 const submitLoading = ref(false)
 const formRef = ref<FormInstance>()
+// 列表里展示项目名：projects 本来就为弹窗的下拉加载过，直接复用。
+// 项目还没加载完或已被删除时退回编号，至少不会显示成空白。
+const projectLabel = (projectId?: number) => {
+  if (!projectId) return t('workflow.global')
+  return projects.value.find((p) => p.id === projectId)?.name || `#${projectId}`
+}
+
 const form = reactive({
   name: '',
   description: '',
   project_id: undefined as number | undefined,
-  status: 1,
-})
+  status: 1 })
 const formRules: FormRules = {
-  name: [{ required: true, message: '请输入工作流名称', trigger: 'blur' }],
-}
+  name: [{ required: true, message: t('workflow.nameRequired'), trigger: ['blur', 'change'] }] }
 
 // 节点管理
 const nodesDialogVisible = ref(false)
@@ -334,18 +334,15 @@ const defaultNodeConfig = (): NodeConfig => ({
   action: '',
   parameters: {},
   timeout_hours: 0,
-  description: '',
-})
+  description: '' })
 
 const nodeForm = reactive({
   name: '',
   node_type: '' as string,
-  config: defaultNodeConfig(),
-})
+  config: defaultNodeConfig() })
 const nodeFormRules: FormRules = {
-  name: [{ required: true, message: '请输入节点名称', trigger: 'blur' }],
-  node_type: [{ required: true, message: '请选择节点类型', trigger: 'change' }],
-}
+  name: [{ required: true, message: t('workflow.nodeNameRequired'), trigger: ['blur', 'change'] }],
+  node_type: [{ required: true, message: t('workflow.nodeTypeRequired'), trigger: 'change' }] }
 
 // 边表单
 const edgeDialogVisible = ref(false)
@@ -354,12 +351,10 @@ const edgeFormRef = ref<FormInstance>()
 const edgeForm = reactive({
   source_node_id: undefined as number | undefined,
   target_node_id: undefined as number | undefined,
-  condition_expr: '',
-})
+  condition_expr: '' })
 const edgeFormRules: FormRules = {
-  source_node_id: [{ required: true, message: '请选择源节点', trigger: 'change' }],
-  target_node_id: [{ required: true, message: '请选择目标节点', trigger: 'change' }],
-}
+  source_node_id: [{ required: true, message: t('workflow.sourceRequired'), trigger: 'change' }],
+  target_node_id: [{ required: true, message: t('workflow.targetRequired'), trigger: 'change' }] }
 
 const loadWorkflows = async () => {
   loading.value = true
@@ -367,7 +362,7 @@ const loadWorkflows = async () => {
     const { data } = await getWorkflowList()
     workflows.value = (data as any).data.items || []
   } catch {
-    ElMessage.error('加载工作流列表失败')
+    ElMessage.error(t('workflow.loadListFailed'))
   } finally {
     loading.value = false
   }
@@ -400,8 +395,7 @@ const handleEdit = (workflow: Workflow) => {
     name: workflow.name,
     description: workflow.description,
     project_id: workflow.project_id,
-    status: workflow.status,
-  })
+    status: workflow.status })
   dialogVisible.value = true
 }
 
@@ -415,21 +409,19 @@ const submitForm = async () => {
         await updateWorkflow(editingId.value, {
           name: form.name,
           description: form.description,
-          status: form.status,
-        })
-        ElMessage.success('更新成功')
+          status: form.status })
+        ElMessage.success(t('issue.msg.updateSuccess'))
       } else {
         await createWorkflow({
           name: form.name,
           description: form.description,
-          project_id: form.project_id,
-        })
-        ElMessage.success('创建成功')
+          project_id: form.project_id })
+        ElMessage.success(t('common.createSuccess'))
       }
       dialogVisible.value = false
       loadWorkflows()
     } catch {
-      ElMessage.error(isEditMode.value ? '更新失败' : '创建失败')
+      ElMessage.error(isEditMode.value ? t('project.settings.updateFailed') : t('project.settings.createFailed'))
     } finally {
       submitLoading.value = false
     }
@@ -438,12 +430,11 @@ const submitForm = async () => {
 
 const handleDelete = async (workflow: Workflow) => {
   try {
-    await ElMessageBox.confirm(`确定要删除工作流 "${workflow.name}" 吗？`, '删除确认', {
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(t('workflow.confirmDelete', { name: workflow.name }), t('issue.list.deleteTitle'), {
+      type: 'warning' })
     // TODO: 调用实际的删除 API
     await deleteWorkflow(workflow.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     loadWorkflows()
   } catch (error) {
     if (error !== 'cancel') {
@@ -468,7 +459,7 @@ const loadNodes = async (workflowId: number) => {
     const { data } = await getWorkflowNodes(workflowId)
     workflowNodes.value = (data as any).data || []
   } catch {
-    ElMessage.error('加载节点列表失败')
+    ElMessage.error(t('workflow.loadNodesFailed'))
   } finally {
     nodesLoading.value = false
   }
@@ -480,7 +471,7 @@ const loadEdges = async (workflowId: number) => {
     const { data } = await getWorkflowEdges(workflowId)
     workflowEdges.value = (data as any).data || []
   } catch {
-    ElMessage.error('加载边列表失败')
+    ElMessage.error(t('workflow.loadEdgesFailed'))
   } finally {
     edgesLoading.value = false
   }
@@ -528,21 +519,19 @@ const submitNodeForm = async () => {
       if (isEditNodeMode.value && editingNodeId.value) {
         await updateNode(currentWorkflow.value!.id, editingNodeId.value, {
           name: nodeForm.name,
-          config: nodeForm.config,
-        })
-        ElMessage.success('节点更新成功')
+          config: nodeForm.config })
+        ElMessage.success(t('workflow.nodeUpdated'))
       } else {
         await createNode(currentWorkflow.value!.id, {
           name: nodeForm.name,
           node_type: nodeForm.node_type as any,
-          config: nodeForm.config,
-        })
-        ElMessage.success('节点创建成功')
+          config: nodeForm.config })
+        ElMessage.success(t('workflow.nodeCreated'))
       }
       nodeDialogVisible.value = false
       await loadNodes(currentWorkflow.value!.id)
     } catch {
-      ElMessage.error(isEditNodeMode.value ? '更新节点失败' : '创建节点失败')
+      ElMessage.error(isEditNodeMode.value ? t('workflow.nodeUpdateFailed') : t('workflow.nodeCreateFailed'))
     } finally {
       nodeSubmitLoading.value = false
     }
@@ -552,18 +541,17 @@ const submitNodeForm = async () => {
 const handleDeleteNode = async (node: WorkflowNode) => {
   if (!currentWorkflow.value) return
   try {
-    await ElMessageBox.confirm(`确定要删除节点 "${node.name}" 吗？关联的边也会被删除。`, '删除确认', {
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(t('workflow.confirmDeleteNode', { name: node.name }), t('issue.list.deleteTitle'), {
+      type: 'warning' })
     await deleteNode(currentWorkflow.value.id, node.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     await Promise.all([
       loadNodes(currentWorkflow.value.id),
       loadEdges(currentWorkflow.value.id),
     ])
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除节点失败')
+      ElMessage.error(t('workflow.deleteNodeFailed'))
     }
   }
 }
@@ -585,13 +573,12 @@ const submitEdgeForm = async () => {
       await createEdge(currentWorkflow.value!.id, {
         source_node_id: edgeForm.source_node_id!,
         target_node_id: edgeForm.target_node_id!,
-        condition_expr: edgeForm.condition_expr || undefined,
-      })
-      ElMessage.success('边创建成功')
+        condition_expr: edgeForm.condition_expr || undefined })
+      ElMessage.success(t('workflow.edgeCreated'))
       edgeDialogVisible.value = false
       await loadEdges(currentWorkflow.value!.id)
     } catch {
-      ElMessage.error('创建边失败')
+      ElMessage.error(t('workflow.edgeCreateFailed'))
     } finally {
       edgeSubmitLoading.value = false
     }
@@ -601,52 +588,36 @@ const submitEdgeForm = async () => {
 const handleDeleteEdge = async (edge: WorkflowEdge) => {
   if (!currentWorkflow.value) return
   try {
-    await ElMessageBox.confirm('确定要删除这条边吗？', '删除确认', {
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(t('workflow.confirmDeleteEdge'), t('issue.list.deleteTitle'), {
+      type: 'warning' })
     await deleteEdge(currentWorkflow.value.id, edge.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     await loadEdges(currentWorkflow.value.id)
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除边失败')
+      ElMessage.error(t('workflow.deleteEdgeFailed'))
     }
   }
 }
 
 const getNodeName = (nodeId: number) => {
   const node = workflowNodes.value.find(n => n.id === nodeId)
-  return node ? node.name : `节点#${nodeId}`
+  return node ? node.name : t('workflow.nodeFallback', { id: nodeId })
 }
 
 const getNodeTypeText = (type: string) => {
-  const map: Record<string, string> = {
-    start: '开始',
-    end: '结束',
-    approval: '审批',
-    work: '工作',
-    system: '系统',
-  }
-  return map[type] || type
+  const known = ['start', 'end', 'approval', 'work', 'system']
+  return known.includes(type) ? t(`workflow.nodeTypeMap.${type}`) : type
 }
 
 const getApprovalTypeText = (type: string) => {
-  const map: Record<string, string> = {
-    single: '单人审批',
-    countersign: '会签',
-    or_sign: '或签',
-  }
-  return map[type] || type
+  const known = ['single', 'countersign', 'or_sign']
+  return known.includes(type) ? t(`workflow.approvalTypeMap.${type}`) : type
 }
 
 const getAssigneeTypeText = (type: string) => {
-  const map: Record<string, string> = {
-    user: '指定用户',
-    role: '指定角色',
-    reporter: '报告人',
-    project_lead: '项目负责人',
-  }
-  return map[type] || type
+  const known = ['user', 'role', 'reporter', 'project_lead']
+  return known.includes(type) ? t(`workflow.assigneeTypeMap.${type}`) : type
 }
 
 onMounted(() => {
@@ -656,111 +627,10 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.workflow-list-container {
-  width: 100%;
-}
+// 列表样式在 _apple.scss 里。
 
-// 页面头部 icon (TdPageHeader leading slot)
-.page-header-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--td-tag-primary-bg);
-  border-radius: var(--td-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--td-color-primary);
-  flex-shrink: 0;
-}
+.desc { max-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
-.workflows-card {
-  border: none;
-  box-shadow: var(--td-elevation-1);
-  transition: var(--td-transition-shadow);
-  border-radius: var(--td-radius-lg);
-
-  &:hover { box-shadow: var(--td-elevation-2); }
-
-  :deep(.el-card__body) {
-    padding: 24px;
-  }
-}
-
-.workflows-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.workflow-item {
-  background: var(--td-bg-page);
-  border-radius: 12px;
-  padding: 20px;
-  transition: box-shadow 150ms ease-out;
-
-  &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  }
-}
-
-.workflow-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.workflow-info {
-  display: flex;
-  gap: 16px;
-  flex: 1;
-}
-
-.workflow-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  color: var(--td-text-white);
-  background: var(--td-color-primary);
-}
-
-.workflow-details {
-  flex: 1;
-
-  .workflow-name {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--td-text-primary);
-    margin: 0 0 4px 0;
-  }
-
-  .workflow-desc {
-    font-size: 13px;
-    color: var(--td-text-secondary);
-    margin: 0 0 8px 0;
-  }
-
-  .workflow-meta {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .workflow-project {
-    font-size: 12px;
-    color: var(--td-text-placeholder);
-  }
-}
-
-.workflow-actions {
-  display: flex;
-  gap: 8px;
-}
-
-// 节点列表
 .nodes-content {
   min-height: 300px;
 }
@@ -790,31 +660,19 @@ onMounted(() => {
   flex: 1;
 }
 
+/* 只给图标上色，不套实心方块 —— 和工作流设计器里的节点保持一套 */
 .node-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
-  color: var(--td-text-white);
+  font-size: 16px;
+  flex-shrink: 0;
 
-  &.start {
-    background: var(--td-color-success);
-  }
-  &.end {
-    background: var(--td-text-secondary);
-  }
-  &.approval {
-    background: var(--td-color-warning);
-  }
-  &.work {
-    background: var(--td-color-primary);
-  }
-  &.system {
-    background: #8b5cf6;
-  }
+  &.start { color: var(--td-color-success); }
+  &.end { color: var(--td-text-secondary); }
+  &.approval { color: var(--td-tag-orange-text); }
+  &.work { color: var(--td-color-primary); }
+  &.system { color: var(--td-tag-purple-text); }
 }
 
 .section-header {

@@ -1,126 +1,95 @@
 <template>
-  <div class="project-list-container">
-    <!-- 页面头部 -->
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><Folder /></el-icon>
-        </div>
-      </template>
-      <template #title>项目管理</template>
-      <template #subtitle>管理所有项目和工作空间</template>
-      <template #actions>
-        <el-button type="primary" @click="handleCreate">
-          <el-icon><Plus /></el-icon>
-          创建项目
-        </el-button>
-      </template>
-    </TdPageHeader>
-
-    <!-- 搜索栏 -->
-    <el-card shadow="never" class="filter-card">
-      <div class="filter-content">
-        <el-input
-          v-model="keyword"
-          placeholder="搜索项目名称或标识"
-          clearable
-          class="search-input"
-          @clear="handleSearch"
-          @keyup.enter="handleSearch"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-button :icon="Search" type="primary" @click="handleSearch">搜索</el-button>
-      </div>
-    </el-card>
-
-    <!-- 项目列表 -->
-    <div v-loading="loading" class="project-grid">
-      <el-row :gutter="20">
-        <el-col
-          v-for="project in projectList"
-          :key="project.id"
-          :xs="24"
-          :sm="12"
-          :md="8"
-          :lg="6"
-          class="project-col"
-        >
-          <div class="project-card">
-            <div class="card-body" @click="handleViewProject(project)">
-              <div class="project-header">
-                <div class="project-icon" :style="{ background: getProjectColor(project.project_key) }">
-                  {{ project.project_key?.substring(0, 2).toUpperCase() || '??' }}
-                </div>
-                <el-tag
-                  :type="project.status === 1 ? 'success' : 'info'"
-                  size="small"
-                  effect="plain"
-                  class="status-tag"
-                >
-                  {{ project.status === 1 ? '启用' : '禁用' }}
-                </el-tag>
-              </div>
-              <div class="project-name">{{ project.name }}</div>
-              <div class="project-key-text">{{ project.project_key }}</div>
-              <div class="project-description">
-                {{ project.description || '暂无描述' }}
-              </div>
-            </div>
-            <div class="card-footer">
-              <div class="footer-left">
-                <div class="lead-info">
-                  <div v-if="project.lead_user" class="mini-avatar">
-                    {{ project.lead_user.display_name?.charAt(0) }}
-                  </div>
-                  <span class="lead-name">{{ project.lead_user?.display_name || '未指定' }}</span>
-                </div>
-              </div>
-              <div class="footer-right">
-                <div class="member-count">
-                  <el-icon><User /></el-icon>
-                  <span>{{ project.member_count || 0 }}</span>
-                </div>
-                <router-link :to="`/projects/${project.project_key}/settings`" class="settings-link">
-                  <el-button size="small" type="primary" text>
-                    <el-icon><Setting /></el-icon>
-                    设置
-                  </el-button>
-                </router-link>
-              </div>
-            </div>
-          </div>
-        </el-col>
-      </el-row>
-
-      <div v-if="projectList.length === 0 && !loading" class="empty-state">
-        <TdEmptyState preset="first-time" title="暂无项目" description="创建第一个项目开始工作">
-          <el-button type="primary" @click="handleCreate">
-            <el-icon><Plus /></el-icon>
-            创建第一个项目
-          </el-button>
-        </TdEmptyState>
-      </div>
-
-      <div v-if="total > 0" class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="pageSize"
-          :total="total"
-          :page-sizes="[12, 24, 48]"
-          layout="total, sizes, prev, pager, next"
-          @size-change="loadProjects"
-          @current-change="loadProjects"
-        />
-      </div>
+  <!-- 原来是卡片网格，改成和其它列表页同一套表格：
+       项目的字段是固定的那几项，表格扫读比卡片快，也不用为了排版塞空描述。 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('project.listTitle') }}</h1>
+      <div class="grow"></div>
+      <button class="btn primary" @click="handleCreate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('project.create') }}
+      </button>
     </div>
+
+    <div class="toolbar">
+      <label class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        <input v-model="keyword" type="search" :placeholder="t('project.searchPlaceholder')" @keyup.enter="handleSearch" @search="handleSearch" />
+      </label>
+    </div>
+
+    <section class="card">
+      <div v-loading="loading" class="table-wrap">
+        <table class="issues">
+          <colgroup>
+            <col style="width: 92px" /><col style="width: 200px" /><col /><col style="width: 140px" />
+            <col style="width: 80px" /><col style="width: 86px" /><col style="width: 96px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ t('project.key') }}</th>
+              <th>{{ t('project.name') }}</th>
+              <th>{{ t('project.description') }}</th>
+              <th>{{ t('project.lead') }}</th>
+              <th>{{ t('project.members') }}</th>
+              <!-- 只有确实存在停用项目时才出这一列：全启用时它是一整列破折号，
+                   一列全占位符等于这列不该存在 -->
+              <th v-if="hasDisabledProject">{{ t('issue.status') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="project in projectList" :key="project.id" @click="handleViewProject(project)">
+              <td class="key">{{ project.project_key }}</td>
+              <td>{{ project.name }}</td>
+              <td class="muted desc">{{ project.description || t('project.noDescription') }}</td>
+              <td>
+                <span v-if="project.lead_user" class="person">
+                  <span class="ava" :style="{ background: 'var(--td-text-placeholder)' }">{{ project.lead_user.display_name?.charAt(0) }}</span>
+                  <span>{{ project.lead_user.display_name }}</span>
+                </span>
+                <span v-else class="muted">{{ t('project.noLead') }}</span>
+              </td>
+              <td class="time">{{ project.member_count || 0 }}</td>
+              <td v-if="hasDisabledProject">
+                <!-- 只标停用：启用是常态，每行挂一个绿色「启用」等于什么都没说 -->
+                <span v-if="project.status !== 1" class="pill neutral">{{ t('common.disabled') }}</span>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="link-btn" @click.stop="router.push(`/projects/${project.project_key}/settings`)">
+                    {{ t('project.settingsLabel') }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="projectList.length === 0 && !loading" class="empty">
+          <TdEmptyState preset="first-time" :title="t('project.empty')" :description="t('project.emptyDesc')">
+            <button class="btn primary" @click="handleCreate">{{ t('project.createFirst') }}</button>
+          </TdEmptyState>
+        </div>
+
+        <div v-if="total > pageSize" class="table-foot">
+          <el-pagination
+            v-model:current-page="page"
+            v-model:page-size="pageSize"
+            :total="total"
+            :page-sizes="[12, 24, 48]"
+            layout="sizes, prev, pager, next"
+            @size-change="loadProjects"
+            @current-change="loadProjects"
+          />
+        </div>
+      </div>
+    </section>
 
     <!-- 创建/编辑项目对话框 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="isEdit ? '编辑项目' : '创建项目'"
+      :title="isEdit ? t('project.edit') : t('project.create')"
       width="520px"
       destroy-on-close
       class="project-dialog"
@@ -128,10 +97,10 @@
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="项目标识" prop="project_key">
+            <el-form-item :label="t('project.key')" prop="project_key">
               <el-input
                 v-model="form.project_key"
-                placeholder="如: PROJ"
+                :placeholder="t('project.keyPlaceholder')"
                 :disabled="isEdit"
                 maxlength="10"
               >
@@ -139,12 +108,12 @@
                   <el-icon><Key /></el-icon>
                 </template>
               </el-input>
-              <div class="form-tip">大写字母开头，创建后不可修改</div>
+              <div class="form-tip">{{ t('project.keyTip') }}</div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="项目名称" prop="name">
-              <el-input v-model="form.name" placeholder="请输入项目名称" maxlength="50">
+            <el-form-item :label="t('project.name')" prop="name">
+              <el-input v-model="form.name" :placeholder="t('project.namePlaceholder')" maxlength="50">
                 <template #prefix>
                   <el-icon><Folder /></el-icon>
                 </template>
@@ -152,7 +121,7 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item v-if="!isEdit" label="项目模版">
+        <el-form-item v-if="!isEdit" :label="t('project.template')">
           <div class="template-cards">
             <div
               class="template-card"
@@ -163,8 +132,8 @@
                 <el-icon :size="22"><Folder /></el-icon>
               </div>
               <div class="template-card-body">
-                <div class="template-card-title">标准模版</div>
-                <div class="template-card-desc">预置工单类型、工作流、字段方案</div>
+                <div class="template-card-title">{{ t('project.templateStandard') }}</div>
+                <div class="template-card-desc">{{ t('project.templateStandardDesc') }}</div>
               </div>
             </div>
             <div
@@ -176,26 +145,26 @@
                 <el-icon :size="22"><Plus /></el-icon>
               </div>
               <div class="template-card-body">
-                <div class="template-card-title">空项目</div>
-                <div class="template-card-desc">不预置配置，完全自定义</div>
+                <div class="template-card-title">{{ t('project.templateEmpty') }}</div>
+                <div class="template-card-desc">{{ t('project.templateEmptyDesc') }}</div>
               </div>
             </div>
           </div>
         </el-form-item>
-        <el-form-item label="负责人">
-          <el-select v-model="form.lead_user_id" placeholder="请选择负责人" style="width: 100%" clearable filterable>
+        <el-form-item :label="t('project.lead')">
+          <el-select v-model="form.lead_user_id" :placeholder="t('project.leadPlaceholder')" style="width: 100%" clearable filterable>
             <el-option v-for="u in users" :key="u.id" :label="u.display_name" :value="u.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="请输入项目描述" />
+        <el-form-item :label="t('issue.description')">
+          <el-input v-model="form.description" type="textarea" :rows="3" :placeholder="t('project.descPlaceholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="submitLoading" @click="submitForm">
           <el-icon><Check /></el-icon>
-          {{ isEdit ? '保存' : '创建' }}
+          {{ isEdit ? t('common.save') : t('common.create') }}
         </el-button>
       </template>
     </el-dialog>
@@ -203,19 +172,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { Search, Plus, User, Folder, Key, Check, Setting } from '@element-plus/icons-vue'
+import { Plus, Folder, Key, Check } from '@element-plus/icons-vue'
 import { getProjectList, createProject, updateProject } from '@/api/project'
 import { getAllUsers } from '@/api/user'
 import type { Project, CreateProjectRequest } from '@/types/project'
 import type { UserOption } from '@/types/user'
 
+const { t } = useI18n()
+
 const router = useRouter()
 
 const loading = ref(false)
 const projectList = ref<Project[]>([])
+
+// 全部项目都启用时，「状态」列会是一整列破折号 —— 那列就不该出现
+const hasDisabledProject = computed(() => projectList.value.some((p) => p.status !== 1))
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(12)
@@ -233,42 +208,24 @@ const form = reactive<CreateProjectRequest>({
   name: '',
   description: '',
   lead_user_id: undefined,
-  template: 'standard',
-})
+  template: 'standard' })
 
 const rules: FormRules = {
   project_key: [
-    { required: true, message: '请输入项目标识', trigger: 'blur' },
-    { pattern: /^[A-Z][A-Z0-9]*$/, message: '必须以大写字母开头，只含大写字母和数字', trigger: 'blur' },
-    { min: 2, max: 10, message: '长度 2-10 个字符', trigger: 'blur' },
+    { required: true, message: t('project.keyRequired'), trigger: ['blur', 'change'] },
+    { pattern: /^[A-Z][A-Z0-9]*$/, message: t('project.keyPattern'), trigger: 'blur' },
+    { min: 2, max: 10, message: t('project.keyLength'), trigger: 'blur' },
   ],
   name: [
-    { required: true, message: '请输入项目名称', trigger: 'blur' },
-    { max: 50, message: '最多 50 个字符', trigger: 'blur' },
-  ],
-}
-
-const projectColors = [
-  '#3b82f6',
-  '#ef4444',
-  '#3b82f6',
-  '#10b981',
-  '#f59e0b',
-  '#8b5cf6',
-]
-
-const getProjectColor = (key: string) => {
-  let hash = 0
-  for (let i = 0; i < key.length; i++) hash = key.charCodeAt(i) + ((hash << 5) - hash)
-  return projectColors[Math.abs(hash) % projectColors.length]
-}
+    { required: true, message: t('project.nameRequired'), trigger: ['blur', 'change'] },
+    { max: 50, message: t('project.nameLength'), trigger: 'blur' },
+  ] }
 
 const loadProjects = async () => {
   loading.value = true
   try {
     const { data } = await getProjectList({
-      page: page.value, page_size: pageSize.value, keyword: keyword.value || undefined,
-    })
+      page: page.value, page_size: pageSize.value, keyword: keyword.value || undefined })
     projectList.value = data.data.items
     total.value = data.data.total
   } catch {
@@ -303,12 +260,11 @@ const submitForm = async () => {
     try {
       if (isEdit.value && editingProject.value) {
         await updateProject(editingProject.value.project_key, {
-          name: form.name, description: form.description, lead_user_id: form.lead_user_id,
-        })
-        ElMessage.success('更新成功')
+          name: form.name, description: form.description, lead_user_id: form.lead_user_id })
+        ElMessage.success(t('issue.msg.updateSuccess'))
       } else {
         await createProject(form)
-        ElMessage.success('创建成功')
+        ElMessage.success(t('common.createSuccess'))
       }
       dialogVisible.value = false
       loadProjects()
@@ -324,167 +280,13 @@ onMounted(() => { loadProjects(); loadUsers() })
 </script>
 
 <style scoped lang="scss">
-.project-list-container {
-  width: 100%;
-}
+// 列表样式在 _apple.scss 里，这一页只留对话框相关。
 
-// 页面头部 icon (TdPageHeader leading slot)
-.page-header-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--td-tag-primary-bg);
-  border-radius: var(--td-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--td-color-primary);
-  flex-shrink: 0;
-}
-
-// 筛选
-.filter-card {
-  margin-bottom: 20px;
-  border: none;
-  box-shadow: var(--td-elevation-1);
-  transition: var(--td-transition-shadow);
-  border-radius: var(--td-radius-lg);
-
-  &:hover { box-shadow: var(--td-elevation-2); }
-
-  :deep(.el-card__body) { padding: 16px 20px; }
-
-  .filter-content {
-    display: flex;
-    gap: 12px;
-  }
-
-  .search-input { width: 320px; }
-}
-
-// 项目卡片
-.project-grid {
-  .project-col { margin-bottom: 20px; }
-}
-
-.project-card {
-  background: var(--td-bg-card);
-  border-radius: 12px;
-  height: 100%;
-  cursor: pointer;
-  border: 1px solid var(--td-divider-color);
-  display: flex;
-  flex-direction: column;
-  transition: box-shadow 150ms ease-out;
+// 描述列允许被挤压：项目描述长短不一，让它吃掉剩余宽度并单行截断
+.desc {
+  max-width: 0;
   overflow: hidden;
-
-  &:hover {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-  }
-
-  .card-body {
-    padding: 20px;
-    flex: 1;
-  }
-
-  .project-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 16px;
-  }
-
-  .project-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--td-text-white);
-    font-weight: 700;
-    font-size: 16px;
-  }
-
-  .project-name {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--td-text-primary);
-    margin-bottom: 4px;
-  }
-
-  .project-key-text {
-    font-size: 12px;
-    color: var(--td-text-placeholder);
-    margin-bottom: 12px;
-  }
-
-  .project-description {
-    font-size: 13px;
-    color: var(--td-text-secondary);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    min-height: 38px;
-    line-height: 1.5;
-  }
-
-  .card-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 14px 20px;
-    border-top: 1px solid var(--td-divider-color);
-    background: var(--td-bg-section);
-  }
-
-  .lead-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-
-    .lead-name {
-      font-size: 13px;
-      color: var(--td-text-secondary);
-    }
-  }
-
-  .mini-avatar {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    background: var(--td-color-primary);
-    color: var(--td-text-white);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-
-  .member-count {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 13px;
-    color: var(--td-text-placeholder);
-    margin-right: 8px;
-  }
-
-  .footer-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-}
-
-.empty-state { padding: 60px 0; }
-
-.pagination-wrapper {
-  margin-top: 20px;
-  display: flex;
-  justify-content: center;
+  text-overflow: ellipsis;
 }
 
 .form-tip {
@@ -521,15 +323,13 @@ onMounted(() => { loadProjects(); loadUsers() })
   }
 }
 
+/* 只留图标，不套方块（§3.1 不放装饰性图标色块） */
 .template-card-icon {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  background: var(--td-bg-section);
-  color: var(--td-text-secondary);
+  font-size: 16px;
+  color: var(--td-text-placeholder);
   flex-shrink: 0;
 
   .template-card.active & {
@@ -555,10 +355,5 @@ onMounted(() => { loadProjects(); loadUsers() })
 .settings-link {
   text-decoration: none;
   color: inherit;
-}
-
-// 响应式
-@media (max-width: 768px) {
-  .filter-card .search-input { width: 100%; }
 }
 </style>

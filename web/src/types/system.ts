@@ -86,14 +86,14 @@ export interface WebhookLog {
 
 // Webhook 事件类型
 export const WebhookEvents = [
-  { value: 'issue.created', label: '工单创建' },
-  { value: 'issue.updated', label: '工单更新' },
-  { value: 'issue.transitioned', label: '工单状态变更' },
-  { value: 'issue.assigned', label: '工单指派' },
-  { value: 'issue.commented', label: '工单评论' },
-  { value: 'alert.firing', label: '告警触发' },
-  { value: 'alert.resolved', label: '告警恢复' },
-  { value: 'alert.acked', label: '告警确认' },
+  { value: 'issue.created', labelKey: 'project.settings.eventCreated' },
+  { value: 'issue.updated', labelKey: 'system.webhookIssueUpdated' },
+  { value: 'issue.transitioned', labelKey: 'system.webhookIssueTransitioned' },
+  { value: 'issue.assigned', labelKey: 'project.settings.eventAssigned' },
+  { value: 'issue.commented', labelKey: 'system.webhookIssueCommented' },
+  { value: 'alert.firing', labelKey: 'system.webhookAlertFiring' },
+  { value: 'alert.resolved', labelKey: 'system.webhookAlertResolved' },
+  { value: 'alert.acked', labelKey: 'system.webhookAlertAcked' },
 ] as const
 
 export type WebhookEventType = typeof WebhookEvents[number]['value']
