@@ -1291,6 +1291,7 @@ export default {
       addMatcher: '添加匹配器',
       startsAt: '生效时间',
       startsAtFrom: '{time} 起',
+      fromSuffix: ' 起',
       startsAtPlaceholder: '选择开始时间',
       endsAt: '结束时间',
       endsAtPlaceholder: '选择结束时间',

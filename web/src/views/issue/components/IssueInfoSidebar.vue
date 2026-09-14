@@ -128,33 +128,33 @@
         </div>
         <div class="info-item">
           <span class="info-label">{{ t('common.createdAt') }}</span>
-          <span>{{ formatTime(issue.created_at) }}</span>
+          <span class="time">{{ formatTime(issue.created_at) }}</span>
         </div>
         <div class="info-item">
           <span class="info-label">{{ t('common.updatedAt') }}</span>
-          <span>{{ formatTime(issue.updated_at) }}</span>
+          <span class="time">{{ formatTime(issue.updated_at) }}</span>
         </div>
         <div v-if="issue.due_date" class="info-item">
           <span class="info-label">{{ t('issue.detail.dueDate') }}</span>
-          <span>{{ formatDate(issue.due_date) }}</span>
+          <span class="time">{{ formatDate(issue.due_date) }}</span>
           <el-tag v-if="dueDateStatus === 'overdue'" type="danger" size="small" style="margin-left: 6px;">{{ t('issue.detail.overdue') }}</el-tag>
           <el-tag v-else-if="dueDateStatus === 'due_soon'" type="warning" size="small" style="margin-left: 6px;">{{ t('issue.detail.dueSoon') }}</el-tag>
         </div>
         <div v-if="issue.planned_start_date" class="info-item">
           <span class="info-label">{{ t('issue.detail.plannedStart') }}</span>
-          <span>{{ formatDate(issue.planned_start_date) }}</span>
+          <span class="time">{{ formatDate(issue.planned_start_date) }}</span>
         </div>
         <div v-if="issue.planned_end_date" class="info-item">
           <span class="info-label">{{ t('issue.detail.plannedEnd') }}</span>
-          <span>{{ formatDate(issue.planned_end_date) }}</span>
+          <span class="time">{{ formatDate(issue.planned_end_date) }}</span>
         </div>
         <div v-if="issue.actual_start_date" class="info-item">
           <span class="info-label">{{ t('issue.detail.actualStart') }}</span>
-          <span>{{ formatTime(issue.actual_start_date) }}</span>
+          <span class="time">{{ formatTime(issue.actual_start_date) }}</span>
         </div>
         <div v-if="issue.actual_end_date" class="info-item">
           <span class="info-label">{{ t('issue.detail.actualEnd') }}</span>
-          <span>{{ formatTime(issue.actual_end_date) }}</span>
+          <span class="time">{{ formatTime(issue.actual_end_date) }}</span>
         </div>
       </div>
     </div>

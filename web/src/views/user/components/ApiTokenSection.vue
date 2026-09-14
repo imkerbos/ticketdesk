@@ -47,6 +47,7 @@
         v-else-if="!loading"
         preset="first-time"
         :title="t('user.token.emptyTitle')"
+        :description="t('user.token.emptyDesc')"
       >
         <el-button type="primary" @click="openCreate">
           <el-icon><Plus /></el-icon>{{ t('user.token.createFirst') }}

@@ -148,8 +148,8 @@
                   <el-tag :type="getPriorityType(row.priority)" effect="dark" size="small">{{ row.priority }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="total" :label="t('report.total')" min-width="55" />
-              <el-table-column prop="resolved" :label="t('report.resolvedCol')" min-width="55" />
+              <el-table-column prop="total" :label="t('report.total')" min-width="55" class-name="num" />
+              <el-table-column prop="resolved" :label="t('report.resolvedCol')" min-width="55" class-name="num" />
               <el-table-column :label="t('report.slaTarget')" min-width="80">
                 <template #default="{ row }">{{ formatMinutes(row.sla_target) }}</template>
               </el-table-column>
@@ -158,7 +158,7 @@
               </el-table-column>
               <el-table-column :label="t('report.metRate')" min-width="75">
                 <template #default="{ row }">
-                  <span :class="getSLARateClass(row.sla_rate)">{{ formatPercent(row.sla_rate) }}</span>
+                  <span class="num" :class="getSLARateClass(row.sla_rate)">{{ formatPercent(row.sla_rate) }}</span>
                 </template>
               </el-table-column>
             </el-table>
@@ -174,14 +174,14 @@
                   <span class="project-name-text">{{ row.project_name }}</span>
                 </template>
               </el-table-column>
-              <el-table-column prop="total" :label="t('report.total')" width="55" />
-              <el-table-column prop="resolved" :label="t('report.resolvedCol')" width="55" />
+              <el-table-column prop="total" :label="t('report.total')" width="55" class-name="num" />
+              <el-table-column prop="resolved" :label="t('report.resolvedCol')" width="55" class-name="num" />
               <el-table-column label="MTTR" width="80">
                 <template #default="{ row }">{{ formatMinutes(row.mttr) }}</template>
               </el-table-column>
               <el-table-column :label="t('report.metRate')" width="75">
                 <template #default="{ row }">
-                  <span :class="getSLARateClass(row.sla_rate)">{{ formatPercent(row.sla_rate) }}</span>
+                  <span class="num" :class="getSLARateClass(row.sla_rate)">{{ formatPercent(row.sla_rate) }}</span>
                 </template>
               </el-table-column>
             </el-table>

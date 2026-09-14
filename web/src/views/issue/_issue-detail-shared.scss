@@ -82,18 +82,15 @@
 .card-title { font-size: 15px; font-weight: 600; color: var(--td-text-primary); }
 
 
+/* 和全站的 .count 保持同一形态：裸数字 + 弱色 + tabular-nums。
+   原来是灰底药丸，而别处的计数（附件 0、评论 1、工单 11）都是裸数字 ——
+   同一个语义两种长相。顺带去掉那个 10px 圆角：规范里圆角只有
+   5 / 8 / 12 / 18 / 50% 几档，这是第七种值（CLAUDE.md 3.5）。 */
 .card-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  background: var(--td-border-color);
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--td-text-regular);
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--td-text-placeholder);
+  font-variant-numeric: tabular-nums;
 }
 
 .sidebar-section {

@@ -1260,6 +1260,7 @@ export default {
       addMatcher: 'Add matcher',
       startsAt: 'Starts',
       startsAtFrom: 'From {time}',
+      fromSuffix: ' onwards',
       startsAtPlaceholder: 'Pick a start time',
       endsAt: 'Ends',
       endsAtPlaceholder: 'Pick an end time',
