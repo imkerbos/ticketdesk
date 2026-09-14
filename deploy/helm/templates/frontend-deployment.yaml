@@ -1,5 +1,7 @@
 {{- $dev := .Values.frontend.dev | default dict }}
-{{- $port := ternary 3100 (int .Values.frontend.port) (and $dev.enabled true) }}
+{{- /* ternary 的条件必须是严格 bool：values 里没写 frontend.dev 时 $dev.enabled
+       是 nil，会直接 "expected bool" 报错。empty 取反可以把 nil 收成 false。 */}}
+{{- $port := ternary 3100 (int .Values.frontend.port) (not (empty $dev.enabled)) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

@@ -1,3 +1,4 @@
+{{- $dev := .Values.frontend.dev | default dict }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -11,5 +12,7 @@ spec:
     app.kubernetes.io/component: frontend
   ports:
     - port: 80
-      # 开发模式下容器里跑的是 vite dev server（3100），不是 nginx（80）
-      targetPort: {{ ternary 3100 80 (and (.Values.frontend.dev | default dict).enabled true) }}
+      # 开发模式下容器里跑的是 vite dev server（3100），不是 nginx（80）。
+      # 这里用 if 而不是 ternary：ternary 要求条件是严格 bool，values 里
+      # 没写 frontend.dev 时取到的是 nil，会直接 "expected bool" 报错。
+      targetPort: {{ if $dev.enabled }}3100{{ else }}80{{ end }}
