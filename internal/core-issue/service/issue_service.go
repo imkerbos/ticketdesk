@@ -14,27 +14,29 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/kerbos/ticketdesk/internal/activity/detail"
 	"github.com/kerbos/ticketdesk/internal/core-issue/dto"
 	"github.com/kerbos/ticketdesk/internal/core-issue/repository"
 	projectRepo "github.com/kerbos/ticketdesk/internal/core-project/repository"
 	userRepo "github.com/kerbos/ticketdesk/internal/core-user/repository"
 	"github.com/kerbos/ticketdesk/internal/model"
 	"github.com/kerbos/ticketdesk/pkg/logger"
+	"github.com/kerbos/ticketdesk/pkg/safego"
 	"github.com/kerbos/ticketdesk/pkg/sequence"
 )
 
 // 业务错误定义
 var (
-	ErrIssueNotFound     = errors.New("工单不存在")
-	ErrProjectNotFound   = errors.New("项目不存在")
-	ErrIssueTypeNotFound = errors.New("工单类型不存在")
-	ErrUserNotFound      = errors.New("用户不存在")
-	ErrCommentNotFound   = errors.New("评论不存在")
-	ErrAlreadyWatching   = errors.New("已经关注该工单")
-	ErrNotWatching       = errors.New("未关注该工单")
-	ErrWorklogNotFound   = errors.New("工作日志不存在")
-	ErrUnauthorized      = errors.New("无权限操作")
-	ErrInvalidTimeFormat = errors.New("时间格式错误")
+	ErrIssueNotFound     = errors.New("workflow.issue_not_found")
+	ErrProjectNotFound   = errors.New("workflow.project_not_found")
+	ErrIssueTypeNotFound = errors.New("project.issue_type_not_found")
+	ErrUserNotFound      = errors.New("user.not_found")
+	ErrCommentNotFound   = errors.New("issue.comment_not_found")
+	ErrAlreadyWatching   = errors.New("issue.already_watching")
+	ErrNotWatching       = errors.New("issue.not_watching")
+	ErrWorklogNotFound   = errors.New("issue.worklog_not_found")
+	ErrUnauthorized      = errors.New("issue.no_permission")
+	ErrInvalidTimeFormat = errors.New("issue.bad_time_format")
 )
 
 type ctxKey string
@@ -142,15 +144,22 @@ type CustomFieldValueInput struct {
 
 // NotificationRequest 通知请求（本地定义，避免依赖 notification-inbox/dto）
 type NotificationRequest struct {
-	UserID     uint64
-	Type       string
-	Title      string
-	Content    string
-	EntityType string
-	EntityID   uint64
-	EntityKey  string
-	ActorID    uint64
-	ActorName  string
+	UserID uint64
+	Type   string
+	Title  string
+	// TitleKey / TitleArgs 标题的语言包 key 与参数。
+	// 用它而不是直接给 Title：标题最终要按收件人的语言渲染，
+	// 而这里还不知道收件人想看哪种语言。
+	TitleKey    string
+	TitleArgs   []any
+	Content     string
+	ContentKey  string
+	ContentArgs []any
+	EntityType  string
+	EntityID    uint64
+	EntityKey   string
+	ActorID     uint64
+	ActorName   string
 }
 
 // NewIssueService 创建工单服务实例
@@ -250,6 +259,7 @@ func (s *issueService) notifyProjectChannels(projectID uint64, event string, dat
 		return
 	}
 	go func() {
+		defer safego.Recover("issue.notifyProjectChannels")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := s.projectNotifier.NotifyProject(ctx, projectID, event, data); err != nil {
@@ -270,6 +280,7 @@ func (s *issueService) sendNotification(actorID uint64, actorName string, req *N
 	req.ActorID = actorID
 	req.ActorName = actorName
 	go func() {
+		defer safego.Recover("issue.sendNotification")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := s.notifSender.CreateNotification(ctx, req); err != nil {
@@ -279,7 +290,9 @@ func (s *issueService) sendNotification(actorID uint64, actorName string, req *N
 }
 
 // notifyWatchers 通知所有关注者（排除指定用户），返回已通知的用户ID集合
-func (s *issueService) notifyWatchers(issue *model.Issue, excludeUserID, actorID uint64, actorName, notifType, title, content string) map[uint64]bool {
+// tmpl 是通知模板：除 UserID 外都已填好，逐个关注者复制一份填上收件人。
+// 标题/正文用 key 而不是成文的句子，最终由站内通知服务按各人的语言渲染。
+func (s *issueService) notifyWatchers(issue *model.Issue, excludeUserID, actorID uint64, actorName string, tmpl NotificationRequest) map[uint64]bool {
 	notified := make(map[uint64]bool)
 	if s.notifSender == nil {
 		return notified
@@ -289,20 +302,17 @@ func (s *issueService) notifyWatchers(issue *model.Issue, excludeUserID, actorID
 		logger.Warn("failed to list watchers for notification", zap.Error(err))
 		return notified
 	}
+	tmpl.EntityType = "issue"
+	tmpl.EntityID = issue.ID
+	tmpl.EntityKey = issue.IssueKey
 	for _, w := range watchers {
 		if w.UserID == excludeUserID {
 			continue
 		}
 		notified[w.UserID] = true
-		s.sendNotification(actorID, actorName, &NotificationRequest{
-			UserID:     w.UserID,
-			Type:       notifType,
-			Title:      title,
-			Content:    content,
-			EntityType: "issue",
-			EntityID:   issue.ID,
-			EntityKey:  issue.IssueKey,
-		})
+		req := tmpl
+		req.UserID = w.UserID
+		s.sendNotification(actorID, actorName, &req)
 	}
 	return notified
 }
@@ -331,6 +341,7 @@ func (s *issueService) logActivity(_ context.Context, userID uint64, userName, a
 	}
 	// 异步记录，不阻塞主流程
 	go func() {
+		defer safego.Recover("issue.logActivity")
 		if err := s.activityLogger.LogActivity(context.Background(), userID, userName, action, "issue", entityID, entityKey, details); err != nil {
 			logger.Warn("failed to log activity", zap.Error(err))
 		}
@@ -487,7 +498,8 @@ func (s *issueService) afterIssueCreated(ctx context.Context, issue *model.Issue
 		s.sendNotification(reporterID, reporterName, &NotificationRequest{
 			UserID:     *issue.AssigneeID,
 			Type:       "issue_assigned",
-			Title:      fmt.Sprintf("工单 %s 被指派给您", issue.IssueKey),
+			TitleKey:   "inbox.issue_assigned_to_you",
+			TitleArgs:  []any{issue.IssueKey},
 			Content:    issue.Title,
 			EntityType: "issue",
 			EntityID:   issue.ID,
@@ -543,11 +555,11 @@ func (s *issueService) afterIssueCreated(ctx context.Context, issue *model.Issue
 			ctx,
 			reporterID,
 			actReporterName,
-			"创建工单",
+			"issue_created",
 			"issue",
 			issue.ID,
 			issue.IssueKey,
-			fmt.Sprintf("创建了工单: %s", issue.Title),
+			detail.New("activity.detail.issueCreated", "title", issue.Title),
 		)
 	}
 
@@ -609,7 +621,7 @@ func (s *issueService) CreateIssueWithAttachments(
 		}
 		// 逐个落盘 + 写附件记录
 		for _, fh := range files {
-			relPath, err := s.attachmentService.SaveFile(fh)
+			relPath, err := s.attachmentService.SaveFile(ctx, fh)
 			if err != nil {
 				return err
 			}
@@ -625,7 +637,7 @@ func (s *issueService) CreateIssueWithAttachments(
 	if err != nil {
 		// 事务回滚 → 清理所有已落盘文件
 		for _, p := range savedPaths {
-			if delErr := s.attachmentService.DeletePath(p); delErr != nil {
+			if delErr := s.attachmentService.DeletePath(ctx, p); delErr != nil {
 				logger.Warn("failed to delete file after rollback",
 					zap.String("path", p),
 					zap.Error(delErr),
@@ -809,63 +821,65 @@ func (s *issueService) UpdateIssue(ctx context.Context, key string, req *dto.Upd
 	if s.activityLogger != nil {
 		userID, userName := s.getUserFromCtx(ctx)
 
-		var changes []string
+		// 每个变更存成一条带 key 的子项，拼接和翻译都留给前端 ——
+		// 这里拼出中文就等于把写入方的语言烧进库里（见 internal/activity/detail）
+		var changes []detail.Detail
 		if req.Title != nil {
-			changes = append(changes, "标题")
+			changes = append(changes, detail.Item("activity.detail.field.title"))
 		}
 		if req.Description != nil {
-			changes = append(changes, "描述")
+			changes = append(changes, detail.Item("activity.detail.field.description"))
 		}
 		if req.Priority != nil {
-			changes = append(changes, fmt.Sprintf("优先级 → %s", *req.Priority))
+			changes = append(changes, detail.Item("activity.detail.field.priority", "value", *req.Priority))
 		}
 		if req.Resolution != nil {
-			changes = append(changes, fmt.Sprintf("解决结果 → %s", *req.Resolution))
+			changes = append(changes, detail.Item("activity.detail.field.resolution", "value", *req.Resolution))
 		}
 		if req.AssigneeID != nil {
 			if assignee, err := s.userRepo.GetByID(ctx, *req.AssigneeID); err == nil {
-				changes = append(changes, fmt.Sprintf("指派人 → %s", assignee.DisplayName))
+				changes = append(changes, detail.Item("activity.detail.field.assignee", "value", assignee.DisplayName))
 			}
 		}
 		if req.PlannedStartDate != nil {
 			if *req.PlannedStartDate == "" {
-				changes = append(changes, "预计开始时间 → 清除")
+				changes = append(changes, detail.Item("activity.detail.field.plannedStartCleared"))
 			} else {
-				changes = append(changes, fmt.Sprintf("预计开始时间 → %s", *req.PlannedStartDate))
+				changes = append(changes, detail.Item("activity.detail.field.plannedStart", "value", *req.PlannedStartDate))
 			}
 		}
 		if req.PlannedEndDate != nil {
 			if *req.PlannedEndDate == "" {
-				changes = append(changes, "预计交付时间 → 清除")
+				changes = append(changes, detail.Item("activity.detail.field.plannedEndCleared"))
 			} else {
-				changes = append(changes, fmt.Sprintf("预计交付时间 → %s", *req.PlannedEndDate))
+				changes = append(changes, detail.Item("activity.detail.field.plannedEnd", "value", *req.PlannedEndDate))
 			}
 		}
 		if req.DueDate != nil {
 			if *req.DueDate == "" {
-				changes = append(changes, "截止日期 → 清除")
+				changes = append(changes, detail.Item("activity.detail.field.dueDateCleared"))
 			} else {
-				changes = append(changes, fmt.Sprintf("截止日期 → %s", *req.DueDate))
+				changes = append(changes, detail.Item("activity.detail.field.dueDate", "value", *req.DueDate))
 			}
 		}
 		if req.EpicID != nil {
 			if *req.EpicID == 0 {
-				changes = append(changes, "Epic 关联 → 清除")
+				changes = append(changes, detail.Item("activity.detail.field.epicCleared"))
 			} else {
-				changes = append(changes, fmt.Sprintf("Epic 关联 → #%d", *req.EpicID))
+				changes = append(changes, detail.Item("activity.detail.field.epic", "value", *req.EpicID))
 			}
 		}
 		if len(req.CustomFields) > 0 {
-			changes = append(changes, "扩展字段")
+			changes = append(changes, detail.Item("activity.detail.field.customFields"))
 		}
 
 		if len(changes) > 0 {
-			details := fmt.Sprintf("更新了: %s", strings.Join(changes, ", "))
+			details := detail.List("activity.detail.issueUpdated", changes)
 			_ = s.activityLogger.LogActivity(
 				ctx,
 				userID,
 				userName,
-				"更新工单",
+				"issue_updated",
 				"issue",
 				issue.ID,
 				issue.IssueKey,
@@ -959,7 +973,7 @@ func (s *issueService) DeleteIssue(ctx context.Context, key string) error {
 
 	// 记录活动日志（工单已删，只记录操作）
 	userID, userName := s.getUserFromCtx(ctx)
-	s.logActivity(ctx, userID, userName, "删除工单", issueKey, fmt.Sprintf("删除了工单: %s", issueTitle), issueID)
+	s.logActivity(ctx, userID, userName, "issue_deleted", issueKey, detail.New("activity.detail.issueDeleted", "title", issueTitle), issueID)
 
 	return nil
 }
@@ -1225,7 +1239,8 @@ func (s *issueService) AssignIssue(ctx context.Context, key string, assigneeID u
 		s.sendNotification(actorID, actorName, &NotificationRequest{
 			UserID:     assigneeID,
 			Type:       "issue_assigned",
-			Title:      fmt.Sprintf("工单 %s 被指派给您", issue.IssueKey),
+			TitleKey:   "inbox.issue_assigned_to_you",
+			TitleArgs:  []any{issue.IssueKey},
 			Content:    issue.Title,
 			EntityType: "issue",
 			EntityID:   issue.ID,
@@ -1237,7 +1252,8 @@ func (s *issueService) AssignIssue(ctx context.Context, key string, assigneeID u
 			s.sendNotification(actorID, actorName, &NotificationRequest{
 				UserID:     issue.ReporterID,
 				Type:       "issue_updated",
-				Title:      fmt.Sprintf("您创建的工单 %s 被重新指派", issue.IssueKey),
+				TitleKey:   "inbox.issue_reassigned",
+				TitleArgs:  []any{issue.IssueKey},
 				Content:    issue.Title,
 				EntityType: "issue",
 				EntityID:   issue.ID,
@@ -1296,8 +1312,8 @@ func (s *issueService) AssignIssue(ctx context.Context, key string, assigneeID u
 	// 记录活动日志
 	if s.activityLogger != nil {
 		actorID, actorName := s.getUserFromCtx(ctx)
-		details := fmt.Sprintf("指派给 %s", assigneeName)
-		s.logActivity(ctx, actorID, actorName, "指派工单", issue.IssueKey, details, issue.ID)
+		details := detail.New("activity.detail.issueAssigned", "name", assigneeName)
+		s.logActivity(ctx, actorID, actorName, "issue_assigned", issue.IssueKey, details, issue.ID)
 	}
 
 	return s.toIssueResponse(ctx, issue, projectKey), nil
@@ -1356,12 +1372,16 @@ func (s *issueService) AddComment(ctx context.Context, issueKey string, req *dto
 		if userName == "" {
 			userName = user.Username
 		}
-		s.logActivity(ctx, userID, userName, "评论了工单", issue.IssueKey, "", issue.ID)
+		s.logActivity(ctx, userID, userName, "comment_added", issue.IssueKey, "", issue.ID)
 	}
 
 	// 通知关注者
-	notifTitle := fmt.Sprintf("工单 %s 有新评论", issue.IssueKey)
-	notifiedUsers := s.notifyWatchers(issue, userID, userID, userName, "issue_commented", notifTitle, req.Content)
+	notifiedUsers := s.notifyWatchers(issue, userID, userID, userName, NotificationRequest{
+		Type:      "issue_commented",
+		TitleKey:  "inbox.issue_commented",
+		TitleArgs: []any{issue.IssueKey},
+		Content:   req.Content, // 评论正文是用户写的，原样落库不翻译
+	})
 
 	// 通知创建者（如果不是评论人，且未作为关注人被通知）
 	if issue.ReporterID != userID && !notifiedUsers[issue.ReporterID] {
@@ -1369,7 +1389,8 @@ func (s *issueService) AddComment(ctx context.Context, issueKey string, req *dto
 		s.sendNotification(userID, userName, &NotificationRequest{
 			UserID:     issue.ReporterID,
 			Type:       "issue_commented",
-			Title:      fmt.Sprintf("您创建的工单 %s 有新评论", issue.IssueKey),
+			TitleKey:   "inbox.your_issue_commented",
+			TitleArgs:  []any{issue.IssueKey},
 			Content:    req.Content,
 			EntityType: "issue",
 			EntityID:   issue.ID,
@@ -1392,7 +1413,8 @@ func (s *issueService) AddComment(ctx context.Context, issueKey string, req *dto
 		s.sendNotification(userID, userName, &NotificationRequest{
 			UserID:     mentionedUser.ID,
 			Type:       "mention",
-			Title:      fmt.Sprintf("%s 在工单 %s 中提及了您", userName, issue.IssueKey),
+			TitleKey:   "inbox.mentioned_you",
+			TitleArgs:  []any{userName, issue.IssueKey},
 			Content:    req.Content,
 			EntityType: "issue",
 			EntityID:   issue.ID,
@@ -1464,7 +1486,7 @@ func (s *issueService) DeleteComment(ctx context.Context, commentID, userID uint
 		if len(content) > 50 {
 			content = content[:50] + "..."
 		}
-		s.logActivity(ctx, userID, userName, "删除评论", issueKey, fmt.Sprintf("删除了评论: %s", content), comment.IssueID)
+		s.logActivity(ctx, userID, userName, "comment_deleted", issueKey, detail.New("activity.detail.commentDeleted", "content", content), comment.IssueID)
 	}
 
 	return nil
@@ -1509,11 +1531,11 @@ func (s *issueService) AddWatcher(ctx context.Context, issueKey string, userID u
 			ctx,
 			userID,
 			userName,
-			"关注工单",
+			"issue_watched",
 			"issue",
 			issue.ID,
 			issue.IssueKey,
-			fmt.Sprintf("%s 开始关注此工单", userName),
+			detail.New("activity.detail.issueWatched", "name", userName),
 		)
 	}
 
@@ -1541,11 +1563,11 @@ func (s *issueService) RemoveWatcher(ctx context.Context, issueKey string, userI
 			ctx,
 			userID,
 			userName,
-			"取消关注工单",
+			"issue_unwatched",
 			"issue",
 			issue.ID,
 			issue.IssueKey,
-			fmt.Sprintf("%s 取消关注此工单", userName),
+			detail.New("activity.detail.issueUnwatched", "name", userName),
 		)
 	}
 
@@ -1945,7 +1967,11 @@ func (s *issueService) AddWorklog(ctx context.Context, issueKey string, req *dto
 	// 解析工作日期
 	workedAt, err := time.Parse(time.RFC3339, req.WorkedAt)
 	if err != nil {
-		return nil, fmt.Errorf("invalid worked_at format: %w", ErrInvalidTimeFormat)
+		// 直接返回哨兵，不做 fmt.Errorf 包裹：哨兵携带的是语言包 key，
+		// 一旦被包进更长的字符串，响应层就认不出这是 key，
+		// 用户会看到裸的 "issue.bad_time_format"。具体格式问题进日志即可
+		logger.Warn("invalid worked_at format", zap.String("value", req.WorkedAt), zap.Error(err))
+		return nil, ErrInvalidTimeFormat
 	}
 
 	// 创建工作日志
@@ -1970,7 +1996,7 @@ func (s *issueService) AddWorklog(ctx context.Context, issueKey string, req *dto
 		if user != nil {
 			userName = user.DisplayName
 		}
-		details := fmt.Sprintf("添加工作日志：%s", req.TimeSpent)
+		details := detail.New("activity.detail.worklogAdded", "time", req.TimeSpent)
 		_ = s.activityLogger.LogActivity(ctx, userID, userName, "worklog_added", "issue", issue.ID, issue.IssueKey, details)
 	}
 
@@ -1981,9 +2007,13 @@ func (s *issueService) AddWorklog(ctx context.Context, issueKey string, req *dto
 		if user != nil {
 			userName = user.DisplayName
 		}
-		s.notifyWatchers(issue, userID, userID, userName, model.NotificationTypeIssueUpdated,
-			fmt.Sprintf("工单 %s 添加了工作日志", issue.IssueKey),
-			fmt.Sprintf("%s 添加了工作日志（%s）", userName, req.TimeSpent))
+		s.notifyWatchers(issue, userID, userID, userName, NotificationRequest{
+			Type:        model.NotificationTypeIssueUpdated,
+			TitleKey:    "inbox.worklog_added",
+			TitleArgs:   []any{issue.IssueKey},
+			ContentKey:  "inbox.worklog_added_by",
+			ContentArgs: []any{userName, req.TimeSpent},
+		})
 	}
 
 	return s.toWorklogResponse(ctx, worklog), nil
@@ -2014,7 +2044,11 @@ func (s *issueService) UpdateWorklog(ctx context.Context, worklogID uint64, req 
 	// 解析工作日期
 	workedAt, err := time.Parse(time.RFC3339, req.WorkedAt)
 	if err != nil {
-		return nil, fmt.Errorf("invalid worked_at format: %w", ErrInvalidTimeFormat)
+		// 直接返回哨兵，不做 fmt.Errorf 包裹：哨兵携带的是语言包 key，
+		// 一旦被包进更长的字符串，响应层就认不出这是 key，
+		// 用户会看到裸的 "issue.bad_time_format"。具体格式问题进日志即可
+		logger.Warn("invalid worked_at format", zap.String("value", req.WorkedAt), zap.Error(err))
+		return nil, ErrInvalidTimeFormat
 	}
 
 	// 更新字段
@@ -2040,7 +2074,7 @@ func (s *issueService) UpdateWorklog(ctx context.Context, worklogID uint64, req 
 		if issue != nil {
 			issueKey = issue.IssueKey
 		}
-		details := fmt.Sprintf("更新工作日志：%s", req.TimeSpent)
+		details := detail.New("activity.detail.worklogUpdated", "time", req.TimeSpent)
 		_ = s.activityLogger.LogActivity(ctx, userID, userName, "worklog_updated", "issue", worklog.IssueID, issueKey, details)
 	}
 
@@ -2079,7 +2113,7 @@ func (s *issueService) DeleteWorklog(ctx context.Context, worklogID, userID uint
 		if issue != nil {
 			issueKey = issue.IssueKey
 		}
-		details := fmt.Sprintf("删除工作日志：%s", worklog.TimeSpent)
+		details := detail.New("activity.detail.worklogDeleted", "time", worklog.TimeSpent)
 		_ = s.activityLogger.LogActivity(ctx, userID, userName, "worklog_deleted", "issue", worklog.IssueID, issueKey, details)
 	}
 
@@ -2116,7 +2150,7 @@ func (s *issueService) ListWorklogs(ctx context.Context, issueKey string) ([]*dt
 func parseTimeSpent(timeStr string) (int, error) {
 	timeStr = strings.TrimSpace(timeStr)
 	if timeStr == "" {
-		return 0, fmt.Errorf("time_spent cannot be empty: %w", ErrInvalidTimeFormat)
+		return 0, ErrInvalidTimeFormat
 	}
 
 	// 支持格式：1d, 2h, 30m, 1d 2h, 2h 30m, 1d 2h 30m
@@ -2151,7 +2185,8 @@ func parseTimeSpent(timeStr string) (int, error) {
 	}
 
 	if totalSeconds == 0 {
-		return 0, fmt.Errorf("invalid time format: %s (expected format: 1d 2h 30m): %w", timeStr, ErrInvalidTimeFormat)
+		logger.Warn("unparseable time_spent", zap.String("value", timeStr))
+		return 0, ErrInvalidTimeFormat
 	}
 
 	return totalSeconds, nil

@@ -31,6 +31,9 @@ type UpdateUserRequest struct {
 	Email          *string `json:"email" binding:"omitempty,email,max=100"`
 	LarkOpenID     *string `json:"lark_open_id" binding:"omitempty,max=64"`
 	TelegramUserID *string `json:"telegram_user_id" binding:"omitempty,max=32"`
+	// Locale 偏好语言。空串是有意义的值 —— 表示"跟随站点设置"，
+	// 所以用指针区分"没传"和"清空"。
+	Locale *string `json:"locale" binding:"omitempty,oneof=zh-CN en-US"`
 }
 
 // CreateUserRequest 创建用户请求（管理员）
@@ -97,11 +100,18 @@ func (r *ListUsersRequest) GetDefaultPageSize() int {
 // ============ 响应 DTO ============
 
 // LoginResponse 登录响应
+//
+// 当账号启用了 MFA 时，登录第一步只返回 RequiresMFA + MFAToken，
+// 令牌字段为空；需再调用 /auth/mfa/verify 提交 TOTP 码换取正式令牌。
 type LoginResponse struct {
-	AccessToken  string       `json:"access_token"`
-	RefreshToken string       `json:"refresh_token"`
-	ExpiresIn    int64        `json:"expires_in"`
-	User         UserResponse `json:"user"`
+	AccessToken  string       `json:"access_token,omitempty"`
+	RefreshToken string       `json:"refresh_token,omitempty"`
+	ExpiresIn    int64        `json:"expires_in,omitempty"`
+	User         UserResponse `json:"user,omitzero"`
+	// RequiresMFA 为 true 表示登录未完成，需要二次验证
+	RequiresMFA bool `json:"requires_mfa,omitempty"`
+	// MFAToken 短期挑战令牌（5 分钟），仅能用于 /auth/mfa/verify
+	MFAToken string `json:"mfa_token,omitempty"`
 }
 
 // UserResponse 用户信息响应
@@ -118,6 +128,7 @@ type UserResponse struct {
 	SSOProvider    string     `json:"sso_provider,omitempty"` // SSO 提供方名称（仅 SSO 用户）
 	LarkOpenID     string     `json:"lark_open_id,omitempty"`
 	TelegramUserID string     `json:"telegram_user_id,omitempty"`
+	Locale         string     `json:"locale,omitempty"`
 	LastLoginAt    *time.Time `json:"last_login_at,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
@@ -154,9 +165,12 @@ type MFAVerifyRequest struct {
 }
 
 // MFALoginRequest MFA 登录验证请求
+//
+// 刻意不接受 user_id：那样任何人只要知道用户 ID 就能绕过密码这一步。
+// 必须携带登录第一步下发的挑战令牌，它本身即是「密码已通过」的凭证。
 type MFALoginRequest struct {
-	UserID uint64 `json:"user_id" binding:"required"`
-	Code   string `json:"code" binding:"required,len=6"`
+	MFAToken string `json:"mfa_token" binding:"required"`
+	Code     string `json:"code" binding:"required,len=6"`
 }
 
 // MFALoginResponse MFA 登录响应（需要 MFA 验证时返回）

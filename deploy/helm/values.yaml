@@ -31,6 +31,19 @@ frontend:
     tag: latest
     pullPolicy: IfNotPresent
   port: 80
+  # 开发模式：容器里跑 vite dev server，源码从宿主机 hostPath 挂进去，
+  # 存盘即热更新，不用重建镜像。只在本地开发集群开，生产永远关。
+  dev:
+    enabled: false
+    image: ticketdesk/frontend:dev-hot
+    hostPath: ""  # 宿主机上 web/ 目录的绝对路径
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 4Gi
   resources:
     requests:
       cpu: 50m
@@ -40,11 +53,12 @@ frontend:
       memory: 256Mi
 
 # ============ 流量入口 ============
-# className: gateway → Gateway API + HTTPRoute（推荐，K8s 新标准）
+# className: nginx   → 标准 Ingress（ingress-nginx 控制器，最通用）
+# className: gateway → Gateway API + HTTPRoute（K8s 新标准）
 # className: istio   → Istio Gateway + VirtualService
 ingress:
   enabled: true
-  className: istio
+  className: nginx
   host: ticketdesk.example.com
   tls:
     enabled: false
@@ -54,6 +68,9 @@ ingress:
     create: true                            # 是否创建 Gateway（false 则引用已有的）
     name: ticketdesk-gateway                # Gateway 名称
     gatewayClassName: ""                    # GatewayClass 名称（如 istio、cilium、envoy-gateway 等，留空使用集群默认）
+  # ingress-nginx 配置（className=nginx 时生效）
+  nginx:
+    annotations: {}                         # 需要额外注解时在此追加
   # Istio 配置（className=istio 时生效）
   istio:
     gateway: istio-system/default-gateway   # 引用已有的 Istio Gateway（namespace/name）
@@ -119,6 +136,15 @@ jwt:
   accessExpire: 7200
   refreshExpire: 604800
 
+# ============ 首次初始化 ============
+# 全新部署时，系统不预置任何管理员账号，改为在浏览器里跑一次初始化向导
+# （设管理员、站点域名、平台语言）。这个令牌用于证明"你是部署这套系统的人"。
+#
+# 留空则由 chart 随机生成，并在已存在时原样复用（helm upgrade 不会把它换掉）。
+# 取令牌的命令见 helm install 后打印的说明。
+setup:
+  token: ""
+
 # ============ 夜莺告警（可选）============
 nightingale:
   enabled: false
@@ -126,7 +152,24 @@ nightingale:
   token: ""
   pollInterval: 30
 
+# ============ 文件存储 ============
+# driver: local = 挂 PVC（RWO），**只能单副本**；多副本滚动升级会触发 Multi-Attach error
+#         s3    = 对象存储，后端无状态，可放心多副本 + RollingUpdate
+#                 兼容 MinIO / AWS S3 / 阿里云 OSS / 腾讯 COS / GCS 互操作模式
+storage:
+  driver: local
+  s3:
+    endpoint: ""      # 不带协议，如 minio.default.svc:9000
+    bucket: ticketdesk
+    region: ""
+    accessKey: ""
+    secretKey: ""
+    useSSL: true
+    pathStyle: false  # MinIO 等自建网关需 true
+    prefix: ""
+
 # ============ 持久化（上传文件）============
+# 仅 storage.driver=local 时创建并挂载
 persistence:
   uploads:
     size: 10Gi

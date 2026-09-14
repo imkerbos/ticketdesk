@@ -82,5 +82,8 @@ plan.md
 Claude.md
 CLAUDE.md
 TEAM_CONVENTIONS.md
-.claude/
+.claude/*
+# skills 是团队共享的工作流，入库；本地会话状态与 settings.local.json 仍不入库
+!.claude/skills/
+!.claude/skills/**
 docs/superpowers/

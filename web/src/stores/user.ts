@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { clearProjectPermissionCache } from '@/utils/project-permissions'
 import { ref, computed } from 'vue'
 import type { UserProfile } from '@/types/user'
 
@@ -54,6 +55,9 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem('token')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')
+
+    // 项目权限是按人缓存的，不清掉的话换个人登录会继续用上一个人的权限
+    clearProjectPermissionCache()
   }
 
   // 更新用户信息

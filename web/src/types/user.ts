@@ -13,6 +13,7 @@ export interface User {
   sso_provider?: string // SSO 提供方名称
   lark_open_id?: string // 飞书 open_id（用于通知 @）
   telegram_user_id?: string // Telegram 数字 user ID（用于通知 @）
+  locale?: string // 偏好语言（zh-CN / en-US），空 = 跟随站点设置
   last_login_at?: string // 最后登录时间
   created_at: string
   updated_at: string
@@ -48,6 +49,7 @@ export interface UpdateUserRequest {
   roles?: string[]
   lark_open_id?: string
   telegram_user_id?: string
+  locale?: string
 }
 
 export interface UpdatePasswordRequest {
@@ -67,6 +69,7 @@ export interface UserProfile {
   sso_provider?: string // SSO 提供方名称
   lark_open_id?: string
   telegram_user_id?: string
+  locale?: string // 偏好语言（zh-CN / en-US），空 = 跟随站点设置
   created_at: string
   updated_at: string
 }

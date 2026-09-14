@@ -11,4 +11,5 @@ spec:
     app.kubernetes.io/component: frontend
   ports:
     - port: 80
-      targetPort: 80
+      # 开发模式下容器里跑的是 vite dev server（3100），不是 nginx（80）
+      targetPort: {{ ternary 3100 80 (and (.Values.frontend.dev | default dict).enabled true) }}

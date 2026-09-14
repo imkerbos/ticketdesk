@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	configService "github.com/kerbos/ticketdesk/internal/system-config/service"
+	"github.com/kerbos/ticketdesk/pkg/i18n"
 	"github.com/kerbos/ticketdesk/pkg/logger"
 )
 
@@ -105,7 +106,7 @@ func (s *larkService) SendTestMessage(ctx context.Context) error {
 		"header": map[string]interface{}{
 			"title": map[string]interface{}{
 				"tag":     "plain_text",
-				"content": "🔔 TicketDesk 通知测试",
+				"content": "🔔 " + i18n.B("notify.test_title"),
 			},
 			"template": "blue",
 		},
@@ -114,7 +115,7 @@ func (s *larkService) SendTestMessage(ctx context.Context) error {
 				"tag": "div",
 				"text": map[string]interface{}{
 					"tag":     "lark_md",
-					"content": "✅ 恭喜！飞书通知配置成功。\n\n此消息由 TicketDesk 系统发送，用于验证飞书通知功能是否正常工作。",
+					"content": "✅ " + i18n.B("notify.test_lark_ok"),
 				},
 			},
 			map[string]interface{}{
@@ -125,7 +126,7 @@ func (s *larkService) SendTestMessage(ctx context.Context) error {
 				"elements": []interface{}{
 					map[string]interface{}{
 						"tag":     "plain_text",
-						"content": fmt.Sprintf("来自 TicketDesk · %s", time.Now().Format("2006-01-02 15:04:05")),
+						"content": i18n.Bf("notify.test_from", time.Now().Format("2006-01-02 15:04:05")),
 					},
 				},
 			},
@@ -171,7 +172,7 @@ func (s *larkService) buildCard(event string, data interface{}) map[string]inter
 	// 告警来源的工单创建，使用独立标题和颜色
 	if event == "issue.created" {
 		if source, _ := dataMap["source"].(string); source == "alert" {
-			title = "🚨 告警建单"
+			title = "🚨 " + i18n.B("notify.title_alert_issue")
 			template = "red"
 		}
 	}
@@ -202,7 +203,7 @@ func (s *larkService) buildCard(event string, data interface{}) map[string]inter
 						"tag": "button",
 						"text": map[string]interface{}{
 							"tag":     "plain_text",
-							"content": "查看工单",
+							"content": i18n.B("notify.btn_view_issue"),
 						},
 						"url":  fmt.Sprintf("%s/issues/%s", siteURL, issueKey),
 						"type": "primary",
@@ -244,25 +245,25 @@ func (s *larkService) buildCard(event string, data interface{}) map[string]inter
 func (s *larkService) getEventMeta(event string) (title, template string) {
 	switch event {
 	case "issue.created":
-		return "🎫 工单创建", "blue"
+		return "🎫 " + i18n.B("notify.title_issue_created"), "blue"
 	case "issue.updated":
-		return "✏️ 工单更新", "wathet"
+		return "✏️ " + i18n.B("notify.title_issue_updated"), "wathet"
 	case "issue.transitioned":
-		return "🔄 工单流转", "turquoise"
+		return "🔄 " + i18n.B("notify.title_issue_transitioned"), "turquoise"
 	case "issue.assigned":
-		return "👤 工单指派", "indigo"
+		return "👤 " + i18n.B("notify.title_issue_assigned"), "indigo"
 	case "issue.commented":
-		return "💬 工单评论", "violet"
+		return "💬 " + i18n.B("notify.title_issue_commented"), "violet"
 	case "alert.firing":
-		return "🔥 告警触发", "red"
+		return "🔥 " + i18n.B("notify.title_alert_firing"), "red"
 	case "alert.resolved":
-		return "✅ 告警恢复", "green"
+		return "✅ " + i18n.B("notify.title_alert_resolved"), "green"
 	case "alert.merged":
-		return "🔗 告警合并", "orange"
+		return "🔗 " + i18n.B("notify.title_alert_merged"), "orange"
 	case "alert.acked":
-		return "👁️ 告警确认", "orange"
+		return "👁️ " + i18n.B("notify.title_alert_acked"), "orange"
 	default:
-		return "📢 系统通知", "blue"
+		return "📢 " + i18n.B("notify.title_system"), "blue"
 	}
 }
 
@@ -310,19 +311,19 @@ func sharedBuildContentLines(event string, data map[string]interface{}) string {
 		if displayOld != "" && displayNew != "" {
 			content += fmt.Sprintf("📊 %s → **%s**\n", displayOld, displayNew)
 		} else if displayNew != "" {
-			content += fmt.Sprintf("📊 状态：**%s**\n", displayNew)
+			content += fmt.Sprintf("📊 "+i18n.B("notify.label_status")+"：**%s**\n", displayNew)
 		}
 		if projectName != "" {
-			content += fmt.Sprintf("📁 项目：%s\n", projectName)
+			content += fmt.Sprintf("📁 "+i18n.B("notify.label_project")+"：%s\n", projectName)
 		}
 		if priority != "" {
-			content += fmt.Sprintf("🔴 优先级：%s\n", priority)
+			content += fmt.Sprintf("🔴 "+i18n.B("notify.label_priority")+"：%s\n", priority)
 		}
 		if assignee != "" {
-			content += fmt.Sprintf("👤 处理人：%s\n", assignee)
+			content += fmt.Sprintf("👤 "+i18n.B("notify.label_handler")+"：%s\n", assignee)
 		}
 		if dueDate != "" {
-			content += fmt.Sprintf("⏰ 截止时间：**%s**\n", dueDate)
+			content += fmt.Sprintf("⏰ "+i18n.B("notify.label_due")+"：**%s**\n", dueDate)
 		}
 
 	// 工单指派：专用模板，显示操作人和指派人
@@ -338,21 +339,21 @@ func sharedBuildContentLines(event string, data map[string]interface{}) string {
 
 		content = fmt.Sprintf("**%s** %s\n\n", issueKey, issueTitle)
 		if projectName != "" {
-			content += fmt.Sprintf("📁 项目：%s\n", projectName)
+			content += fmt.Sprintf("📁 "+i18n.B("notify.label_project")+"：%s\n", projectName)
 		}
 		if operator != "" && assignee != "" {
-			content += fmt.Sprintf("👤 %s 指派给 **%s**\n", operator, assignee)
+			content += fmt.Sprintf("👤 "+i18n.B("notify.assigned_by")+" **%s**\n", operator, assignee)
 		} else if assignee != "" {
-			content += fmt.Sprintf("👤 指派给：**%s**\n", assignee)
+			content += fmt.Sprintf("👤 "+i18n.B("notify.label_assign_to")+"：**%s**\n", assignee)
 		}
 		if priority != "" {
-			content += fmt.Sprintf("🔴 优先级：%s\n", priority)
+			content += fmt.Sprintf("🔴 "+i18n.B("notify.label_priority")+"：%s\n", priority)
 		}
 		if statusName != "" {
-			content += fmt.Sprintf("📊 状态：%s\n", statusName)
+			content += fmt.Sprintf("📊 "+i18n.B("notify.label_status")+"：%s\n", statusName)
 		}
 		if dueDate != "" {
-			content += fmt.Sprintf("⏰ 截止时间：**%s**\n", dueDate)
+			content += fmt.Sprintf("⏰ "+i18n.B("notify.label_due")+"：**%s**\n", dueDate)
 		}
 
 	// 告警合并：专用模板，显示合并详情
@@ -374,13 +375,13 @@ func sharedBuildContentLines(event string, data map[string]interface{}) string {
 
 		content = fmt.Sprintf("**%s** %s\n\n", issueKey, issueTitle)
 		if alertName != "" {
-			content += fmt.Sprintf("⚠️ 告警：%s\n", alertName)
+			content += fmt.Sprintf("⚠️ "+i18n.B("notify.label_alert")+"：%s\n", alertName)
 		}
 		if instance != "" {
-			content += fmt.Sprintf("📊 新增实例：**%s**\n", instance)
+			content += fmt.Sprintf("📊 "+i18n.B("notify.label_instance")+"：**%s**\n", instance)
 		}
 		if alertCount != "" {
-			content += fmt.Sprintf("🔢 当前实例数：**%s**\n", alertCount)
+			content += fmt.Sprintf("🔢 "+i18n.B("notify.label_count")+"：**%s**\n", alertCount)
 		}
 
 	// 通用工单事件
@@ -393,19 +394,19 @@ func sharedBuildContentLines(event string, data map[string]interface{}) string {
 
 		content = fmt.Sprintf("**%s** %s\n", issueKey, issueTitle)
 		if projectName != "" {
-			content += fmt.Sprintf("📁 项目：%s\n", projectName)
+			content += fmt.Sprintf("📁 "+i18n.B("notify.label_project")+"：%s\n", projectName)
 		}
 		if statusName != "" {
-			content += fmt.Sprintf("📊 状态：%s\n", statusName)
+			content += fmt.Sprintf("📊 "+i18n.B("notify.label_status")+"：%s\n", statusName)
 		}
 		if priority != "" {
-			content += fmt.Sprintf("🔴 优先级：%s\n", priority)
+			content += fmt.Sprintf("🔴 "+i18n.B("notify.label_priority")+"：%s\n", priority)
 		}
 		if comment, ok := data["comment"].(string); ok && comment != "" {
 			if len(comment) > 200 {
 				comment = comment[:200] + "..."
 			}
-			content += fmt.Sprintf("💬 评论：%s\n", comment)
+			content += fmt.Sprintf("💬 "+i18n.B("notify.label_comment")+"：%s\n", comment)
 		}
 
 	case len(event) > 6 && event[:6] == "alert.":
@@ -416,13 +417,13 @@ func sharedBuildContentLines(event string, data map[string]interface{}) string {
 
 		content = fmt.Sprintf("**%s**\n", alertName)
 		if severity != "" {
-			content += fmt.Sprintf("⚠️ 级别：%s\n", severity)
+			content += fmt.Sprintf("⚠️ "+i18n.B("notify.label_severity")+"：%s\n", severity)
 		}
 		if alertStatus != "" {
-			content += fmt.Sprintf("📊 状态：%s\n", alertStatus)
+			content += fmt.Sprintf("📊 "+i18n.B("notify.label_status")+"：%s\n", alertStatus)
 		}
 		if issueKey != "" {
-			content += fmt.Sprintf("🎫 关联工单：%s\n", issueKey)
+			content += fmt.Sprintf("🎫 "+i18n.B("notify.label_issue")+"：%s\n", issueKey)
 		}
 
 	default:
@@ -462,19 +463,19 @@ func buildAlertIssueContent(data map[string]interface{}) string {
 
 	content := fmt.Sprintf("**%s**\n", issueKey)
 	content += fmt.Sprintf("%s\n\n", alertName)
-	content += fmt.Sprintf("%s 优先级：**%s**　　📊 状态：**%s**\n", priEmoji, priority, status)
+	content += fmt.Sprintf("%s "+i18n.B("notify.label_priority")+"：**%s**　　📊 "+i18n.B("notify.label_status")+"：**%s**\n", priEmoji, priority, status)
 	if projectName != "" || assignee != "" {
-		content += fmt.Sprintf("📁 项目：**%s**", projectName)
+		content += fmt.Sprintf("📁 "+i18n.B("notify.label_project")+"：**%s**", projectName)
 		if assignee != "" {
-			content += fmt.Sprintf("　　👤 指派：**%s**", assignee)
+			content += fmt.Sprintf("　　👤 "+i18n.B("notify.label_assign")+"：**%s**", assignee)
 		}
 		content += "\n"
 	}
 	if severity != "" {
-		content += fmt.Sprintf("⚠️ 级别：**%s**\n", severity)
+		content += fmt.Sprintf("⚠️ "+i18n.B("notify.label_severity")+"：**%s**\n", severity)
 	}
 	if alertTime != "" {
-		content += fmt.Sprintf("⏰ 告警时间：%s\n", alertTime)
+		content += fmt.Sprintf("⏰ "+i18n.B("notify.label_alert_time")+"：%s\n", alertTime)
 	}
 
 	return content
@@ -600,7 +601,7 @@ func (d *DirectLarkSender) sendRegular(ctx context.Context, event string, dataMa
 	// 告警来源的工单创建，使用独立标题和颜色
 	if event == "issue.created" {
 		if source, _ := dataMap["source"].(string); source == "alert" {
-			title = "🚨 告警建单"
+			title = "🚨 " + i18n.B("notify.title_alert_issue")
 			template = "red"
 		}
 	}
@@ -631,7 +632,7 @@ func (d *DirectLarkSender) sendRegular(ctx context.Context, event string, dataMa
 						"tag": "button",
 						"text": map[string]interface{}{
 							"tag":     "plain_text",
-							"content": "查看工单",
+							"content": i18n.B("notify.btn_view_issue"),
 						},
 						"url":  fmt.Sprintf("%s/issues/%s", siteURL, issueKey),
 						"type": "primary",
@@ -692,24 +693,28 @@ func (d *DirectLarkSender) sendDigest(ctx context.Context, dataMap map[string]in
 	projectName, _ := dataMap["project_name"].(string)
 	total := toInt(dataMap["total"])
 
-	header := fmt.Sprintf("📋 **[%s] %s** 未完结工单共 **%d** 条", projectKey, projectName, total)
+	header := "📋 " + i18n.Bf("notify.digest_header", projectKey, projectName, total)
 	if all, _ := dataMap["mention_all"].(bool); all {
 		header = `<at id="all"></at>` + "\n" + header
 	}
 
-	elements := []interface{}{
+	// groups 提前取出，供下面预分配 elements 容量使用
+	groups := extractGroupList(dataMap)
+
+	// 预分配：1 个头部 + 每个分组 2 个元素 + 3 个尾部元素
+	elements := make([]interface{}, 0, 1+2*len(groups)+3)
+	elements = append(elements,
 		map[string]interface{}{
 			"tag":  "div",
 			"text": map[string]interface{}{"tag": "lark_md", "content": header},
 		},
-	}
+	)
 
-	groups := extractGroupList(dataMap)
 	for _, g := range groups {
 		var sb strings.Builder
 		// 分组标题：纯文本指派人名称（每行末尾会单独 @ 对应人）
 		assigneeName, _ := g["assignee_name"].(string)
-		sb.WriteString(fmt.Sprintf("**%s**\n", assigneeName))
+		fmt.Fprintf(&sb, "**%s**\n", assigneeName)
 
 		// 每条 issue 单独渲染，末尾追加 @ 对应指派人（缺 mention 时仅纯文本）
 		items := extractItemList(g["items"])
@@ -750,7 +755,7 @@ func (d *DirectLarkSender) sendDigest(ctx context.Context, dataMap map[string]in
 			"actions": []interface{}{
 				map[string]interface{}{
 					"tag":  "button",
-					"text": map[string]interface{}{"tag": "plain_text", "content": "查看项目"},
+					"text": map[string]interface{}{"tag": "plain_text", "content": i18n.B("notify.btn_view_project")},
 					"url":  fmt.Sprintf("%s/projects/%s", siteURL, projectKey),
 					"type": "primary",
 				},
@@ -770,7 +775,7 @@ func (d *DirectLarkSender) sendDigest(ctx context.Context, dataMap map[string]in
 	card := map[string]interface{}{
 		"config": map[string]interface{}{"wide_screen_mode": true},
 		"header": map[string]interface{}{
-			"title":    map[string]interface{}{"tag": "plain_text", "content": "📋 每日工单日报"},
+			"title":    map[string]interface{}{"tag": "plain_text", "content": "📋 " + i18n.B("notify.digest_title")},
 			"template": "blue",
 		},
 		"elements": elements,
@@ -896,9 +901,9 @@ func joinNonEmpty(parts []string, sep string) string {
 func (d *DirectLarkSender) SendTestMessage(ctx context.Context) error {
 	testData := map[string]interface{}{
 		"issue_key":    "TEST-1",
-		"issue_title":  "这是一条测试通知，用于验证飞书通知渠道是否配置正确",
-		"project_name": "测试项目",
-		"status":       "待处理",
+		"issue_title":  i18n.B("notify.test_issue_lark"),
+		"project_name": i18n.B("notify.test_project"),
+		"status":       i18n.B("notify.test_status"),
 		"priority":     "P2",
 	}
 	return d.SendNotification(ctx, "issue.created", testData)
@@ -945,25 +950,25 @@ func (d *DirectLarkSender) doSend(ctx context.Context, body map[string]interface
 func directGetEventMeta(event string) (title, template string) {
 	switch event {
 	case "issue.created":
-		return "🎫 工单创建", "blue"
+		return "🎫 " + i18n.B("notify.title_issue_created"), "blue"
 	case "issue.updated":
-		return "✏️ 工单更新", "wathet"
+		return "✏️ " + i18n.B("notify.title_issue_updated"), "wathet"
 	case "issue.transitioned":
-		return "🔄 工单流转", "turquoise"
+		return "🔄 " + i18n.B("notify.title_issue_transitioned"), "turquoise"
 	case "issue.assigned":
-		return "👤 工单指派", "indigo"
+		return "👤 " + i18n.B("notify.title_issue_assigned"), "indigo"
 	case "issue.commented":
-		return "💬 工单评论", "violet"
+		return "💬 " + i18n.B("notify.title_issue_commented"), "violet"
 	case "alert.firing":
-		return "🔥 告警触发", "red"
+		return "🔥 " + i18n.B("notify.title_alert_firing"), "red"
 	case "alert.resolved":
-		return "✅ 告警恢复", "green"
+		return "✅ " + i18n.B("notify.title_alert_resolved"), "green"
 	case "alert.merged":
-		return "🔗 告警合并", "orange"
+		return "🔗 " + i18n.B("notify.title_alert_merged"), "orange"
 	case "alert.acked":
-		return "👁️ 告警确认", "orange"
+		return "👁️ " + i18n.B("notify.title_alert_acked"), "orange"
 	default:
-		return "📢 系统通知", "blue"
+		return "📢 " + i18n.B("notify.title_system"), "blue"
 	}
 }
 
@@ -977,15 +982,15 @@ func directGenerateSign(secret string, timestamp int64) (string, error) {
 	return base64.StdEncoding.EncodeToString(h.Sum(nil)), nil
 }
 
-// statusDisplayNames 状态中文显示名映射
-var statusDisplayNames = map[string]string{
-	"open":           "待处理",
-	"in_progress":    "进行中",
-	"resolved":       "已解决",
-	"closed":         "已关闭",
-	"reviewing":      "待确认",
-	"pending_review": "待确认",
-	"merged":         "已合并",
+// statusDisplayKeys 状态到语言包 key 的映射；文案在发送时按后台语言取
+var statusDisplayKeys = map[string]string{
+	"open":           "status.open",
+	"in_progress":    "status.in_progress",
+	"resolved":       "status.resolved",
+	"closed":         "status.closed",
+	"reviewing":      "status.reviewing",
+	"pending_review": "status.pending_review",
+	"merged":         "status.merged",
 }
 
 // getStatusDisplayName 获取状态的中文显示名，优先使用 nameKey，fallback 到 statusKey 的映射
@@ -996,8 +1001,8 @@ func getStatusDisplayName(data map[string]interface{}, statusKey, nameKey string
 	}
 	// fallback：通过英文状态映射
 	if status, _ := data[statusKey].(string); status != "" {
-		if name, ok := statusDisplayNames[status]; ok {
-			return name
+		if key, ok := statusDisplayKeys[status]; ok {
+			return i18n.B(key)
 		}
 		return status
 	}

@@ -1,0 +1,48 @@
+# 本地开发集群（Docker Desktop / namespace: ticketdesk-dev / release: td）
+#
+# 前端跑 vite dev server，源码由 hostPath 从宿主机挂进容器，存盘即热更新。
+# 后端仍是镜像，改了 Go 代码要重建镜像 + rollout restart。
+#
+# 用法（--reuse-values 保住已有的 jwt.secret 等，不写进仓库）：
+#   docker build -f deploy/docker/Dockerfile.frontend.dev -t ticketdesk/frontend:dev-hot web
+#   helm upgrade td deploy/helm -n ticketdesk-dev --reuse-values -f deploy/helm/values-dev.yaml
+#
+# 退回静态镜像模式：
+#   helm upgrade td deploy/helm -n ticketdesk-dev --reuse-values --set frontend.dev.enabled=false
+
+frontend:
+  replicas: 1
+  image:
+    repository: ticketdesk/frontend
+    tag: dev-l
+    pullPolicy: IfNotPresent
+  dev:
+    enabled: true
+    image: ticketdesk/frontend:dev-hot
+    # 换机器/换目录要改这里。hostPath 是节点上的路径，
+    # Docker Desktop 的节点就是本机，所以直接写 Mac 上的绝对路径。
+    hostPath: /Users/kerbos/Workspaces/project/TicketDesk/web
+    # 显式写在这里，不靠 chart 默认值兜底：
+    # helm upgrade --reuse-values 会冻住上一版的 frontend 子树，
+    # chart 里后加的默认值合不进来，vite 会掉进 nginx 的 256Mi 限额里被 OOMKilled。
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+
+backend:
+  replicas: 1
+  image:
+    repository: ticketdesk/backend
+    tag: dev-d
+    pullPolicy: IfNotPresent
+
+ingress:
+  className: nginx
+  host: td.kerbos.test
+
+storage:
+  driver: local

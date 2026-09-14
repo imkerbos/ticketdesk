@@ -1,0 +1,407 @@
+/*
+ * 嵌入式 Swagger UI 的主题覆盖。
+ *
+ * Swagger UI 自带一套完整的视觉语言：饱和实心的方法徽章、绿色顶栏、
+ * 自己的字体和圆角。它被 iframe 嵌在 TicketDesk 里，两套视觉叠在一起
+ * 很割裂，而且它没有暗色模式 —— 应用切到暗色后这里仍是一片纯白。
+ *
+ * 这份样式由 ApiDocs.vue 注入到同源 iframe 里，token 值从父页面实时读取，
+ * 所以亮/暗跟随应用，配色只有一个来源。
+ */
+
+/* ============ 基础 ============ */
+body {
+  margin: 0;
+  background: var(--td-bg-page);
+}
+
+.swagger-ui,
+.swagger-ui .info .title,
+.swagger-ui .opblock-tag,
+.swagger-ui select,
+.swagger-ui input,
+.swagger-ui textarea,
+.swagger-ui .btn,
+.swagger-ui table thead tr th,
+.swagger-ui .parameter__name,
+.swagger-ui .response-col_status {
+  font-family: var(--td-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif);
+}
+
+.swagger-ui {
+  color: var(--td-text-primary);
+}
+
+/* Swagger 自带的顶栏只有一个"换个 spec 地址"的输入框。
+   应用左侧已经标明这是 API 文档，这条绿色横带是页面上最响的东西，也没人会用。 */
+.swagger-ui .topbar {
+  display: none;
+}
+
+.swagger-ui .wrapper {
+  max-width: 1180px;
+  padding: 0 var(--td-space-6);
+}
+
+/* ============ 文档头 ============ */
+.swagger-ui .information-container {
+  background: transparent;
+  padding: var(--td-space-6) 0 var(--td-space-4);
+}
+
+.swagger-ui .info {
+  margin: 0;
+}
+
+.swagger-ui .info .title {
+  color: var(--td-text-primary);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.swagger-ui .info .title small {
+  background: var(--td-bg-section);
+  border-radius: var(--td-radius-sm);
+}
+
+.swagger-ui .info .title small pre {
+  color: var(--td-text-secondary);
+  background: transparent;
+}
+
+.swagger-ui .info li,
+.swagger-ui .info p,
+.swagger-ui .info table,
+.swagger-ui .info .base-url,
+.swagger-ui .markdown p,
+.swagger-ui .renderedMarkdown p {
+  color: var(--td-text-secondary);
+  font-size: var(--td-font-base);
+}
+
+.swagger-ui .info a,
+.swagger-ui a.link {
+  color: var(--td-color-primary);
+}
+
+.swagger-ui .info code,
+.swagger-ui .markdown code,
+.swagger-ui .renderedMarkdown code {
+  background: var(--td-code-bg);
+  color: var(--td-text-regular);
+  border-radius: var(--td-radius-xs);
+  padding: 1px 6px;
+}
+
+/* ============ Authorize 条 ============ */
+.swagger-ui .scheme-container {
+  background: transparent;
+  box-shadow: none;
+  border-bottom: 1px solid var(--td-divider-color);
+  padding: var(--td-space-3) 0;
+  margin: 0 0 var(--td-space-4);
+}
+
+.swagger-ui .btn {
+  border-radius: var(--td-radius-md);
+  box-shadow: none;
+  font-weight: 500;
+  transition: background-color var(--td-duration-fast) var(--td-ease-out),
+    border-color var(--td-duration-fast) var(--td-ease-out);
+}
+
+.swagger-ui .btn.authorize {
+  background: transparent;
+  border-color: var(--td-border-color);
+  color: var(--td-text-regular);
+}
+
+.swagger-ui .btn.authorize:hover {
+  background: var(--td-bg-section);
+  border-color: var(--td-border-color-dark);
+}
+
+.swagger-ui .btn.authorize svg {
+  fill: var(--td-text-secondary);
+}
+
+.swagger-ui .btn.execute {
+  background: var(--td-color-primary);
+  border-color: var(--td-color-primary);
+  color: var(--td-text-white);
+}
+
+.swagger-ui .btn.cancel,
+.swagger-ui .btn.try-out__btn {
+  background: transparent;
+  border-color: var(--td-border-color);
+  color: var(--td-text-regular);
+}
+
+.swagger-ui .btn.try-out__btn:hover {
+  background: var(--td-bg-section);
+  border-color: var(--td-border-color-dark);
+}
+
+/* ============ 分组标题 ============ */
+.swagger-ui .opblock-tag {
+  border-bottom: 1px solid var(--td-divider-color);
+  color: var(--td-text-primary);
+  font-size: var(--td-font-lg);
+  font-weight: 600;
+  padding: var(--td-space-4) 0 var(--td-space-2);
+  margin: var(--td-space-4) 0 0;
+}
+
+.swagger-ui .opblock-tag:hover {
+  background: transparent;
+}
+
+.swagger-ui .opblock-tag small {
+  color: var(--td-text-placeholder);
+  font-size: var(--td-font-sm);
+  font-weight: 400;
+}
+
+.swagger-ui .opblock-tag svg,
+.swagger-ui .expand-operation svg,
+.swagger-ui .opblock-summary-control svg {
+  fill: var(--td-text-placeholder);
+}
+
+/* ============ 接口行 ============ */
+/* 不给每个接口一张带色边框和阴影的卡片：一屏几十个接口全是卡片，
+   层级完全没被表达出来。改成发丝线分隔的清单，颜色只留给方法徽章。 */
+.swagger-ui .opblock {
+  background: var(--td-bg-card);
+  border: 1px solid var(--td-divider-color);
+  border-radius: var(--td-radius-md);
+  box-shadow: none;
+  margin: 0 0 var(--td-space-2);
+}
+
+.swagger-ui .opblock .opblock-summary {
+  border-bottom: none;
+  padding: var(--td-space-1) var(--td-space-2);
+}
+
+.swagger-ui .opblock.is-open .opblock-summary {
+  border-bottom: 1px solid var(--td-divider-color);
+}
+
+.swagger-ui .opblock .opblock-summary-path,
+.swagger-ui .opblock .opblock-summary-path__deprecated {
+  color: var(--td-text-primary);
+  font-size: var(--td-font-base);
+}
+
+.swagger-ui .opblock .opblock-summary-description {
+  color: var(--td-text-secondary);
+  font-size: var(--td-font-sm);
+}
+
+/* 方法徽章：淡底 + 深色文字 + 发丝边，不用饱和实心块 */
+.swagger-ui .opblock .opblock-summary-method {
+  border-radius: var(--td-radius-sm);
+  font-size: var(--td-font-xs);
+  font-weight: 600;
+  min-width: 68px;
+  padding: 5px 0;
+  text-shadow: none;
+  box-shadow: none;
+  border: 1px solid transparent;
+}
+
+.swagger-ui .opblock.opblock-get { border-color: var(--td-divider-color); background: var(--td-bg-card); }
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+  background: var(--td-tag-primary-bg);
+  color: var(--td-tag-primary-text);
+  border-color: var(--td-tag-primary-border);
+}
+
+.swagger-ui .opblock.opblock-post { border-color: var(--td-divider-color); background: var(--td-bg-card); }
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+  background: var(--td-tag-success-bg);
+  color: var(--td-tag-success-text);
+  border-color: var(--td-tag-success-border);
+}
+
+.swagger-ui .opblock.opblock-put { border-color: var(--td-divider-color); background: var(--td-bg-card); }
+.swagger-ui .opblock.opblock-put .opblock-summary-method {
+  background: var(--td-tag-orange-bg);
+  color: var(--td-tag-orange-text);
+  border-color: var(--td-tag-orange-border);
+}
+
+.swagger-ui .opblock.opblock-patch { border-color: var(--td-divider-color); background: var(--td-bg-card); }
+.swagger-ui .opblock.opblock-patch .opblock-summary-method {
+  background: var(--td-tag-purple-bg);
+  color: var(--td-tag-purple-text);
+  border-color: var(--td-tag-purple-border);
+}
+
+.swagger-ui .opblock.opblock-delete { border-color: var(--td-divider-color); background: var(--td-bg-card); }
+.swagger-ui .opblock.opblock-delete .opblock-summary-method {
+  background: var(--td-tag-danger-bg);
+  color: var(--td-tag-danger-text);
+  border-color: var(--td-tag-danger-border);
+}
+
+.swagger-ui .opblock:hover {
+  border-color: var(--td-border-color);
+}
+
+/* ============ 展开后的内容 ============ */
+.swagger-ui .opblock .opblock-section-header {
+  background: var(--td-bg-section);
+  box-shadow: none;
+  border-bottom: 1px solid var(--td-divider-color);
+}
+
+.swagger-ui .opblock .opblock-section-header h4,
+.swagger-ui .opblock .opblock-section-header > label,
+.swagger-ui .opblock-title_normal,
+.swagger-ui .opblock-description-wrapper p,
+.swagger-ui .tab li,
+.swagger-ui .parameter__name,
+.swagger-ui .parameter__type,
+.swagger-ui .parameter__in,
+.swagger-ui .response-col_status,
+.swagger-ui .response-col_description,
+.swagger-ui table thead tr td,
+.swagger-ui table thead tr th,
+.swagger-ui .model-title,
+.swagger-ui .prop-type,
+.swagger-ui label {
+  color: var(--td-text-regular);
+}
+
+.swagger-ui .parameter__type,
+.swagger-ui .parameter__in,
+.swagger-ui .prop-format {
+  color: var(--td-text-placeholder);
+}
+
+.swagger-ui .parameter__name.required::after {
+  color: var(--td-color-danger);
+}
+
+.swagger-ui table thead tr td,
+.swagger-ui table thead tr th {
+  border-bottom: 1px solid var(--td-border-color);
+  font-size: var(--td-font-sm);
+  font-weight: 500;
+}
+
+/* 输入控件 */
+.swagger-ui input[type='text'],
+.swagger-ui input[type='password'],
+.swagger-ui input[type='email'],
+.swagger-ui input[type='number'],
+.swagger-ui textarea,
+.swagger-ui select {
+  background: var(--td-input-bg);
+  border: 1px solid var(--td-input-border);
+  border-radius: var(--td-radius-md);
+  color: var(--td-text-primary);
+  box-shadow: none;
+}
+
+.swagger-ui input::placeholder,
+.swagger-ui textarea::placeholder {
+  color: var(--td-input-placeholder);
+}
+
+.swagger-ui input:focus-visible,
+.swagger-ui textarea:focus-visible,
+.swagger-ui select:focus-visible {
+  outline: none;
+  border-color: var(--td-color-primary);
+  box-shadow: var(--td-ring-primary);
+}
+
+/* 代码块与响应体 */
+.swagger-ui .highlight-code > .microlight,
+.swagger-ui .model-example,
+.swagger-ui .responses-inner pre {
+  background: var(--td-code-bg);
+  border-radius: var(--td-radius-md);
+}
+
+.swagger-ui .highlight-code > .microlight code {
+  color: var(--td-text-regular);
+}
+
+/* 模型 */
+.swagger-ui .model,
+.swagger-ui .model-box,
+.swagger-ui section.models {
+  background: transparent;
+  border-color: var(--td-divider-color);
+}
+
+.swagger-ui section.models .model-container {
+  background: var(--td-bg-card);
+  border-radius: var(--td-radius-md);
+}
+
+.swagger-ui section.models h4 {
+  color: var(--td-text-primary);
+}
+
+.swagger-ui .model-toggle::after {
+  opacity: 0.5;
+}
+
+/* 弹窗 */
+.swagger-ui .dialog-ux .modal-ux {
+  background: var(--td-bg-card);
+  border: 1px solid var(--td-border-color);
+  border-radius: var(--td-radius-lg);
+  box-shadow: var(--td-elevation-4);
+}
+
+.swagger-ui .dialog-ux .modal-ux-header h3,
+.swagger-ui .dialog-ux .modal-ux-content h4,
+.swagger-ui .dialog-ux .modal-ux-content p {
+  color: var(--td-text-primary);
+}
+
+/* 滚动条跟随应用 */
+.swagger-ui ::-webkit-scrollbar-track { background: var(--td-scrollbar-track); }
+.swagger-ui ::-webkit-scrollbar-thumb { background: var(--td-scrollbar-thumb); border-radius: var(--td-radius-full); }
+
+/* ============ 暗色 ============ */
+/* Swagger UI 自身没有暗色模式，很多颜色写死在元素上，这里逐个盖掉；
+   svg 图标是 fill 写死的深色，暗色下要反过来。 */
+.td-dark .swagger-ui,
+.td-dark .swagger-ui .opblock-description-wrapper p,
+.td-dark .swagger-ui .opblock-external-docs-wrapper p,
+.td-dark .swagger-ui .opblock-title_normal p,
+.td-dark .swagger-ui .response-col_links,
+.td-dark .swagger-ui .parameter__extension,
+.td-dark .swagger-ui .tab li button.tablinks {
+  color: var(--td-text-primary);
+}
+
+.td-dark .swagger-ui svg:not(.opblock-summary-method svg) {
+  fill: var(--td-text-secondary);
+}
+
+.td-dark .swagger-ui .opblock-body pre.microlight,
+.td-dark .swagger-ui .opblock-body pre {
+  background: var(--td-code-bg) !important;
+  color: var(--td-text-regular) !important;
+}
+
+.td-dark .swagger-ui .responses-table .response-col_description__inner div.renderedMarkdown p {
+  color: var(--td-text-secondary);
+}
+
+.td-dark .swagger-ui .model-box-control:focus,
+.td-dark .swagger-ui .models-control:focus,
+.td-dark .swagger-ui .opblock-summary-control:focus {
+  outline: none;
+  box-shadow: var(--td-ring-primary);
+}

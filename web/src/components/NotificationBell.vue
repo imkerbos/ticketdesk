@@ -15,21 +15,21 @@
 
     <div class="notification-dropdown">
       <div class="dropdown-header">
-        <span class="dropdown-title">通知</span>
+        <span class="dropdown-title">{{ t('common.notification') }}</span>
         <el-link
           v-if="unreadCount > 0"
           type="primary"
           underline="never"
           @click="handleMarkAllAsRead"
         >
-          全部已读
+          {{ t('common.markAllRead') }}
         </el-link>
       </div>
 
       <el-scrollbar max-height="400px">
         <div v-if="recentNotifications.length === 0" class="empty-state">
-          <el-icon :size="40" color="#d1d5db"><BellFilled /></el-icon>
-          <p>暂无通知</p>
+          <el-icon :size="28" class="empty-icon"><BellFilled /></el-icon>
+          <p>{{ t('common.noNotification') }}</p>
         </div>
         <NotificationItem
           v-for="item in recentNotifications"
@@ -41,7 +41,7 @@
 
       <div class="dropdown-footer">
         <el-link type="primary" underline="never" @click="goToNotificationPage">
-          查看全部通知
+          {{ t('common.viewAllNotifications') }}
         </el-link>
       </div>
     </div>
@@ -49,12 +49,15 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Bell, BellFilled } from '@element-plus/icons-vue'
 import { useNotificationStore } from '@/stores/notification'
 import NotificationItem from '@/components/NotificationItem.vue'
 import type { NotificationItem as NotificationItemType } from '@/types/notification'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const notificationStore = useNotificationStore()
@@ -128,7 +131,12 @@ const goToNotificationPage = () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 0;
+  padding: 36px 0;
+  color: var(--td-text-placeholder);
+}
+
+/* 图标颜色从模板里的 color="#d1d5db" 挪到这里：写在属性上暗色模式跟不了 */
+.empty-icon {
   color: var(--td-text-placeholder);
 }
 

@@ -1,3 +1,5 @@
+{{- $dev := .Values.frontend.dev | default dict }}
+{{- $port := ternary 3100 (int .Values.frontend.port) (and $dev.enabled true) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,10 +21,16 @@ spec:
     spec:
       containers:
         - name: frontend
+          {{- if $dev.enabled }}
+          # 开发模式：node + vite dev server，源码由 hostPath 挂进来
+          image: "{{ $dev.image }}"
+          imagePullPolicy: IfNotPresent
+          {{- else }}
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          {{- end }}
           ports:
-            - containerPort: 80
+            - containerPort: {{ $port }}
           env:
             - name: TZ
               value: Asia/Shanghai
@@ -30,17 +38,76 @@ spec:
               value: {{ .Release.Name }}-backend
             - name: BACKEND_PORT
               value: {{ .Values.backend.port | quote }}
+            {{- if $dev.enabled }}
+            # vite 的 /api 代理指向集群里的后端 Service
+            - name: VITE_PROXY_TARGET
+              value: "http://{{ .Release.Name }}-backend:{{ .Values.backend.port }}"
+            # 浏览器是经 Ingress 的 80 端口进来的，HMR 客户端必须连 80 而不是 3100
+            - name: VITE_HMR_CLIENT_PORT
+              value: "80"
+            # vite 5.4.12+ 的 Host 白名单
+            - name: VITE_ALLOWED_HOSTS
+              value: {{ .Values.ingress.host | quote }}
+            {{- end }}
           resources:
+            {{- if $dev.enabled }}
+            {{- toYaml ($dev.resources | default .Values.frontend.resources) | nindent 12 }}
+            {{- else }}
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+            {{- end }}
+          {{- if $dev.enabled }}
+          volumeMounts:
+            # 只挂源码，不挂 node_modules：宿主机装的是 darwin/arm64 的原生依赖
+            # （esbuild、rollup），进 linux 容器直接跑不起来。依赖用镜像里那份。
+            - name: src
+              mountPath: /app/src
+            - name: public
+              mountPath: /app/public
+            - name: index-html
+              mountPath: /app/index.html
+            - name: vite-config
+              mountPath: /app/vite.config.ts
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /
-              port: 80
+              port: {{ $port }}
+            {{- if $dev.enabled }}
+            # vite 首次启动要预构建依赖，比 nginx 慢得多
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 18
+            {{- else }}
             initialDelaySeconds: 5
             periodSeconds: 10
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /
-              port: 80
+              port: {{ $port }}
+            {{- if $dev.enabled }}
+            initialDelaySeconds: 180
+            periodSeconds: 30
+            {{- else }}
             initialDelaySeconds: 10
             periodSeconds: 20
+            {{- end }}
+      {{- if $dev.enabled }}
+      volumes:
+        - name: src
+          hostPath:
+            path: {{ $dev.hostPath }}/src
+            type: Directory
+        - name: public
+          hostPath:
+            path: {{ $dev.hostPath }}/public
+            type: Directory
+        - name: index-html
+          hostPath:
+            path: {{ $dev.hostPath }}/index.html
+            type: File
+        - name: vite-config
+          hostPath:
+            path: {{ $dev.hostPath }}/vite.config.ts
+            type: File
+      {{- end }}

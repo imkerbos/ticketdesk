@@ -1,9 +1,23 @@
+{{- if eq .Values.storage.driver "local" }}
+# 仅 local 驱动需要 PVC。注意 RWO + 多副本天生不兼容：
+# 滚动升级时新 Pod 抢不到卷会触发 Multi-Attach error。多副本请改用 s3 驱动。
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ .Release.Name }}-uploads
   labels:
     {{- include "ticketdesk.labels" . | nindent 4 }}
+  annotations:
+    # 保留策略：helm uninstall 不删这个卷。
+    #
+    # 这里存的是用户上传的附件。MySQL / Redis 的卷是 StatefulSet 的
+    # volumeClaimTemplates 建的，K8s 本来就不回收；而这个 PVC 由 Helm 直接管理，
+    # 没有这行注解的话 helm uninstall 会连同附件一起删掉 ——
+    # 同一次 uninstall，数据库还在、附件没了，最容易让人误判"数据都还在"。
+    #
+    # 确实要连数据一起清除时手动删：
+    #   kubectl -n <ns> delete pvc <release>-uploads
+    "helm.sh/resource-policy": keep
 spec:
   accessModes:
     - ReadWriteOnce
@@ -13,3 +27,4 @@ spec:
   {{- if .Values.persistence.uploads.storageClass }}
   storageClassName: {{ .Values.persistence.uploads.storageClass }}
   {{- end }}
+{{- end }}

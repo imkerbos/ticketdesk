@@ -23,7 +23,7 @@ type ConfigHandler struct {
 	configService   service.ConfigService
 	larkService     lark.LarkService
 	telegramService telegram.TelegramService
-	localStorage    *storage.LocalStorage
+	storage         storage.Storage
 }
 
 // NewConfigHandler 创建系统配置处理器
@@ -42,8 +42,8 @@ func (h *ConfigHandler) SetTelegramService(telegramService telegram.TelegramServ
 }
 
 // SetLocalStorage 设置本地存储（用于品牌资源上传）
-func (h *ConfigHandler) SetLocalStorage(ls *storage.LocalStorage) {
-	h.localStorage = ls
+func (h *ConfigHandler) SetStorage(st storage.Storage) {
+	h.storage = st
 }
 
 // publicConfigWhitelist 允许普通用户读取的配置 key 白名单
@@ -66,12 +66,12 @@ var publicConfigWhitelist = map[string]bool{
 func (h *ConfigHandler) HandleGetPublicConfig(c *gin.Context) {
 	key := c.Param("key")
 	if key == "" {
-		response.BadRequest(c, "配置键不能为空")
+		response.BadRequest(c, "system.config_key_empty")
 		return
 	}
 
 	if !publicConfigWhitelist[key] {
-		response.Forbidden(c, "无权访问该配置项")
+		response.Forbidden(c, "system.config_no_access")
 		return
 	}
 
@@ -103,7 +103,7 @@ func (h *ConfigHandler) HandleGetPublicConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleGetConfig(c *gin.Context) {
 	key := c.Param("key")
 	if key == "" {
-		response.BadRequest(c, "配置键不能为空")
+		response.BadRequest(c, "system.config_key_empty")
 		return
 	}
 
@@ -133,7 +133,7 @@ func (h *ConfigHandler) HandleGetConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleGetConfigsByCategory(c *gin.Context) {
 	category := c.Query("category")
 	if category == "" {
-		response.BadRequest(c, "分类不能为空")
+		response.BadRequest(c, "system.category_empty")
 		return
 	}
 
@@ -179,13 +179,13 @@ func (h *ConfigHandler) HandleGetAllConfigs(c *gin.Context) {
 func (h *ConfigHandler) HandleUpdateConfig(c *gin.Context) {
 	key := c.Param("key")
 	if key == "" {
-		response.BadRequest(c, "配置键不能为空")
+		response.BadRequest(c, "system.config_key_empty")
 		return
 	}
 
 	var req dto.UpdateConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -212,7 +212,7 @@ func (h *ConfigHandler) HandleUpdateConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleBatchUpdateConfigs(c *gin.Context) {
 	var req dto.BatchUpdateConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -259,7 +259,7 @@ func (h *ConfigHandler) HandleGetEmailConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleUpdateEmailConfig(c *gin.Context) {
 	var req dto.UpdateEmailConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -306,7 +306,7 @@ func (h *ConfigHandler) HandleGetSecurityConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleUpdateSecurityConfig(c *gin.Context) {
 	var req dto.UpdateSecurityConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -353,7 +353,7 @@ func (h *ConfigHandler) HandleGetRateLimitConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleUpdateRateLimitConfig(c *gin.Context) {
 	var req dto.UpdateRateLimitConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -382,7 +382,7 @@ func (h *ConfigHandler) HandleUpdateRateLimitConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleCreateWebhook(c *gin.Context) {
 	var req dto.CreateWebhookRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -410,7 +410,7 @@ func (h *ConfigHandler) HandleGetWebhook(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的 Webhook ID")
+		response.BadRequest(c, "system.invalid_webhook_id")
 		return
 	}
 
@@ -444,13 +444,13 @@ func (h *ConfigHandler) HandleUpdateWebhook(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的 Webhook ID")
+		response.BadRequest(c, "system.invalid_webhook_id")
 		return
 	}
 
 	var req dto.UpdateWebhookRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -481,7 +481,7 @@ func (h *ConfigHandler) HandleDeleteWebhook(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的 Webhook ID")
+		response.BadRequest(c, "system.invalid_webhook_id")
 		return
 	}
 
@@ -510,7 +510,7 @@ func (h *ConfigHandler) HandleDeleteWebhook(c *gin.Context) {
 func (h *ConfigHandler) HandleListWebhooks(c *gin.Context) {
 	var req dto.ListWebhooksRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -538,7 +538,7 @@ func (h *ConfigHandler) HandleListWebhooks(c *gin.Context) {
 func (h *ConfigHandler) HandleListWebhookLogs(c *gin.Context) {
 	var req dto.ListWebhookLogsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -585,7 +585,7 @@ func (h *ConfigHandler) HandleGetLarkConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleUpdateLarkConfig(c *gin.Context) {
 	var req dto.UpdateLarkConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -609,12 +609,12 @@ func (h *ConfigHandler) HandleUpdateLarkConfig(c *gin.Context) {
 // @Router /api/v1/system/lark/test [post]
 func (h *ConfigHandler) HandleTestLark(c *gin.Context) {
 	if h.larkService == nil {
-		response.InternalError(c, "飞书服务未初始化")
+		response.InternalError(c, "system.lark_uninitialized")
 		return
 	}
 
 	if err := h.larkService.SendTestMessage(c.Request.Context()); err != nil {
-		response.InternalError(c, "飞书测试消息发送失败: "+err.Error())
+		response.InternalError(c, response.T(c, "system.lark_test_failed")+err.Error())
 		return
 	}
 
@@ -655,7 +655,7 @@ func (h *ConfigHandler) HandleGetTelegramConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleUpdateTelegramConfig(c *gin.Context) {
 	var req dto.UpdateTelegramConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -679,12 +679,12 @@ func (h *ConfigHandler) HandleUpdateTelegramConfig(c *gin.Context) {
 // @Router /api/v1/system/telegram/test [post]
 func (h *ConfigHandler) HandleTestTelegram(c *gin.Context) {
 	if h.telegramService == nil {
-		response.InternalError(c, "Telegram 服务未初始化")
+		response.InternalError(c, "system.telegram_uninitialized")
 		return
 	}
 
 	if err := h.telegramService.SendTestMessage(c.Request.Context()); err != nil {
-		response.InternalError(c, "Telegram 测试消息发送失败: "+err.Error())
+		response.InternalError(c, response.T(c, "system.telegram_test_failed")+err.Error())
 		return
 	}
 
@@ -725,7 +725,7 @@ func (h *ConfigHandler) HandleGetSSOConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleUpdateSSOConfig(c *gin.Context) {
 	var req dto.UpdateSSOConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -771,7 +771,7 @@ func (h *ConfigHandler) HandleGetBrandConfig(c *gin.Context) {
 func (h *ConfigHandler) HandleUpdateBrandConfig(c *gin.Context) {
 	var req dto.UpdateBrandConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -808,51 +808,55 @@ var brandAssetAllowedExts = map[string]bool{
 // @Failure 401 {object} response.ErrorResponse "未认证"
 // @Router /api/v1/system/brand/upload [post]
 func (h *ConfigHandler) HandleUploadBrandAsset(c *gin.Context) {
-	if h.localStorage == nil {
-		response.InternalError(c, "文件存储服务未初始化")
+	if h.storage == nil {
+		response.InternalError(c, "system.storage_uninitialized")
 		return
 	}
 
 	assetType := c.PostForm("type")
 	if assetType != "logo" && assetType != "favicon" {
-		response.BadRequest(c, "类型参数错误，仅支持 logo 或 favicon")
+		response.BadRequest(c, "system.asset_type_invalid")
 		return
 	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
-		response.BadRequest(c, "请选择文件上传")
+		response.BadRequest(c, "system.choose_file")
 		return
 	}
 
 	// 检查文件大小（2MB）
 	if file.Size > 2*1024*1024 {
-		response.BadRequest(c, "文件大小不能超过 2MB")
+		response.BadRequest(c, "system.file_too_large_2mb")
 		return
 	}
 
 	// 检查文件扩展名
 	ext := filepath.Ext(file.Filename)
 	if !brandAssetAllowedExts[ext] {
-		response.BadRequest(c, "不支持的文件格式，仅支持 SVG、PNG、ICO、JPG、WEBP")
+		response.BadRequest(c, "system.unsupported_image")
 		return
 	}
 
-	// 生成唯一文件名
-	filename := fmt.Sprintf("brand/%s_%d%s", assetType, time.Now().UnixMilli(), ext)
+	// 生成唯一文件名；JoinKey 保证结果落在 brand/ 前缀之下
+	filename, err := storage.JoinKey(storage.PrefixBrand, fmt.Sprintf("%s_%d%s", assetType, time.Now().UnixMilli(), ext))
+	if err != nil {
+		response.BadRequest(c, "system.file_name_invalid")
+		return
+	}
 
 	src, err := file.Open()
 	if err != nil {
-		response.InternalError(c, "打开文件失败")
+		response.InternalError(c, "system.open_file_failed")
 		return
 	}
 	defer src.Close()
 
-	relPath, err := h.localStorage.SaveTo(src, filename)
-	if err != nil {
-		response.InternalError(c, "保存文件失败: "+err.Error())
+	if err := h.storage.Save(c.Request.Context(), filename, src, file.Size, file.Header.Get("Content-Type")); err != nil {
+		response.InternalError(c, response.T(c, "system.save_file_failed")+err.Error())
 		return
 	}
+	relPath := filename
 
 	// 构建访问 URL
 	assetURL := "/api/v1/brand/assets/" + relPath
@@ -864,7 +868,7 @@ func (h *ConfigHandler) HandleUploadBrandAsset(c *gin.Context) {
 		configKey = service.KeyBrandFaviconURL
 	}
 	if err := h.configService.UpdateConfig(c.Request.Context(), configKey, assetURL, userID); err != nil {
-		response.InternalError(c, "更新配置失败: "+err.Error())
+		response.InternalError(c, response.T(c, "system.config_update_failed")+err.Error())
 		return
 	}
 

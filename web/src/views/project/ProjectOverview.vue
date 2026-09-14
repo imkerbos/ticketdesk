@@ -1,175 +1,110 @@
 <template>
-  <div class="project-overview-container">
-    <!-- 页面头部（头部+导航一体化） -->
-    <div class="overview-hero">
-      <div class="hero-top">
-        <el-button class="back-btn" circle @click="$router.push('/projects')">
-          <el-icon><ArrowLeft /></el-icon>
-        </el-button>
-        <div class="header-info">
-          <div class="project-icon" :style="{ background: getProjectColor(projectKey) }">
-            {{ projectKey.substring(0, 2).toUpperCase() }}
-          </div>
-          <div class="header-text">
-            <div class="project-name-row">
-              <h1 class="project-name">{{ project?.name || projectKey }}</h1>
-              <span class="project-key-badge">{{ projectKey }}</span>
-            </div>
-            <p v-if="project?.description" class="project-desc">{{ project.description }}</p>
-            <p v-else class="project-desc muted">暂无描述</p>
-          </div>
+  <!-- 项目概览：页头 + 项目内导航 + 指标条 + 两栏。
+       原来 hero 区是一整块带背景的头部，里面又套 back 圆钮和三个带图标的
+       导航块；页头统一成和其它页一样，项目内导航收成一排 tab。 -->
+  <div class="page">
+    <div class="page-head">
+      <div class="detail-title">
+        <h1>{{ project?.name || projectKey }}</h1>
+        <div class="detail-meta">
+          <span class="key static">{{ projectKey }}</span>
+          <span class="muted">{{ project?.description || t('project.noDescription') }}</span>
         </div>
-        <router-link :to="`/projects/${projectKey}/settings`" class="settings-link">
-          <el-button :icon="Setting" size="small" class="settings-btn">设置</el-button>
-        </router-link>
       </div>
-      <div class="hero-nav">
-        <router-link :to="`/projects/${projectKey}`" class="nav-item active">
-          <el-icon><DataAnalysis /></el-icon>
-          概览
-        </router-link>
-        <router-link :to="`/projects/${projectKey}/board`" class="nav-item">
-          <el-icon><Grid /></el-icon>
-          看板
-        </router-link>
-        <router-link :to="`/projects/${projectKey}/settings`" class="nav-item">
-          <el-icon><Setting /></el-icon>
-          设置
-        </router-link>
-      </div>
+      <div class="grow"></div>
+      <!-- 「设置」下面那排 tab 里已经有一个，页头不再放第二个入口 -->
+      <button class="btn secondary" @click="$router.push('/projects')">{{ t('project.roles.back') }}</button>
     </div>
 
-    <div v-loading="loading" class="overview-content">
-      <!-- 统计卡片 -->
-      <el-row :gutter="16" class="stat-row">
-        <el-col :xs="12" :sm="6">
-          <TdStatTile
-            label="待处理"
-            :value="stats.open"
-            tone="warning"
-            :icon-component="Tickets"
-            interactive
-            @click="goBoard('open,reopened')"
-          />
-        </el-col>
-        <el-col :xs="12" :sm="6">
-          <TdStatTile
-            label="进行中"
-            :value="stats.inProgress"
-            tone="primary"
-            :icon-component="Loading"
-            interactive
-            @click="goBoard('in_progress')"
-          />
-        </el-col>
-        <el-col :xs="12" :sm="6">
-          <TdStatTile
-            label="待确认"
-            :value="stats.pendingReview"
-            tone="warning"
-            :icon-component="View"
-            interactive
-            @click="goBoard('pending_review')"
-          />
-        </el-col>
-        <el-col :xs="12" :sm="6">
-          <TdStatTile
-            label="已完成"
-            :value="stats.resolved"
-            tone="success"
-            :icon-component="CircleCheck"
-            interactive
-            @click="goBoard('resolved,closed')"
-          />
-        </el-col>
-      </el-row>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true">{{ t('project.overview') }}</button>
+      <button class="tab" role="tab" aria-selected="false" @click="$router.push(`/projects/${projectKey}/board`)">{{ t('project.board') }}</button>
+      <!-- 没有 project:manage 就不摆这个入口：点进去只会被路由守卫弹回 403 -->
+      <button v-if="canManageProject" class="tab" role="tab" aria-selected="false" @click="$router.push(`/projects/${projectKey}/settings`)">{{ t('project.settingsLabel') }}</button>
+    </div>
 
-      <!-- 主体两栏 -->
-      <el-row :gutter="20">
-        <!-- 左：最近工单 -->
-        <el-col :xs="24" :lg="16">
-          <el-card shadow="never" class="content-card">
-            <template #header>
-              <div class="card-header">
-                <div class="card-title-group">
-                  <div class="card-icon">
-                    <el-icon><Tickets /></el-icon>
-                  </div>
-                  <span class="card-title">最近工单</span>
-                </div>
-                <router-link :to="`/projects/${projectKey}/board`" class="view-all-link">
-                  进入看板 <el-icon><ArrowRight /></el-icon>
-                </router-link>
-              </div>
-            </template>
-            <div v-if="recentIssues.length === 0" class="empty-placeholder">暂无工单</div>
-            <div v-else class="issue-list">
-              <div
-                v-for="item in recentIssues"
-                :key="item.id"
-                class="issue-item"
-                @click="goIssue(item.issue_key)"
-              >
-                <div class="issue-left">
-                  <div class="priority-dot" :class="item.priority"></div>
-                  <span class="issue-key">{{ item.issue_key }}</span>
-                  <span class="issue-title-text">{{ item.title }}</span>
-                </div>
-                <div class="issue-right">
-                  <div class="status-badge" :class="item.status">
-                    <span class="status-dot"></span>
-                    <span>{{ getStatusText(item.status) }}</span>
-                  </div>
-                  <div v-if="item.assignee" class="mini-avatar" :title="item.assignee.display_name">
-                    {{ item.assignee.display_name?.charAt(0) || '?' }}
-                  </div>
-                </div>
-              </div>
+    <div v-loading="loading" class="page">
+      <section class="card">
+        <div class="kpis">
+          <button class="kpi as-filter" @click="goBoard('open,reopened')">
+            <div class="k">{{ t('issue.statusMap.open') }}</div><div class="v">{{ stats.open }}</div>
+          </button>
+          <button class="kpi as-filter" @click="goBoard('in_progress')">
+            <div class="k">{{ t('issue.statusMap.in_progress') }}</div><div class="v">{{ stats.inProgress }}</div>
+          </button>
+          <button class="kpi as-filter" @click="goBoard('pending_review')">
+            <div class="k">{{ t('issue.statusMap.pending_review') }}</div><div class="v">{{ stats.pendingReview }}</div>
+          </button>
+          <button class="kpi as-filter" @click="goBoard('resolved,closed')">
+            <div class="k">{{ t('issue.statusMap.resolved') }}</div><div class="v">{{ stats.resolved }}</div>
+          </button>
+        </div>
+      </section>
+
+      <div class="grid-2">
+        <div class="col">
+          <section class="card">
+            <div class="card-head">
+              <h2>{{ t('project.recentIssues') }}</h2>
+              <div class="grow"></div>
+              <button class="link-btn" @click="$router.push(`/projects/${projectKey}/board`)">{{ t('project.gotoBoard') }}</button>
             </div>
-          </el-card>
-        </el-col>
+            <div v-if="recentIssues.length === 0" class="empty">{{ t('project.noIssues') }}</div>
+            <ul v-else class="rows">
+              <li v-for="item in recentIssues" :key="item.id" class="row-item" @click="goIssue(item.issue_key)">
+                <span class="dot" :style="{ background: priorityColor(item.priority) }"></span>
+                <span class="key">{{ item.issue_key }}</span>
+                <span class="txt">{{ item.title }}</span>
+                <span class="muted status-text">{{ getStatusText(item.status) }}</span>
+                <!-- 未指派也要占位：不然这一行的状态文字会顶到最右，
+                     和有指派人的行差 28px，整列看着在左右跳 -->
+                <span
+                  class="ava" :class="{ unassigned: !item.assignee }"
+                  :title="item.assignee?.display_name || t('common.unassigned')"
+                >
+                  {{ item.assignee ? item.assignee.display_name?.charAt(0) : '' }}
+                </span>
+              </li>
+            </ul>
+          </section>
+        </div>
 
-        <!-- 右：团队成员 -->
-        <el-col :xs="24" :lg="8">
-          <el-card shadow="never" class="content-card">
-            <template #header>
-              <div class="card-header">
-                <div class="card-title-group">
-                  <div class="card-icon">
-                    <el-icon><User /></el-icon>
-                  </div>
-                  <span class="card-title">团队成员</span>
-                  <span class="card-count">({{ members.length }})</span>
-                </div>
-              </div>
-            </template>
-            <div v-if="members.length === 0" class="empty-placeholder">暂无成员</div>
-            <div v-else class="member-list">
-              <div v-for="member in members" :key="member.id" class="member-item">
-                <div class="member-avatar">
+        <div class="col">
+          <section class="card">
+            <div class="card-head">
+              <h2>{{ t('project.members') }}</h2>
+              <span class="n">{{ members.length }}</span>
+            </div>
+            <div v-if="members.length === 0" class="empty">{{ t('project.noMembers') }}</div>
+            <ul v-else class="rows">
+              <li v-for="member in members" :key="member.id" class="row-item">
+                <span class="ava" :style="{ color: personColor(member.user?.display_name) }">
                   {{ member.user?.display_name?.charAt(0) || '?' }}
-                </div>
-                <div class="member-info">
-                  <span class="member-name">{{ member.user?.display_name || '未知用户' }}</span>
-                  <span class="member-role">{{ member.role_name || member.role }}</span>
-                </div>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+                </span>
+                <span class="txt">{{ member.user?.display_name || t('common.unknownUser') }}</span>
+                <span class="muted">{{ member.role_name || member.role }}</span>
+              </li>
+            </ul>
+          </section>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Tickets, User, Setting, ArrowLeft, ArrowRight, View, CircleCheck, Loading, DataAnalysis, Grid } from '@element-plus/icons-vue'
 import { getProjectDetail, getProjectMembers } from '@/api/project'
 import { getIssueList, getProjectOverviewStats } from '@/api/issue'
 import type { Project, ProjectMember } from '@/types/project'
 import type { Issue } from '@/types/issue'
+import { personColor } from '@/utils/avatar'
+import { hasProjectPermission } from '@/utils/project-permissions'
+
+
+const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -187,26 +122,26 @@ const stats = reactive({
   resolved: 0,
 })
 
-const projectColors = ['#3b82f6', '#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6']
-const getProjectColor = (key: string) => {
-  let hash = 0
-  for (let i = 0; i < key.length; i++) hash = key.charCodeAt(i) + ((hash << 5) - hash)
-  return projectColors[Math.abs(hash) % projectColors.length]
+const PRIORITY_COLOR: Record<string, string> = {
+  P0: 'var(--td-color-danger)',
+  P1: 'var(--td-color-warning)',
+  P2: 'var(--td-cat-2)',
+  P3: 'var(--td-text-disabled)',
 }
 
+const priorityColor = (p: string) => PRIORITY_COLOR[p] || 'var(--td-text-disabled)'
+
 const getStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    open: '待处理', in_progress: '进行中', pending_review: '待确认',
-    resolved: '已完成', closed: '已终止', reopened: '重新打开', merged: '已合并',
-  }
-  return map[status] || status
+    // 状态文案统一走语言包：它同时出现在列表、详情、报表、看板，
+  // 各处各写一份必然改一处漏三处
+  return t(`issue.statusMap.${status}`)
 }
 
 const loadData = async () => {
   loading.value = true
   try {
     const [projectRes, membersRes, issuesRes] = await Promise.all([
-      getProjectDetail(projectKey.value),
+      getProjectDetail(projectKey.value, { _redirectOn404: true, _redirectOn403: true }),
       getProjectMembers(projectKey.value),
       getIssueList({ project_key: projectKey.value, page: 1, page_size: 10 }),
     ])
@@ -244,424 +179,39 @@ const goIssue = (issueKey: string) => {
   router.push(`/projects/${projectKey.value}/board/${issueKey}`)
 }
 
-onMounted(() => {
+// 设置入口只对有 project:manage 的人显示。默认 false —— 没问出来之前
+// 先不摆出来，晚 200ms 出现比点进去弹 403 好。
+const canManageProject = ref(false)
+
+onMounted(async () => {
   loadData()
+  canManageProject.value = await hasProjectPermission(projectKey.value, 'project:manage')
 })
 </script>
 
 <style scoped lang="scss">
-.project-overview-container {
-  width: 100%;
-}
+// 骨架在 _apple.scss 里，这一页只留标题区和状态列。
 
-// ---- 一体化头部 ----
-.overview-hero {
-  background: var(--td-bg-card);
-  border-radius: 12px;
-  margin-bottom: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
-}
+.detail-title { min-width: 0; }
+.detail-title h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.022em; line-height: 1.15; margin: 0; }
 
-.hero-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  padding: 24px 28px 16px;
-}
-
-.back-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: var(--td-text-white);
-  margin-right: 12px;
-  margin-top: 4px;
-  flex-shrink: 0;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.3);
-  }
-}
-
-.header-info {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-}
-
-.project-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--td-text-white);
-  font-weight: 700;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.project-name-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
-}
-
-.project-name {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--td-text-primary);
-  margin: 0;
-  line-height: 1.3;
-}
-
-.project-key-badge {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--td-color-primary);
-  background: var(--td-tag-primary-bg);
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.03em;
-}
-
-.project-desc {
-  font-size: 13px;
-  color: var(--td-text-secondary);
-  margin: 0;
-  line-height: 1.5;
-
-  &.muted {
-    color: var(--td-text-disabled);
-    font-style: italic;
-  }
-}
-
-.settings-link {
-  text-decoration: none;
-  flex-shrink: 0;
-}
-
-.settings-btn {
-  border-radius: 6px;
-}
-
-.hero-nav {
-  display: flex;
-  gap: 2px;
-  padding: 0 28px 12px;
-  border-top: 1px solid var(--td-divider-color);
-  padding-top: 12px;
-
-  .nav-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 6px 14px;
-    border-radius: 6px;
-    font-size: 13px;
-    color: var(--td-text-secondary);
-    text-decoration: none;
-    transition: background-color 150ms ease-out, color 150ms ease-out;
-
-    .el-icon {
-      font-size: 14px;
-    }
-
-    &:hover {
-      background: var(--td-bg-section);
-      color: var(--td-text-primary);
-    }
-
-    &.active,
-    &.router-link-exact-active {
-      background: var(--td-tag-primary-bg);
-      color: var(--td-color-primary);
-      font-weight: 500;
-    }
-  }
-}
-
-// 统计卡片
-.stat-row {
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 20px;
-  background: var(--td-bg-card);
-  border-radius: 12px;
-  cursor: pointer;
-  border: 1px solid var(--td-divider-color);
-  transition: box-shadow 150ms ease-out;
-
-  &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  }
-}
-
-.stat-icon-wrapper {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-
-  &.todo { background: var(--td-tag-warning-border); color: var(--td-color-warning); }
-  &.progress { background: var(--td-tag-primary-border); color: var(--td-color-primary); }
-  &.review { background: var(--td-tag-indigo-bg); color: var(--td-tag-indigo-text); }
-  &.done { background: var(--td-tag-success-border); color: var(--td-color-success); }
-}
-
-.stat-info {
-  .stat-value {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--td-text-primary);
-    line-height: 1;
-  }
-
-  .stat-label {
-    font-size: 13px;
-    color: var(--td-text-secondary);
-    margin-top: 4px;
-  }
-}
-
-// 内容卡片
-.content-card {
-  border: none;
-  box-shadow: var(--td-elevation-1);
-  transition: var(--td-transition-shadow);
-  border-radius: var(--td-radius-lg);
-  margin-bottom: 20px;
-
-  &:hover { box-shadow: var(--td-elevation-2); }
-
-  :deep(.el-card__header) {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--td-divider-color);
-  }
-
-  :deep(.el-card__body) {
-    padding: 0;
-  }
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-title-group {
+.detail-meta {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  min-width: 0;
+
+  .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
-.card-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: var(--td-tag-primary-bg);
-  color: var(--td-color-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-}
+.status-text { font-size: 12px; white-space: nowrap; }
+.empty { padding: 36px 0; text-align: center; color: var(--td-text-placeholder); font-size: 13px; }
 
-.card-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--td-text-primary);
-}
-
-.card-count {
-  font-size: 13px;
-  color: var(--td-text-placeholder);
-  font-weight: 400;
-}
-
-.view-all-link {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--td-color-primary);
-  text-decoration: none;
-
-  &:hover {
-    color: var(--td-color-primary-hover);
-  }
-}
-
-// 工单列表
-.issue-list {
-  .issue-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 20px;
-    cursor: pointer;
-    transition: background-color 150ms ease-out;
-
-    &:hover {
-      background: var(--td-bg-page);
-    }
-
-    &:not(:last-child) {
-      border-bottom: 1px solid #f5f5f5;
-    }
-  }
-
-  .issue-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .priority-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-
-    &.P0 { background: var(--td-color-danger); }
-    &.P1 { background: var(--td-color-warning); }
-    &.P2 { background: var(--td-color-primary); }
-    &.P3 { background: var(--td-color-success); }
-  }
-
-  .issue-key {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--td-color-primary);
-    flex-shrink: 0;
-  }
-
-  .issue-title-text {
-    font-size: 14px;
-    color: var(--td-text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .issue-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-    margin-left: 12px;
-  }
-}
-
-// 状态徽章
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-weight: 500;
-
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-  }
-
-  &.open { background: var(--td-tag-warning-border); color: var(--td-tag-orange-text); .status-dot { background: var(--td-color-warning); } }
-  &.in_progress { background: var(--td-tag-primary-border); color: var(--td-tag-primary-text); .status-dot { background: var(--td-color-primary); } }
-  &.pending_review { background: var(--td-tag-indigo-bg); color: var(--td-tag-indigo-text); .status-dot { background: var(--td-tag-indigo-text); } }
-  &.resolved { background: var(--td-tag-success-border); color: var(--td-tag-success-text); .status-dot { background: var(--td-color-success); } }
-  &.closed { background: var(--td-bg-section); color: var(--td-text-regular); .status-dot { background: var(--td-text-secondary); } }
-  &.reopened { background: var(--td-tag-danger-border); color: var(--td-color-danger); .status-dot { background: var(--td-color-danger); } }
-  &.merged { background: var(--td-tag-purple-bg); color: var(--td-tag-purple-text); .status-dot { background: var(--td-tag-purple-text); } }
-}
-
-.mini-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: var(--td-color-primary);
-  color: var(--td-text-white);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-// 成员列表
-.member-list {
-  padding: 8px 0;
-}
-
-.member-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 20px;
-
-  &:not(:last-child) {
-    border-bottom: 1px solid #f5f5f5;
-  }
-}
-
-.member-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--td-color-primary);
-  color: var(--td-text-white);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.member-info {
-  display: flex;
-  flex-direction: column;
-
-  .member-name {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--td-text-primary);
-  }
-
-  .member-role {
-    font-size: 12px;
-    color: var(--td-text-placeholder);
-  }
-}
-
-.empty-placeholder {
-  padding: 40px;
-  text-align: center;
-  font-size: 14px;
-  color: var(--td-text-placeholder);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .stat-card, .issue-item, .nav-item {
-    transition: none;
-  }
+/* 未指派时的占位圆：只占位不显字，保证状态文字这一列左右不跳 */
+.ava.unassigned {
+  background: var(--td-bg-section);
+  box-shadow: inset 0 0 0 1px var(--td-border-color);
 }
 </style>

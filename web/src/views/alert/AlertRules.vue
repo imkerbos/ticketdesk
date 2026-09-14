@@ -1,118 +1,108 @@
 <template>
-  <div class="alert-rules-container">
-    <!-- 页面头部 -->
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><DocumentChecked /></el-icon>
+  <!-- 结构同其它列表页：.page / .card / table.issues -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('alert.rules.title') }}</h1>
+      <div class="grow"></div>
+      <button class="btn primary" @click="handleCreate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('alert.rules.create') }}
+      </button>
+    </div>
+
+    <section class="card">
+      <div v-loading="loading" class="table-wrap">
+        <table class="issues">
+          <colgroup>
+            <col style="width: 170px" /><col style="width: 96px" /><col style="width: 120px" /><col style="width: 96px" />
+            <col style="width: 84px" /><col /><col style="width: 62px" /><col style="width: 96px" />
+            <col style="width: 72px" /><col style="width: 86px" /><col style="width: 96px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ t('alert.rules.name') }}</th>
+              <th>{{ t('issue.project') }}</th>
+              <th>{{ t('alert.rules.datasource') }}</th>
+              <th>{{ t('alert.rules.issueType') }}</th>
+              <th>{{ t('alert.rules.severity') }}</th>
+              <th>{{ t('alert.rules.extraMatch') }}</th>
+              <th>{{ t('issue.priority') }}</th>
+              <th>{{ t('alert.rules.mergeWindow') }}</th>
+              <th>{{ t('alert.rules.autoResolve') }}</th>
+              <th>{{ t('issue.status') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in ruleList" :key="row.id">
+              <td>{{ row.name }}</td>
+              <td><span class="pill neutral">{{ row.project_name }}</span></td>
+              <td class="muted">{{ row.datasource_name || t('common.all') }}</td>
+              <td class="muted">{{ row.issue_type_name }}</td>
+              <td>
+                <span v-if="getSeverityFromMatchers(row.label_matchers)" class="pill" :class="severityTone(getSeverityFromMatchers(row.label_matchers))">
+                  {{ getSeverityLabel(getSeverityFromMatchers(row.label_matchers)) }}
+                </span>
+                <span v-else class="muted">{{ t('common.all') }}</span>
+              </td>
+              <td>
+                <div class="labels-cell">
+                  <template v-for="(matcher, index) in getExtraMatchers(row.label_matchers)" :key="index">
+                    <span v-if="index < 2" class="pill neutral">{{ matcher.key }} {{ matcher.operator }} {{ matcher.value }}</span>
+                  </template>
+                  <span v-if="getExtraMatchers(row.label_matchers).length > 2" class="pill neutral">
+                    +{{ getExtraMatchers(row.label_matchers).length - 2 }}
+                  </span>
+                  <span v-if="getExtraMatchers(row.label_matchers).length === 0" class="muted">-</span>
+                </div>
+              </td>
+              <td>
+                <span class="prio">
+                  <span class="dot" :style="{ background: priorityColor(row.priority) }"></span>{{ row.priority }}
+                </span>
+              </td>
+              <!-- 不套 .time：那是给纯数字/时间戳用的等宽样式，
+                   「2 分钟」里的中文跟着等宽排，数字和单位之间会豁开一个空格宽 -->
+              <td class="muted">{{ formatMergeWindow(row.merge_window) }}</td>
+              <!-- 是/否是布尔配置，不是健康状态：不套徽章，弱色文字即可 -->
+              <td class="muted">{{ row.auto_resolve ? t('common.yes') : t('common.no') }}</td>
+              <td>
+                <span class="pill" :class="row.status === 1 ? 'green' : 'neutral'">
+                  {{ row.status === 1 ? t('common.enabled') : t('common.disabled') }}
+                </span>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="link-btn" @click="handleEdit(row)">{{ t('common.edit') }}</button>
+                  <el-dropdown trigger="click">
+                    <button class="more" :aria-label="t('common.operation')" @click.stop>···</button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item @click="handleDelete(row)">{{ t('common.delete') }}</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="!loading && ruleList.length === 0" class="empty">
+          <TdEmptyState preset="no-data" :title="t('alert.rules.empty')" />
         </div>
-      </template>
-      <template #title>告警规则</template>
-      <template #subtitle>配置告警自动建单规则和匹配策略</template>
-      <template #actions>
-        <el-button type="primary" @click="handleCreate">
-          <el-icon><Plus /></el-icon>
-          创建规则
-        </el-button>
-      </template>
-    </TdPageHeader>
 
-    <!-- 表格卡片 -->
-    <el-card v-loading="loading" shadow="never" class="table-card">
-      <el-table :data="ruleList" style="width: 100%">
-        <el-table-column prop="name" label="规则名称" min-width="150" />
-        <el-table-column prop="project_name" label="项目" width="120">
-          <template #default="{ row }">
-            <el-tag size="small" effect="plain" type="info">{{ row.project_name }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="datasource_name" label="数据源" width="120">
-          <template #default="{ row }">
-            <span class="type-text">{{ row.datasource_name || '全部' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="issue_type_name" label="工单类型" width="100">
-          <template #default="{ row }">
-            <span class="type-text">{{ row.issue_type_name }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="告警等级" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag
-              v-if="getSeverityFromMatchers(row.label_matchers)"
-              :type="getSeverityTagType(getSeverityFromMatchers(row.label_matchers))"
-              size="small"
-              effect="dark"
-            >
-              {{ getSeverityLabel(getSeverityFromMatchers(row.label_matchers)) }}
-            </el-tag>
-            <span v-else class="type-text">全部</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="额外匹配" min-width="180">
-          <template #default="{ row }">
-            <template v-for="(matcher, index) in getExtraMatchers(row.label_matchers)" :key="index">
-              <el-tag v-if="index < 2" size="small" style="margin-right: 4px">
-                {{ matcher.key }} {{ matcher.operator }} {{ matcher.value }}
-              </el-tag>
-            </template>
-            <el-tag v-if="getExtraMatchers(row.label_matchers).length > 2" size="small">
-              +{{ getExtraMatchers(row.label_matchers).length - 2 }}
-            </el-tag>
-            <span v-if="getExtraMatchers(row.label_matchers).length === 0" class="type-text">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="priority" label="优先级" width="80" align="center">
-          <template #default="{ row }">
-            <div class="priority-badge" :class="row.priority">
-              <span class="priority-dot"></span>
-              <span>{{ row.priority }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="合并窗口" width="100">
-          <template #default="{ row }">
-            {{ formatMergeWindow(row.merge_window) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="自动解决" width="80" align="center">
-          <template #default="{ row }">
-            <div class="status-badge" :class="row.auto_resolve ? 'enabled' : 'disabled'">
-              <span class="status-dot"></span>
-              <span>{{ row.auto_resolve ? '是' : '否' }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="80" align="center">
-          <template #default="{ row }">
-            <div class="status-badge" :class="row.status === 1 ? 'enabled' : 'disabled'">
-              <span class="status-dot"></span>
-              <span>{{ row.status === 1 ? '启用' : '禁用' }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right" align="center">
-          <template #default="{ row }">
-            <el-tooltip content="编辑" placement="top">
-              <el-button link type="primary" :icon="Edit" @click="handleEdit(row)" />
-            </el-tooltip>
-            <el-tooltip content="删除" placement="top">
-              <el-button link type="danger" :icon="Delete" @click="handleDelete(row)" />
-            </el-tooltip>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <div class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="queryParams.page"
-          v-model:page-size="queryParams.page_size"
-          :total="total"
-          layout="total, prev, pager, next"
-          @current-change="loadData"
-        />
+        <div v-if="total > queryParams.page_size" class="table-foot">
+          <el-pagination
+            v-model:current-page="queryParams.page"
+            v-model:page-size="queryParams.page_size"
+            :total="total"
+            layout="prev, pager, next"
+            @current-change="loadData"
+          />
+        </div>
       </div>
-    </el-card>
+    </section>
 
     <!-- 创建/编辑对话框 -->
     <el-dialog
@@ -124,22 +114,22 @@
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <el-row :gutter="16">
           <el-col :span="24">
-            <el-form-item label="规则名称" prop="name">
-              <el-input v-model="form.name" placeholder="请输入规则名称" />
+            <el-form-item :label="t('alert.rules.name')" prop="name">
+              <el-input v-model="form.name" :placeholder="t('alert.rules.namePlaceholder')" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="24">
-            <el-form-item label="描述" prop="description">
-              <el-input v-model="form.description" type="textarea" :rows="2" placeholder="请输入描述" />
+            <el-form-item :label="t('issue.description')" prop="description">
+              <el-input v-model="form.description" type="textarea" :rows="2" :placeholder="t('alert.rules.descPlaceholder')" />
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="数据源" prop="datasource_id">
-              <el-select v-model="form.datasource_id" placeholder="请选择数据源" style="width: 100%" filterable>
+            <el-form-item :label="t('alert.rules.datasource')" prop="datasource_id">
+              <el-select v-model="form.datasource_id" :placeholder="t('alert.rules.datasourcePlaceholder')" style="width: 100%" filterable>
                 <el-option
                   v-for="ds in datasourceList"
                   :key="ds.id"
@@ -150,8 +140,8 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="项目" prop="project_id">
-              <el-select v-model="form.project_id" placeholder="请选择项目" style="width: 100%" filterable @change="handleProjectChange">
+            <el-form-item :label="t('issue.project')" prop="project_id">
+              <el-select v-model="form.project_id" :placeholder="t('alert.rules.projectPlaceholder')" style="width: 100%" filterable @change="handleProjectChange">
                 <el-option
                   v-for="p in projectList"
                   :key="p.id"
@@ -164,45 +154,45 @@
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="工单类型" prop="issue_type_id">
-              <el-select v-model="form.issue_type_id" placeholder="请先选择项目" style="width: 100%" :disabled="!form.project_id" filterable>
+            <el-form-item :label="t('alert.rules.issueType')" prop="issue_type_id">
+              <el-select v-model="form.issue_type_id" :placeholder="t('alert.rules.issueTypePlaceholder')" style="width: 100%" :disabled="!form.project_id" filterable>
                 <el-option
-                  v-for="t in issueTypeList"
-                  :key="t.id"
-                  :label="t.display_name || t.name"
-                  :value="t.id"
+                  v-for="type in issueTypeList"
+                  :key="type.id"
+                  :label="type.display_name || type.name"
+                  :value="type.id"
                 />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="告警等级" prop="severity">
-              <el-select v-model="form.severity" placeholder="全部等级（不限）" style="width: 100%" clearable>
-                <el-option label="严重 (critical)" value="critical" />
-                <el-option label="警告 (warning)" value="warning" />
-                <el-option label="信息 (info)" value="info" />
+            <el-form-item :label="t('alert.rules.severity')" prop="severity">
+              <el-select v-model="form.severity" :placeholder="t('alert.rules.severityAny')" style="width: 100%" clearable>
+                <el-option :label="t('alert.rules.severityCritical')" value="critical" />
+                <el-option :label="t('alert.rules.severityWarning')" value="warning" />
+                <el-option :label="t('alert.rules.severityInfo')" value="info" />
               </el-select>
-              <div class="form-tip">选择要匹配的告警等级，留空则匹配所有等级</div>
+              <div class="form-tip">{{ t('alert.rules.severityTip') }}</div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="工单优先级" prop="priority">
-              <el-select v-model="form.priority" placeholder="请选择优先级" style="width: 100%">
-                <el-option label="P0 - 紧急" value="P0" />
-                <el-option label="P1 - 高" value="P1" />
-                <el-option label="P2 - 中" value="P2" />
-                <el-option label="P3 - 低" value="P3" />
+            <el-form-item :label="t('alert.rules.issuePriority')" prop="priority">
+              <el-select v-model="form.priority" :placeholder="t('alert.rules.priorityPlaceholder')" style="width: 100%">
+                <el-option :label="t('issue.priorityMap.P0')" value="P0" />
+                <el-option :label="t('issue.priorityMap.P1')" value="P1" />
+                <el-option :label="t('issue.priorityMap.P2')" value="P2" />
+                <el-option :label="t('issue.priorityMap.P3')" value="P3" />
               </el-select>
-              <div class="form-tip">匹配到的告警创建工单时使用的优先级</div>
+              <div class="form-tip">{{ t('alert.rules.priorityTip') }}</div>
             </el-form-item>
           </el-col>
         </el-row>
         <el-row :gutter="16">
           <el-col :span="24">
-            <el-form-item label="额外标签匹配器（可选）" prop="label_matchers">
+            <el-form-item :label="t('alert.rules.matchers')" prop="label_matchers">
               <div class="form-tip" style="margin-bottom: 8px;">
-                除告警等级外的额外过滤条件，所有条件需同时满足。常用标签：alertname（告警名称）、instance（实例）、group_name（业务组）。
-                操作符：== 精确匹配、!= 不等于、=~ 正则匹配、!~ 正则排除。
+                {{ t('alert.rules.matchersTip1') }}
+                {{ t('alert.rules.matchersTip2') }}
               </div>
               <div class="matchers-container">
                 <div
@@ -210,14 +200,14 @@
                   :key="index"
                   class="matcher-item"
                 >
-                  <el-input v-model="matcher.key" placeholder="标签键" class="matcher-input" />
+                  <el-input v-model="matcher.key" :placeholder="t('alert.rules.matcherKey')" class="matcher-input" />
                   <el-select v-model="matcher.operator" class="matcher-operator">
                     <el-option label="==" value="==" />
                     <el-option label="!=" value="!=" />
                     <el-option label="=~" value="=~" />
                     <el-option label="!~" value="!~" />
                   </el-select>
-                  <el-input v-model="matcher.value" placeholder="标签值" class="matcher-input" />
+                  <el-input v-model="matcher.value" :placeholder="t('alert.rules.matcherValue')" class="matcher-input" />
                   <el-button
                     type="danger"
                     :icon="Delete"
@@ -227,7 +217,7 @@
                 </div>
                 <el-button type="primary" text @click="addMatcher">
                   <el-icon><Plus /></el-icon>
-                  添加匹配器
+                  {{ t('alert.rules.addMatcher') }}
                 </el-button>
               </div>
             </el-form-item>
@@ -235,7 +225,7 @@
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="合并窗口（秒）" prop="merge_window">
+            <el-form-item :label="t('alert.rules.mergeWindowSec')" prop="merge_window">
               <el-input-number
                 v-model="form.merge_window"
                 :min="0"
@@ -246,47 +236,48 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="自动解决" prop="auto_resolve">
+            <el-form-item :label="t('alert.rules.autoResolve')" prop="auto_resolve">
               <el-switch v-model="form.auto_resolve" />
               <div class="form-tip">
-                开启：告警恢复时自动关闭工单；关闭：告警恢复时工单变为"待确认"，由处理人确认后关闭
+                {{ t('alert.rules.autoResolveTip') }}
               </div>
             </el-form-item>
           </el-col>
         </el-row>
         <div class="form-tip" style="margin-top: -8px; margin-bottom: 16px;">
-          合并窗口：0 表示不合并，建议设置为 3600（1小时）
+          {{ t('alert.rules.mergeWindowTip') }}
         </div>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="handleSubmit">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Delete, Edit, DocumentChecked } from '@element-plus/icons-vue'
+import { Plus, Delete } from '@element-plus/icons-vue'
 import {
   getAlertRuleList,
   createAlertRule,
   updateAlertRule,
   deleteAlertRule,
-  getDatasourceList,
-} from '@/api/alert'
+  getDatasourceList } from '@/api/alert'
 import { getProjectList } from '@/api/project'
 import type { AlertRule, LabelMatcher, AlertDatasource } from '@/types/alert'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const ruleList = ref<AlertRule[]>([])
 const total = ref(0)
 const queryParams = reactive({
   page: 1,
-  page_size: 20,
-})
+  page_size: 20 })
 
 // 项目、工单类型和数据源选项
 const projectList = ref<{ id: number; name: string; project_key: string }[]>([])
@@ -331,7 +322,7 @@ const handleProjectChange = (projectId: number) => {
 }
 
 const dialogVisible = ref(false)
-const dialogTitle = ref('创建规则')
+const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
 const form = reactive({
   id: 0,
@@ -345,16 +336,14 @@ const form = reactive({
   priority: 'P2' as 'P0' | 'P1' | 'P2' | 'P3',
   assignee_id: undefined as number | undefined,
   auto_resolve: false,
-  merge_window: 3600,
-})
+  merge_window: 3600 })
 
 const rules: FormRules = {
-  name: [{ required: true, message: '请输入规则名称', trigger: 'blur' }],
-  datasource_id: [{ required: true, message: '请选择数据源', trigger: 'change' }],
-  project_id: [{ required: true, message: '请选择项目', trigger: 'change' }],
-  issue_type_id: [{ required: true, message: '请选择工单类型', trigger: 'change' }],
-  priority: [{ required: true, message: '请选择优先级', trigger: 'change' }],
-}
+  name: [{ required: true, message: t('alert.rules.namePlaceholder'), trigger: ['blur', 'change'] }],
+  datasource_id: [{ required: true, message: t('alert.rules.datasourcePlaceholder'), trigger: 'change' }],
+  project_id: [{ required: true, message: t('alert.rules.projectPlaceholder'), trigger: 'change' }],
+  issue_type_id: [{ required: true, message: t('alert.rules.issueTypePlaceholder'), trigger: 'change' }],
+  priority: [{ required: true, message: t('alert.rules.priorityPlaceholder'), trigger: 'change' }] }
 
 const loadData = async () => {
   loading.value = true
@@ -370,7 +359,7 @@ const loadData = async () => {
 }
 
 const handleCreate = () => {
-  dialogTitle.value = '创建规则'
+  dialogTitle.value = t('alert.rules.create')
   form.id = 0
   form.name = ''
   form.description = ''
@@ -387,7 +376,7 @@ const handleCreate = () => {
 }
 
 const handleEdit = async (row: AlertRule) => {
-  dialogTitle.value = '编辑规则'
+  dialogTitle.value = t('alert.rules.edit')
   form.id = row.id
   form.name = row.name
   form.description = row.description
@@ -429,25 +418,23 @@ const handleSubmit = async () => {
 
     const submitData = {
       ...form,
-      label_matchers: matchers,
-    }
+      label_matchers: matchers }
 
     try {
       if (form.id) {
         await updateAlertRule(form.id, submitData)
-        ElMessage.success('更新成功')
+        ElMessage.success(t('issue.msg.updateSuccess'))
       } else {
         if (!form.project_id || !form.issue_type_id || !form.datasource_id) {
-          ElMessage.error('请选择数据源、项目和工单类型')
+          ElMessage.error(t('alert.rules.selectRequired'))
           return
         }
         await createAlertRule({
           ...submitData,
           datasource_id: form.datasource_id!,
           project_id: form.project_id!,
-          issue_type_id: form.issue_type_id!,
-        })
-        ElMessage.success('创建成功')
+          issue_type_id: form.issue_type_id! })
+        ElMessage.success(t('common.createSuccess'))
       }
       dialogVisible.value = false
       loadData()
@@ -459,11 +446,10 @@ const handleSubmit = async () => {
 
 const handleDelete = async (row: AlertRule) => {
   try {
-    await ElMessageBox.confirm('确定要删除此规则吗？', '提示', {
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(t('alert.rules.confirmDelete'), t('issue.msg.tipTitle'), {
+      type: 'warning' })
     await deleteAlertRule(row.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     loadData()
   } catch (error) {
     if (error !== 'cancel') {
@@ -485,10 +471,10 @@ const handleDialogClose = () => {
 }
 
 const formatMergeWindow = (seconds: number) => {
-  if (seconds === 0) return '不合并'
-  if (seconds < 60) return `${seconds}秒`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟`
-  return `${Math.floor(seconds / 3600)}小时`
+  if (seconds === 0) return t('alert.rules.noMerge')
+  if (seconds < 60) return t('alert.rules.secs', { n: seconds })
+  if (seconds < 3600) return t('alert.rules.mins', { n: Math.floor(seconds / 60) })
+  return t('alert.rules.hours', { n: Math.floor(seconds / 3600) })
 }
 
 // 从 label_matchers 中提取 severity 值
@@ -504,16 +490,19 @@ const getExtraMatchers = (matchers: LabelMatcher[]) => {
 
 // 告警等级标签
 const getSeverityLabel = (severity: string) => {
-  const map: Record<string, string> = { critical: '严重', warning: '警告', info: '信息' }
+  const map: Record<string, string> = { critical: t('alert.severityMap.critical'), warning: t('alert.severityMap.warning'), info: t('alert.severityMap.info') }
   return map[severity] || severity
 }
 
-type TagType = 'success' | 'warning' | 'info' | 'danger'
+const severityTone = (s?: string) => (s === 'critical' ? 'sla' : s === 'warning' ? 'orange' : 'neutral')
 
-const getSeverityTagType = (severity: string): TagType => {
-  const map: Record<string, TagType> = { critical: 'danger', warning: 'warning', info: 'info' }
-  return map[severity] || 'info'
-}
+const PRIORITY_COLOR: Record<string, string> = {
+  P0: 'var(--td-color-danger)',
+  P1: 'var(--td-color-warning)',
+  P2: 'var(--td-cat-2)',
+  P3: 'var(--td-text-disabled)' }
+
+const priorityColor = (p: string) => PRIORITY_COLOR[p] || 'var(--td-text-disabled)'
 
 onMounted(() => {
   loadData()
@@ -523,117 +512,15 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.alert-rules-container {
-  width: 100%;
-}
+// 列表样式在 _apple.scss 里，这一页只留对话框里的匹配器编辑区。
 
-// 页面头部 icon (TdPageHeader leading slot)
-.page-header-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--td-tag-primary-bg);
-  border-radius: var(--td-radius-md);
+.labels-cell {
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: var(--td-color-primary);
-  flex-shrink: 0;
+  gap: 4px;
+  overflow: hidden;
 }
 
-// 表格卡片
-.table-card {
-  border-radius: 12px;
-
-  :deep(.el-card__body) { padding: 20px; }
-
-  :deep(.el-table) {
-    border-radius: 8px;
-
-    th.el-table__cell {
-      background: var(--td-bg-page);
-      font-weight: 600;
-      color: var(--td-text-regular);
-    }
-  }
-
-  .type-text {
-    font-size: 13px;
-    color: var(--td-text-secondary);
-  }
-
-  .priority-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 500;
-
-    .priority-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-    }
-
-    &.P0 {
-      background: var(--td-tag-danger-bg);
-      color: var(--td-color-danger);
-      .priority-dot { background: var(--td-color-danger); }
-    }
-    &.P1 {
-      background: var(--td-tag-orange-bg);
-      color: var(--td-tag-orange-text);
-      .priority-dot { background: var(--td-color-warning); }
-    }
-    &.P2 {
-      background: var(--td-tag-primary-bg);
-      color: var(--td-color-primary-active);
-      .priority-dot { background: var(--td-color-primary); }
-    }
-    &.P3 {
-      background: var(--td-bg-section);
-      color: var(--td-text-secondary);
-      .priority-dot { background: var(--td-text-placeholder); }
-    }
-  }
-
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 12px;
-
-    .status-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-    }
-
-    &.enabled {
-      background: var(--td-tag-success-bg);
-      color: var(--td-color-success);
-      .status-dot { background: var(--td-color-success); }
-    }
-    &.disabled {
-      background: var(--td-bg-section);
-      color: var(--td-text-secondary);
-      .status-dot { background: var(--td-text-placeholder); }
-    }
-  }
-
-  .pagination-wrapper {
-    padding-top: 20px;
-    display: flex;
-    justify-content: flex-end;
-    border-top: 1px solid var(--td-divider-color);
-    margin-top: 16px;
-  }
-}
-
-// 对话框样式
 .matchers-container {
   width: 100%;
 

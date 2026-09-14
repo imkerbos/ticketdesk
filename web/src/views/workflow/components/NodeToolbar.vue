@@ -1,7 +1,7 @@
 <template>
   <div class="node-toolbar">
-    <div class="toolbar-title">节点类型</div>
-    <div class="toolbar-hint">拖拽到画布添加节点</div>
+    <div class="toolbar-title">{{ t('workflow.toolbar.title') }}</div>
+    <div class="toolbar-hint">{{ t('workflow.toolbar.hint') }}</div>
     <div class="toolbar-items">
       <div
         v-for="item in nodeTypes"
@@ -15,8 +15,8 @@
           <el-icon><component :is="item.icon" /></el-icon>
         </div>
         <div class="item-info">
-          <div class="item-name">{{ item.label }}</div>
-          <div class="item-desc">{{ item.desc }}</div>
+          <div class="item-name">{{ t(item.labelKey) }}</div>
+          <div class="item-desc">{{ t(item.descKey) }}</div>
         </div>
       </div>
     </div>
@@ -24,15 +24,18 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { VideoPlay, CircleCheck, Checked, Operation, Setting } from '@element-plus/icons-vue'
 import type { NodeType } from '@/types/workflow'
 
-const nodeTypes: { type: NodeType; label: string; desc: string; icon: any }[] = [
-  { type: 'start', label: '开始', desc: '流程起点', icon: VideoPlay },
-  { type: 'end', label: '结束', desc: '流程终点', icon: CircleCheck },
-  { type: 'approval', label: '审批', desc: '审批节点', icon: Checked },
-  { type: 'work', label: '工作', desc: '工作节点', icon: Operation },
-  { type: 'system', label: '系统', desc: '自动执行', icon: Setting },
+const { t } = useI18n()
+
+const nodeTypes: { type: NodeType; labelKey: string; descKey: string; icon: any }[] = [
+  { type: 'start', labelKey: 'workflow.nodeTypeMap.start', descKey: 'workflow.toolbar.startDesc', icon: VideoPlay },
+  { type: 'end', labelKey: 'workflow.nodeTypeMap.end', descKey: 'workflow.toolbar.endDesc', icon: CircleCheck },
+  { type: 'approval', labelKey: 'workflow.nodeTypeMap.approval', descKey: 'workflow.toolbar.approvalDesc', icon: Checked },
+  { type: 'work', labelKey: 'workflow.nodeTypeMap.work', descKey: 'workflow.toolbar.workDesc', icon: Operation },
+  { type: 'system', labelKey: 'workflow.nodeTypeMap.system', descKey: 'workflow.toolbar.systemDesc', icon: Setting },
 ]
 
 const onDragStart = (event: DragEvent, nodeType: NodeType) => {
@@ -48,61 +51,66 @@ const onDragStart = (event: DragEvent, nodeType: NodeType) => {
   width: 200px;
   background: var(--td-bg-card);
   border-right: 1px solid var(--td-border-color);
-  padding: 16px;
+  padding: 14px 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   flex-shrink: 0;
   overflow-y: auto;
 }
 
 .toolbar-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 590;
+  letter-spacing: -0.01em;
   color: var(--td-text-primary);
 }
 
 .toolbar-hint {
   font-size: 11px;
+  line-height: 1.5;
   color: var(--td-text-placeholder);
-  margin-top: -8px;
+  margin-top: -7px;
 }
 
 .toolbar-items {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .toolbar-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
   cursor: grab;
-  transition: all 150ms ease-out;
   border: 1px solid var(--td-border-color);
-  background: var(--td-bg-page);
+  background: var(--td-bg-card);
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
 
+  /* 类型色已经由左边的图标颜色表达，悬停不再整条换成对应色，
+     五条并排一路变色比不变更难扫读。 */
   &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    background: var(--td-bg-section);
+    border-color: var(--td-border-color-dark);
   }
 
   &:active {
     cursor: grabbing;
-    transform: scale(0.98);
+    transform: translateY(0.5px);
   }
 
+  /* 只给图标本身上类型色，不套底色方块 ——
+     「浅色圆角方块 + 图标」是后台模板最强的特征，CLAUDE.md 3.1 明确不用。
+     颜色照旧和画布上同类型节点的头部对应，图例作用没丢。 */
   .item-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
+    width: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
-    color: var(--td-text-white);
+    font-size: 16px;
     flex-shrink: 0;
   }
 
@@ -113,7 +121,8 @@ const onDragStart = (event: DragEvent, nodeType: NodeType) => {
 
   .item-name {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 500;
+    letter-spacing: -0.01em;
     color: var(--td-text-primary);
   }
 
@@ -122,26 +131,17 @@ const onDragStart = (event: DragEvent, nodeType: NodeType) => {
     color: var(--td-text-placeholder);
   }
 
-  &.start .item-icon {
-    background: var(--td-color-success);
-  }
-  &.end .item-icon {
-    background: var(--td-text-secondary);
-  }
-  &.approval .item-icon {
-    background: var(--td-color-warning);
-  }
-  &.work .item-icon {
-    background: var(--td-color-primary);
-  }
-  &.system .item-icon {
-    background: #8b5cf6;
-  }
+  /* 与画布上同类型节点的头部色调一一对应 */
+  &.start .item-icon { color: var(--td-tag-success-text); }
+  &.end .item-icon { color: var(--td-tag-info-text); }
+  &.approval .item-icon { color: var(--td-tag-orange-text); }
+  &.work .item-icon { color: var(--td-tag-primary-text); }
+  &.system .item-icon { color: var(--td-tag-purple-text); }
+}
 
-  &.start:hover { border-color: var(--td-color-success); background: var(--td-tag-success-bg); }
-  &.end:hover { border-color: var(--td-text-secondary); background: var(--td-bg-section); }
-  &.approval:hover { border-color: var(--td-color-warning); background: var(--td-tag-warning-bg); }
-  &.work:hover { border-color: var(--td-color-primary); background: var(--td-tag-primary-bg); }
-  &.system:hover { border-color: var(--td-tag-purple-text); background: var(--td-tag-purple-bg); }
+@media (prefers-reduced-motion: reduce) {
+  .toolbar-item {
+    transition: none;
+  }
 }
 </style>

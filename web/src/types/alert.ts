@@ -132,9 +132,10 @@ export interface AlertGroupResponse {
 
 // ============ 告警数据源相关类型 ============
 
+// label 走 i18n key，调用方自行 t()：本文件是类型模块，拿不到组件里的 t
 export const DatasourceTypes = [
-  { value: 'prometheus', label: 'Prometheus', icon: '🔥' },
-  { value: 'nightingale', label: '夜莺 (Nightingale)', icon: '🦅' },
+  { value: 'prometheus', labelKey: 'system.prometheus', icon: '🔥' },
+  { value: 'nightingale', labelKey: 'system.nightingale', icon: '🦅' },
 ] as const
 
 export interface AlertDatasource {

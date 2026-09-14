@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,21 +19,25 @@ import (
 	"github.com/kerbos/ticketdesk/internal/model"
 	"github.com/kerbos/ticketdesk/internal/notification/email"
 	configService "github.com/kerbos/ticketdesk/internal/system-config/service"
+	"github.com/kerbos/ticketdesk/pkg/i18n"
 	"github.com/kerbos/ticketdesk/pkg/jwt"
 	"github.com/kerbos/ticketdesk/pkg/logger"
 )
 
 // 业务错误定义
 var (
-	ErrUserNotFound          = errors.New("用户不存在")
-	ErrUserDisabled          = errors.New("用户已被禁用")
-	ErrUsernameExists        = errors.New("用户名已存在")
-	ErrEmailExists           = errors.New("邮箱已存在")
-	ErrInvalidCredentials    = errors.New("用户名或密码错误")
-	ErrInvalidOldPassword    = errors.New("原密码错误")
-	ErrInvalidResetToken     = errors.New("重置密码令牌无效或已过期")
-	ErrResetTokenExpired     = errors.New("重置密码令牌已过期")
-	ErrSSOPasswordNotAllowed = errors.New("SSO 用户不支持修改密码，请通过 SSO 提供方管理密码")
+	ErrUserNotFound          = errors.New("user.not_found")
+	ErrUserDisabled          = errors.New("user.disabled")
+	ErrUsernameExists        = errors.New("user.username_exists")
+	ErrEmailExists           = errors.New("user.email_exists")
+	ErrInvalidCredentials    = errors.New("user.bad_credentials")
+	ErrInvalidOldPassword    = errors.New("user.old_password_wrong")
+	ErrInvalidResetToken     = errors.New("user.reset_token_bad")
+	ErrResetTokenExpired     = errors.New("user.reset_token_expired")
+	ErrSSOPasswordNotAllowed = errors.New("user.sso_no_password")
+	ErrAccountUsesSSOLogin   = errors.New("user.sso_bound")
+	ErrInvalidMFAToken       = errors.New("user.mfa_token_invalid")
+	ErrTokenRevoked          = errors.New("user.session_expired")
 )
 
 // UserService 用户服务接口
@@ -40,6 +45,12 @@ type UserService interface {
 	Register(ctx context.Context, req *dto.RegisterRequest) (*dto.UserResponse, error)
 	Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*dto.LoginResponse, error)
+	// CompleteMFALogin 用 MFA 挑战令牌 + TOTP 码换取正式令牌对
+	CompleteMFALogin(ctx context.Context, mfaToken, code string) (*dto.LoginResponse, error)
+	// SetMFAVerifier 注入 MFA 校验器
+	SetMFAVerifier(v MFAVerifier)
+	// AuthStateProvider 供认证中间件校验账号状态与令牌版本
+	AuthStateProvider
 	GetCurrentUser(ctx context.Context, userID uint64) (*dto.UserResponse, error)
 	GetUser(ctx context.Context, id uint64) (*dto.UserResponse, error)
 	CreateUser(ctx context.Context, req *dto.CreateUserRequest) (*dto.UserResponse, error)
@@ -64,6 +75,18 @@ type userService struct {
 	emailService  email.EmailService
 	configService configService.ConfigService
 	db            *gorm.DB // 用于级联删除事务
+	// mfaVerifier 校验 TOTP 码；由 SetMFAVerifier 注入，避免与 MFAService 构造顺序耦合
+	mfaVerifier MFAVerifier
+}
+
+// MFAVerifier 校验用户的 TOTP 码（由 MFAService 实现）
+type MFAVerifier interface {
+	VerifyMFA(ctx context.Context, userID uint64, code string) error
+}
+
+// SetMFAVerifier 注入 MFA 校验器
+func (s *userService) SetMFAVerifier(v MFAVerifier) {
+	s.mfaVerifier = v
 }
 
 // NewUserService 创建用户服务实例
@@ -145,16 +168,35 @@ func (s *userService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 	return s.toUserResponse(ctx, user), nil
 }
 
+// dummyPasswordHash 用户不存在时用于「空跑」一次 bcrypt 的固定摘要。
+//
+// 若查无此人就直接返回，响应时间会明显短于命中用户的分支（bcrypt 要几十毫秒），
+// 攻击者据此即可批量枚举系统里有哪些用户名。这里让两条路径都付出同样的计算代价。
+// 该摘要对应一个随机口令，不可能被匹配上。
+const dummyPasswordHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+
 // Login 用户登录
+//
+// MFA 已启用时不直接下发令牌，改为下发短期挑战令牌，
+// 由 /auth/mfa/verify 校验 TOTP 后再换取正式令牌对。
 func (s *userService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error) {
 	// 查找用户
 	user, err := s.userRepo.GetByUsername(ctx, req.Username)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 空跑一次 bcrypt 抹平时间差，避免用户名枚举
+			_ = bcrypt.CompareHashAndPassword([]byte(dummyPasswordHash), []byte(req.Password))
 			return nil, ErrInvalidCredentials
 		}
 		logger.Error("failed to get user by username", zap.Error(err))
 		return nil, fmt.Errorf("查询用户失败: %w", err)
+	}
+
+	// 先验证密码，再暴露账号的任何状态信息。
+	// 顺序很重要：若先返回「账号已禁用」或「该账号走 SSO」，
+	// 无需口令即可判定用户名是否存在。
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		return nil, ErrInvalidCredentials
 	}
 
 	// 检查用户状态
@@ -162,27 +204,50 @@ func (s *userService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 		return nil, ErrUserDisabled
 	}
 
-	// 验证密码
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
-		return nil, ErrInvalidCredentials
+	// 已绑定 SSO 的账号禁止本地密码登录，强制走 SSO
+	// 避免「升级为 SSO 用户后仍可用旧密码绕过」的双轨问题
+	if user.SSOProvider != "" {
+		return nil, ErrAccountUsesSSOLogin
 	}
 
-	// 更新最后登录时间
-	now := time.Now()
-	user.LastLoginAt = &now
-	if err := s.userRepo.Update(ctx, user); err != nil {
-		logger.Warn("failed to update last login time", zap.Uint64("user_id", user.ID), zap.Error(err))
-		// 不影响登录流程，继续执行
+	// 记录最后登录时间（只更新该列，避免整行回写覆盖并发修改）
+	s.touchLastLogin(ctx, user.ID)
+
+	// MFA 已启用：只发挑战令牌，此时尚未完成认证
+	if user.MFAEnabled {
+		challenge, err := s.jwtManager.GenerateMFAChallengeToken(user.ID, user.Username, user.TokenVersion)
+		if err != nil {
+			logger.Error("failed to generate mfa challenge token", zap.Error(err))
+			return nil, fmt.Errorf("生成 MFA 挑战令牌失败: %w", err)
+		}
+		logger.Info("login requires mfa", zap.Uint64("user_id", user.ID))
+		return &dto.LoginResponse{
+			RequiresMFA: true,
+			MFAToken:    challenge,
+		}, nil
 	}
 
-	// 生成 Token
-	accessToken, err := s.jwtManager.GenerateAccessToken(user.ID, user.Username)
+	return s.issueLoginResponse(ctx, user)
+}
+
+// touchLastLogin 更新最后登录时间
+func (s *userService) touchLastLogin(ctx context.Context, userID uint64) {
+	if err := s.db.WithContext(ctx).Model(&model.User{}).
+		Where("id = ?", userID).
+		UpdateColumn("last_login_at", time.Now()).Error; err != nil {
+		logger.Warn("failed to update last login time", zap.Uint64("user_id", userID), zap.Error(err))
+	}
+}
+
+// issueLoginResponse 签发正式令牌对
+func (s *userService) issueLoginResponse(ctx context.Context, user *model.User) (*dto.LoginResponse, error) {
+	accessToken, err := s.jwtManager.GenerateAccessToken(user.ID, user.Username, user.TokenVersion)
 	if err != nil {
 		logger.Error("failed to generate access token", zap.Error(err))
 		return nil, fmt.Errorf("生成 Token 失败: %w", err)
 	}
 
-	refreshToken, err := s.jwtManager.GenerateRefreshToken(user.ID, user.Username)
+	refreshToken, err := s.jwtManager.GenerateRefreshToken(user.ID, user.Username, user.TokenVersion)
 	if err != nil {
 		logger.Error("failed to generate refresh token", zap.Error(err))
 		return nil, fmt.Errorf("生成 Refresh Token 失败: %w", err)
@@ -196,15 +261,47 @@ func (s *userService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 	return &dto.LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
-		ExpiresIn:    7200, // 2小时
+		ExpiresIn:    s.jwtManager.AccessExpireSeconds(),
 		User:         *s.toUserResponse(ctx, user),
 	}, nil
 }
 
+// CompleteMFALogin 校验 MFA 挑战令牌 + TOTP 码，成功后签发正式令牌对
+func (s *userService) CompleteMFALogin(ctx context.Context, mfaToken, code string) (*dto.LoginResponse, error) {
+	// 必须是 MFA 挑战令牌：access / refresh 都不能拿来跳过这一步
+	claims, err := s.jwtManager.ParseTokenOfType(mfaToken, jwt.TokenTypeMFA)
+	if err != nil {
+		return nil, ErrInvalidMFAToken
+	}
+
+	user, err := s.userRepo.GetByID(ctx, claims.UserID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound
+		}
+		return nil, fmt.Errorf("查询用户失败: %w", err)
+	}
+
+	// 挑战令牌签发后用户被禁用 / 改了密码，则作废
+	if user.Status == 0 {
+		return nil, ErrUserDisabled
+	}
+	if claims.TokenVersion != user.TokenVersion {
+		return nil, ErrInvalidMFAToken
+	}
+
+	if err := s.mfaVerifier.VerifyMFA(ctx, user.ID, code); err != nil {
+		return nil, err
+	}
+
+	return s.issueLoginResponse(ctx, user)
+}
+
 // RefreshToken 刷新 Token
 func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (*dto.LoginResponse, error) {
-	// 解析 Refresh Token
-	claims, err := s.jwtManager.ParseToken(refreshToken)
+	// 必须是 refresh 类型：access token 不得用于续期，
+	// 否则偷到一个短期访问令牌就能无限换新，等同永久有效
+	claims, err := s.jwtManager.ParseTokenOfType(refreshToken, jwt.TokenTypeRefresh)
 	if err != nil {
 		return nil, fmt.Errorf("无效的 Refresh Token: %w", err)
 	}
@@ -223,23 +320,12 @@ func (s *userService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, ErrUserDisabled
 	}
 
-	// 生成新的 Token
-	newAccessToken, err := s.jwtManager.GenerateAccessToken(user.ID, user.Username)
-	if err != nil {
-		return nil, fmt.Errorf("生成 Token 失败: %w", err)
+	// 令牌版本不匹配说明期间改过密码或被强制登出
+	if claims.TokenVersion != user.TokenVersion {
+		return nil, ErrTokenRevoked
 	}
 
-	newRefreshToken, err := s.jwtManager.GenerateRefreshToken(user.ID, user.Username)
-	if err != nil {
-		return nil, fmt.Errorf("生成 Refresh Token 失败: %w", err)
-	}
-
-	return &dto.LoginResponse{
-		AccessToken:  newAccessToken,
-		RefreshToken: newRefreshToken,
-		ExpiresIn:    7200,
-		User:         *s.toUserResponse(ctx, user),
-	}, nil
+	return s.issueLoginResponse(ctx, user)
 }
 
 // GetCurrentUser 获取当前用户信息
@@ -374,6 +460,9 @@ func (s *userService) UpdateUser(ctx context.Context, id uint64, req *dto.Update
 	if req.TelegramUserID != nil {
 		user.TelegramUserID = *req.TelegramUserID
 	}
+	if req.Locale != nil {
+		user.Locale = *req.Locale
+	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		logger.Error("failed to update user", zap.Uint64("id", id), zap.Error(err))
@@ -416,6 +505,12 @@ func (s *userService) UpdatePassword(ctx context.Context, userID uint64, req *dt
 		return fmt.Errorf("更新密码失败: %w", err)
 	}
 
+	// 改密后必须踢掉所有存量会话，否则旧令牌仍可用到自然过期
+	if err := s.bumpTokenVersion(ctx, userID); err != nil {
+		logger.Error("failed to bump token version after password change",
+			zap.Uint64("user_id", userID), zap.Error(err))
+	}
+
 	logger.Info("user password updated successfully", zap.Uint64("user_id", userID))
 
 	return nil
@@ -440,6 +535,12 @@ func (s *userService) ResetPassword(ctx context.Context, id uint64, req *dto.Res
 	user.PasswordHash = string(hashedPassword)
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return fmt.Errorf("重置密码失败: %w", err)
+	}
+
+	// 管理员重置密码同样要让该用户的存量令牌立即失效
+	if err := s.bumpTokenVersion(ctx, id); err != nil {
+		logger.Error("failed to bump token version after admin reset",
+			zap.Uint64("user_id", id), zap.Error(err))
 	}
 
 	logger.Info("user password reset by admin", zap.Uint64("user_id", id))
@@ -467,6 +568,8 @@ func (s *userService) EnableUser(ctx context.Context, id uint64) error {
 		return fmt.Errorf("启用用户失败: %w", err)
 	}
 
+	s.InvalidateAuthState(ctx, id)
+
 	logger.Info("user enabled successfully", zap.Uint64("user_id", id))
 
 	return nil
@@ -491,6 +594,9 @@ func (s *userService) DisableUser(ctx context.Context, id uint64) error {
 		logger.Error("failed to disable user", zap.Uint64("id", id), zap.Error(err))
 		return fmt.Errorf("禁用用户失败: %w", err)
 	}
+
+	// 立即失效缓存，让认证中间件下一次请求就拦住该用户
+	s.InvalidateAuthState(ctx, id)
 
 	logger.Info("user disabled successfully", zap.Uint64("user_id", id))
 
@@ -616,9 +722,20 @@ func (s *userService) ListUsers(ctx context.Context, req *dto.ListUsersRequest) 
 		return nil, 0, fmt.Errorf("查询用户列表失败: %w", err)
 	}
 
+	// 批量取角色，避免每条记录单独查一次（一页 20 条 = 21 次查询）
+	userIDs := make([]uint64, len(users))
+	for i, u := range users {
+		userIDs[i] = u.ID
+	}
+	rolesByUser, err := s.userRoleRepo.GetRoleNamesByUserIDs(ctx, userIDs)
+	if err != nil {
+		logger.Warn("failed to batch load user roles", zap.Error(err))
+		rolesByUser = map[uint64][]string{}
+	}
+
 	responses := make([]*dto.UserResponse, len(users))
 	for i, user := range users {
-		responses[i] = s.toUserResponse(ctx, user)
+		responses[i] = s.toUserResponseWithRoles(user, rolesByUser[user.ID])
 	}
 
 	return responses, total, nil
@@ -643,6 +760,7 @@ func (s *userService) toUserResponse(ctx context.Context, user *model.User) *dto
 		SSOProvider:    user.SSOProvider,
 		LarkOpenID:     user.LarkOpenID,
 		TelegramUserID: user.TelegramUserID,
+		Locale:         user.Locale,
 		LastLoginAt:    user.LastLoginAt,
 		CreatedAt:      user.CreatedAt,
 		UpdatedAt:      user.UpdatedAt,
@@ -657,6 +775,45 @@ func (s *userService) toUserResponse(ctx context.Context, user *model.User) *dto
 	}
 
 	return resp
+}
+
+// toUserResponseWithRoles 用已批量取好的角色组装响应，不再单独查库
+func (s *userService) toUserResponseWithRoles(user *model.User, roles []string) *dto.UserResponse {
+	authSource := "local"
+	if user.SSOProvider != "" {
+		authSource = "sso"
+	}
+
+	return &dto.UserResponse{
+		ID:             user.ID,
+		Username:       user.Username,
+		Email:          user.Email,
+		DisplayName:    user.DisplayName,
+		AvatarURL:      user.AvatarURL,
+		Status:         user.Status,
+		MFAEnabled:     user.MFAEnabled,
+		AuthSource:     authSource,
+		SSOProvider:    user.SSOProvider,
+		LarkOpenID:     user.LarkOpenID,
+		TelegramUserID: user.TelegramUserID,
+		Locale:         user.Locale,
+		LastLoginAt:    user.LastLoginAt,
+		CreatedAt:      user.CreatedAt,
+		UpdatedAt:      user.UpdatedAt,
+		Roles:          roles,
+	}
+}
+
+// hashResetToken 计算重置令牌的存储摘要
+//
+// 令牌本身只出现在发给用户的邮件链接里，数据库只保存摘要。
+// 之前是明文入库：任何能读到 users 表的人（备份、只读从库、SQL 注入）
+// 都能直接拿它重置任意账号的密码。
+// 这里用 SHA-256 而非 bcrypt：令牌是 32 字节的密码学随机值，
+// 不存在被字典穷举的风险，且校验走的是索引等值查询，需要可确定性计算。
+func hashResetToken(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
 }
 
 // ForgotPassword 请求重置密码
@@ -690,7 +847,8 @@ func (s *userService) ForgotPassword(ctx context.Context, req *dto.ForgotPasswor
 
 	// 设置令牌过期时间（30分钟）
 	expiresAt := time.Now().Add(30 * time.Minute)
-	user.ResetPasswordToken = token
+	// 入库的是摘要，明文仅通过邮件发给用户本人
+	user.ResetPasswordToken = hashResetToken(token)
 	user.ResetPasswordExpires = &expiresAt
 
 	// 保存令牌
@@ -720,7 +878,7 @@ func (s *userService) ForgotPassword(ctx context.Context, req *dto.ForgotPasswor
 // VerifyResetToken 验证重置密码令牌
 func (s *userService) VerifyResetToken(ctx context.Context, token string) error {
 	// 查找用户
-	user, err := s.userRepo.GetByResetToken(ctx, token)
+	user, err := s.userRepo.GetByResetToken(ctx, hashResetToken(token))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrInvalidResetToken
@@ -739,7 +897,7 @@ func (s *userService) VerifyResetToken(ctx context.Context, token string) error 
 // ResetPasswordWithToken 使用令牌重置密码
 func (s *userService) ResetPasswordWithToken(ctx context.Context, req *dto.ResetPasswordWithTokenRequest) error {
 	// 查找用户
-	user, err := s.userRepo.GetByResetToken(ctx, req.Token)
+	user, err := s.userRepo.GetByResetToken(ctx, hashResetToken(req.Token))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrInvalidResetToken
@@ -767,6 +925,12 @@ func (s *userService) ResetPasswordWithToken(ctx context.Context, req *dto.Reset
 		return fmt.Errorf("更新密码失败: %w", err)
 	}
 
+	// 通过邮件重置密码同样要让存量会话全部失效
+	if err := s.bumpTokenVersion(ctx, user.ID); err != nil {
+		logger.Error("failed to bump token version after reset",
+			zap.Uint64("user_id", user.ID), zap.Error(err))
+	}
+
 	logger.Info("password reset successfully", zap.Uint64("user_id", user.ID))
 
 	return nil
@@ -787,7 +951,9 @@ func (s *userService) sendResetPasswordEmail(ctx context.Context, user *model.Us
 	// 构建重置链接
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s", siteURL, token)
 
-	subject := "重置密码 - TicketDesk"
+	// 邮件发给具体的人，语言跟着收件人走；user.Locale 为空时回落到站点语言
+	lang := user.Locale
+	subject := i18n.U(lang, "mail.reset_subject")
 	htmlBody := fmt.Sprintf(`
 <!DOCTYPE html>
 <html>
@@ -806,22 +972,22 @@ func (s *userService) sendResetPasswordEmail(ctx context.Context, user *model.Us
 <body>
     <div class="container">
         <div class="header">
-            <h1>重置密码</h1>
+            <h1>%s</h1>
         </div>
         <div class="content">
-            <p>您好，%s！</p>
-            <p>我们收到了您的密码重置请求。请点击下面的按钮重置您的密码：</p>
+            <p>%s</p>
+            <p>%s</p>
             <p style="text-align: center;">
-                <a href="%s" class="button">重置密码</a>
+                <a href="%s" class="button">%s</a>
             </p>
-            <p>或者复制以下链接到浏览器中打开：</p>
+            <p>%s</p>
             <p style="word-break: break-all; background: white; padding: 10px; border-radius: 4px;">%s</p>
             <div class="warning">
-                <strong>⚠️ 安全提示：</strong>
+                <strong>⚠️ %s</strong>
                 <ul style="margin: 10px 0;">
-                    <li>此链接将在 30 分钟后失效</li>
-                    <li>如果您没有请求重置密码，请忽略此邮件</li>
-                    <li>请勿将此链接分享给他人</li>
+                    <li>%s</li>
+                    <li>%s</li>
+                    <li>%s</li>
                 </ul>
             </div>
         </div>
@@ -831,7 +997,19 @@ func (s *userService) sendResetPasswordEmail(ctx context.Context, user *model.Us
     </div>
 </body>
 </html>
-`, user.DisplayName, resetURL, resetURL)
+`,
+		i18n.U(lang, "mail.reset_title"),
+		i18n.Uf(lang, "mail.reset_greeting", user.DisplayName),
+		i18n.U(lang, "mail.reset_intro"),
+		resetURL,
+		i18n.U(lang, "mail.reset_button"),
+		i18n.U(lang, "mail.reset_or_copy"),
+		resetURL,
+		i18n.U(lang, "mail.reset_warning"),
+		i18n.U(lang, "mail.reset_expiry"),
+		i18n.U(lang, "mail.reset_ignore"),
+		i18n.U(lang, "mail.reset_private"),
+	)
 
 	return s.emailService.SendHTMLEmail(ctx, []string{user.Email}, subject, htmlBody)
 }

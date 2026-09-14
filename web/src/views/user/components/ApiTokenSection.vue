@@ -1,50 +1,44 @@
 <template>
-  <el-card shadow="never" class="settings-card">
-    <template #header>
-      <div class="card-header">
-        <div class="card-title-group">
-          <el-icon class="card-icon"><Key /></el-icon>
-          <span>API 密钥</span>
-          <el-tag size="small" type="info">{{ tokens.length }} / 20</el-tag>
-        </div>
-        <el-button type="primary" size="small" @click="openCreate">
-          <el-icon><Plus /></el-icon>创建 Token
-        </el-button>
-      </div>
-    </template>
+  <section class="card">
+    <div class="card-head">
+      <h2>{{ t('user.token.title') }}</h2>
+      <span class="n">{{ tokens.length }} / 20</span>
+      <div class="grow"></div>
+      <button class="btn secondary" @click="openCreate">{{ t('user.token.create') }}</button>
+    </div>
 
     <div class="api-token-desc">
-      用于外部系统通过 HTTP API 访问 TicketDesk (创建工单/查询等). Token 一旦撤销立即失效.
+      {{ t('user.token.desc') }}
     </div>
 
     <div v-loading="loading">
       <el-table v-if="tokens.length > 0" :data="tokens" class="token-table">
-        <el-table-column label="名称" min-width="150">
+        <el-table-column :label="t('common.name')" min-width="150">
           <template #default="{ row }">
             <span class="token-name">{{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="前缀" width="180">
+        <el-table-column :label="t('user.token.prefix')" width="180">
           <template #default="{ row }">
             <code class="token-prefix">{{ row.prefix }}...</code>
           </template>
         </el-table-column>
-        <el-table-column label="最后使用" width="160">
+        <el-table-column :label="t('user.token.lastUsed')" width="160">
           <template #default="{ row }">
             <span v-if="row.last_used_at">{{ formatTime(row.last_used_at) }}</span>
-            <span v-else class="never-used">从未使用</span>
+            <span v-else class="never-used">{{ t('user.token.neverUsed') }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="过期" width="160">
+        <el-table-column :label="t('user.token.expiry')" width="160">
           <template #default="{ row }">
-            <el-tag v-if="row.is_expired" type="danger" size="small">已过期</el-tag>
+            <el-tag v-if="row.is_expired" type="danger" size="small">{{ t('user.token.expired') }}</el-tag>
             <span v-else-if="row.expires_at">{{ formatTime(row.expires_at) }}</span>
-            <el-tag v-else type="info" size="small">永久</el-tag>
+            <el-tag v-else type="info" size="small">{{ t('user.token.never') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80" align="center">
+        <el-table-column :label="t('common.operation')" width="80" align="center">
           <template #default="{ row }">
-            <el-button link type="danger" @click="confirmDelete(row)">撤销</el-button>
+            <el-button link type="danger" @click="confirmDelete(row)">{{ t('user.token.revoke') }}</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -52,58 +46,57 @@
       <TdEmptyState
         v-else-if="!loading"
         preset="first-time"
-        title="还没有 API 密钥"
-        description="创建后可用于外部系统调用 TicketDesk API"
+        :title="t('user.token.emptyTitle')"
       >
         <el-button type="primary" @click="openCreate">
-          <el-icon><Plus /></el-icon>创建第一个 Token
+          <el-icon><Plus /></el-icon>{{ t('user.token.createFirst') }}
         </el-button>
       </TdEmptyState>
     </div>
 
     <!-- 创建对话框 -->
-    <el-dialog v-model="createDialogVisible" title="创建 API 密钥" width="480px" destroy-on-close>
+    <el-dialog v-model="createDialogVisible" :title="t('user.token.createTitle')" width="480px" destroy-on-close>
       <el-form ref="formRef" :model="form" :rules="formRules" label-position="top">
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="form.name" placeholder="例如: 监控系统对接" maxlength="100" show-word-limit />
+        <el-form-item :label="t('common.name')" prop="name">
+          <el-input v-model="form.name" :placeholder="t('user.token.namePlaceholder')" maxlength="100" show-word-limit />
         </el-form-item>
-        <el-form-item label="过期时间">
+        <el-form-item :label="t('user.token.expiryLabel')">
           <el-radio-group v-model="form.expires_preset">
-            <el-radio value="7d">7 天</el-radio>
-            <el-radio value="30d">30 天</el-radio>
-            <el-radio value="90d">90 天</el-radio>
-            <el-radio value="365d">365 天</el-radio>
-            <el-radio value="never">永久</el-radio>
+            <el-radio value="7d">{{ t('user.token.days7') }}</el-radio>
+            <el-radio value="30d">{{ t('user.token.days30') }}</el-radio>
+            <el-radio value="90d">{{ t('user.token.days90') }}</el-radio>
+            <el-radio value="365d">{{ t('user.token.days365') }}</el-radio>
+            <el-radio value="never">{{ t('user.token.never') }}</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="createDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="submitCreate">创建</el-button>
+        <el-button @click="createDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="creating" @click="submitCreate">{{ t('common.create') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 一次性明文展示对话框 -->
     <el-dialog
       v-model="showTokenDialog"
-      title="保存你的 API 密钥"
+      :title="t('user.token.saveTitle')"
       width="600px"
       :close-on-click-modal="false"
       :show-close="false"
     >
       <el-alert type="warning" :closable="false" class="token-warning">
-        这是 <strong>{{ newToken?.name }}</strong> 的唯一显示机会. 关闭后无法再查看明文, 请立即复制保存到安全位置.
+        <i18n-t keypath="user.token.saveWarning" tag="span"><template #name><strong>{{ newToken?.name }}</strong></template></i18n-t>
       </el-alert>
 
       <div class="token-display">
         <code>{{ newToken?.token }}</code>
         <el-button type="primary" size="small" @click="copyToken">
-          <el-icon><CopyDocument /></el-icon>复制
+          <el-icon><CopyDocument /></el-icon>{{ t('common.copy') }}
         </el-button>
       </div>
 
       <div class="usage-section">
-        <div class="usage-label">使用示例 (curl)</div>
+        <div class="usage-label">{{ t('user.token.usageExample') }}</div>
         <el-input
           :model-value="usageExample"
           type="textarea"
@@ -114,19 +107,22 @@
       </div>
 
       <template #footer>
-        <el-button type="primary" @click="confirmSaved">我已保存</el-button>
+        <el-button type="primary" @click="confirmSaved">{{ t('user.token.saved') }}</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </section>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Key, Plus, CopyDocument } from '@element-plus/icons-vue'
+import { Plus, CopyDocument } from '@element-plus/icons-vue'
 import { listApiTokens, createApiToken, deleteApiToken } from '@/api/token'
 import type { APIToken, CreateTokenResponse } from '@/types/token'
 import dayjs from 'dayjs'
+
+const { t } = useI18n()
 
 const tokens = ref<APIToken[]>([])
 const loading = ref(false)
@@ -136,15 +132,13 @@ const creating = ref(false)
 const formRef = ref<FormInstance>()
 const form = ref({
   name: '',
-  expires_preset: '90d' as '7d' | '30d' | '90d' | '365d' | 'never',
-})
+  expires_preset: '90d' as '7d' | '30d' | '90d' | '365d' | 'never' })
 
 const formRules: FormRules = {
   name: [
-    { required: true, message: '请输入名称', trigger: 'blur' },
-    { max: 100, message: '名称最长 100 字符', trigger: 'blur' },
-  ],
-}
+    { required: true, message: t('user.token.nameRequired'), trigger: ['blur', 'change'] },
+    { max: 100, message: t('user.token.nameMax'), trigger: 'blur' },
+  ] }
 
 const showTokenDialog = ref(false)
 const newToken = ref<CreateTokenResponse | null>(null)
@@ -183,7 +177,7 @@ const loadTokens = async () => {
 
 const openCreate = () => {
   if (tokens.value.length >= 20) {
-    ElMessage.warning('已达 20 个 token 上限, 请先撤销不用的')
+    ElMessage.warning(t('user.token.limitReached'))
     return
   }
   form.value = { name: '', expires_preset: '90d' }
@@ -198,14 +192,13 @@ const submitCreate = async () => {
     try {
       const { data } = await createApiToken({
         name: form.value.name,
-        expires_in: presetToSeconds(form.value.expires_preset),
-      })
+        expires_in: presetToSeconds(form.value.expires_preset) })
       newToken.value = data.data
       createDialogVisible.value = false
       showTokenDialog.value = true
       await loadTokens()
     } catch {
-      ElMessage.error('创建失败')
+      ElMessage.error(t('user.token.createFailed'))
     } finally {
       creating.value = false
     }
@@ -216,9 +209,9 @@ const copyToken = async () => {
   if (!newToken.value) return
   try {
     await navigator.clipboard.writeText(newToken.value.token)
-    ElMessage.success('已复制到剪贴板')
+    ElMessage.success(t('user.token.copied'))
   } catch {
-    ElMessage.error('复制失败, 请手动复制')
+    ElMessage.error(t('user.token.copyFailed'))
   }
 }
 
@@ -230,19 +223,19 @@ const confirmSaved = () => {
 const confirmDelete = async (token: APIToken) => {
   try {
     await ElMessageBox.confirm(
-      `确定要撤销 "${token.name}" 吗? 使用此 token 的外部系统将立即无法访问.`,
-      '撤销 Token',
-      { type: 'warning', confirmButtonText: '撤销', cancelButtonText: '取消', confirmButtonClass: 'el-button--danger' },
+      t('user.token.confirmRevoke', { name: token.name }),
+      t('user.token.revokeTitle'),
+      { type: 'warning', confirmButtonText: t('user.token.revoke'), cancelButtonText: t('common.cancel'), confirmButtonClass: 'el-button--danger' },
     )
   } catch {
     return
   }
   try {
     await deleteApiToken(token.id)
-    ElMessage.success('已撤销')
+    ElMessage.success(t('user.token.revoked'))
     await loadTokens()
   } catch {
-    ElMessage.error('撤销失败')
+    ElMessage.error(t('user.token.revokeFailed'))
   }
 }
 
@@ -284,10 +277,14 @@ onMounted(() => {
   }
 }
 
+/* 卡内的说明行要和卡头对齐：原来 padding 是 0，文字直接贴在卡片左边框上，
+   比上面的标题还靠左 18px，一眼就能看出没对齐。
+   同时限宽 —— 984px 一行的正文太长，读起来要来回扫。 */
 .api-token-desc {
+  padding: 12px 18px 0;
+  max-width: 62ch;
   font-size: var(--td-font-sm);
   color: var(--td-text-secondary);
-  margin-bottom: var(--td-space-4);
   line-height: var(--td-leading-normal);
 }
 

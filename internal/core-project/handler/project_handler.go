@@ -39,7 +39,7 @@ func NewProjectHandler(projectService service.ProjectService) *ProjectHandler {
 func (h *ProjectHandler) HandleCreateProject(c *gin.Context) {
 	var req dto.CreateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -50,7 +50,7 @@ func (h *ProjectHandler) HandleCreateProject(c *gin.Context) {
 			response.BadRequest(c, err.Error())
 			return
 		}
-		response.InternalError(c, "创建项目失败")
+		response.InternalError(c, "project.create_failed")
 		return
 	}
 
@@ -76,7 +76,7 @@ func (h *ProjectHandler) HandleGetProject(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取项目失败")
+		response.InternalError(c, "project.get_failed")
 		return
 	}
 
@@ -101,7 +101,7 @@ func (h *ProjectHandler) HandleUpdateProject(c *gin.Context) {
 
 	var req dto.UpdateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -111,7 +111,7 @@ func (h *ProjectHandler) HandleUpdateProject(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "更新项目失败")
+		response.InternalError(c, "project.update_failed")
 		return
 	}
 
@@ -138,11 +138,11 @@ func (h *ProjectHandler) HandleDeleteProject(c *gin.Context) {
 			return
 		}
 		// 记录详细错误以便排查
-		response.InternalError(c, "删除项目失败: "+err.Error())
+		response.InternalError(c, response.T(c, "project.delete_failed_detail")+err.Error())
 		return
 	}
 
-	response.Success(c, gin.H{"message": "项目删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "project.deleted")})
 }
 
 // HandleListProjects 获取项目列表
@@ -160,7 +160,7 @@ func (h *ProjectHandler) HandleDeleteProject(c *gin.Context) {
 func (h *ProjectHandler) HandleListProjects(c *gin.Context) {
 	var req dto.ListProjectsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -169,7 +169,7 @@ func (h *ProjectHandler) HandleListProjects(c *gin.Context) {
 
 	projects, total, err := h.projectService.ListProjects(c.Request.Context(), &req, userID, isAdmin)
 	if err != nil {
-		response.InternalError(c, "获取项目列表失败")
+		response.InternalError(c, "project.list_failed")
 		return
 	}
 
@@ -194,7 +194,7 @@ func (h *ProjectHandler) HandleAddMember(c *gin.Context) {
 
 	var req dto.AddMemberRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -206,7 +206,7 @@ func (h *ProjectHandler) HandleAddMember(c *gin.Context) {
 		case errors.Is(err, service.ErrMemberAlreadyExists):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "添加成员失败")
+			response.InternalError(c, "project.member_add_failed")
 		}
 		return
 	}
@@ -232,13 +232,13 @@ func (h *ProjectHandler) HandleUpdateMember(c *gin.Context) {
 	key := c.Param("key")
 	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
 	var req dto.UpdateMemberRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -250,7 +250,7 @@ func (h *ProjectHandler) HandleUpdateMember(c *gin.Context) {
 		case errors.Is(err, service.ErrMemberNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "更新成员失败")
+			response.InternalError(c, "project.member_update_failed")
 		}
 		return
 	}
@@ -274,7 +274,7 @@ func (h *ProjectHandler) HandleRemoveMember(c *gin.Context) {
 	key := c.Param("key")
 	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
@@ -288,12 +288,12 @@ func (h *ProjectHandler) HandleRemoveMember(c *gin.Context) {
 		case errors.Is(err, service.ErrCannotRemoveOwner):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "移除成员失败")
+			response.InternalError(c, "project.member_remove_failed")
 		}
 		return
 	}
 
-	response.Success(c, gin.H{"message": "成员移除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "project.member_removed")})
 }
 
 // HandleListMembers 获取项目成员列表
@@ -315,7 +315,7 @@ func (h *ProjectHandler) HandleListMembers(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取成员列表失败")
+		response.InternalError(c, "project.member_list_failed")
 		return
 	}
 
@@ -340,7 +340,7 @@ func (h *ProjectHandler) HandleCreateIssueType(c *gin.Context) {
 
 	var req dto.CreateIssueTypeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -350,7 +350,7 @@ func (h *ProjectHandler) HandleCreateIssueType(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "创建工单类型失败")
+		response.InternalError(c, "project.issue_type_create_failed")
 		return
 	}
 
@@ -374,13 +374,13 @@ func (h *ProjectHandler) HandleCreateIssueType(c *gin.Context) {
 func (h *ProjectHandler) HandleUpdateIssueType(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工单类型 ID")
+		response.BadRequest(c, "project.issue_type_invalid_id")
 		return
 	}
 
 	var req dto.UpdateIssueTypeRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -390,7 +390,7 @@ func (h *ProjectHandler) HandleUpdateIssueType(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "更新工单类型失败")
+		response.InternalError(c, "project.issue_type_update_failed")
 		return
 	}
 
@@ -412,7 +412,7 @@ func (h *ProjectHandler) HandleUpdateIssueType(c *gin.Context) {
 func (h *ProjectHandler) HandleDeleteIssueType(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工单类型 ID")
+		response.BadRequest(c, "project.issue_type_invalid_id")
 		return
 	}
 
@@ -426,7 +426,7 @@ func (h *ProjectHandler) HandleDeleteIssueType(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"message": "工单类型删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "project.issue_type_deleted")})
 }
 
 // HandleListIssueTypes 获取项目工单类型列表
@@ -448,7 +448,7 @@ func (h *ProjectHandler) HandleListIssueTypes(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取工单类型列表失败")
+		response.InternalError(c, "project.issue_type_list_failed")
 		return
 	}
 
@@ -466,7 +466,7 @@ func (h *ProjectHandler) HandleListIssueTypes(c *gin.Context) {
 func (h *ProjectHandler) HandleListAllIssueTypes(c *gin.Context) {
 	issueTypes, err := h.projectService.ListAllIssueTypes(c.Request.Context())
 	if err != nil {
-		response.InternalError(c, "获取工单类型列表失败")
+		response.InternalError(c, "project.issue_type_list_failed")
 		return
 	}
 
@@ -493,7 +493,7 @@ func (h *ProjectHandler) HandleListAllProjects(c *gin.Context) {
 
 	projects, _, err := h.projectService.ListProjects(c.Request.Context(), req, userID, isAdmin)
 	if err != nil {
-		response.InternalError(c, "获取项目列表失败")
+		response.InternalError(c, "project.list_failed")
 		return
 	}
 
@@ -520,7 +520,7 @@ func (h *ProjectHandler) HandleCreateRole(c *gin.Context) {
 
 	var req dto.CreateProjectRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -532,7 +532,7 @@ func (h *ProjectHandler) HandleCreateRole(c *gin.Context) {
 		case errors.Is(err, service.ErrRoleKeyExists):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "创建角色失败")
+			response.InternalError(c, "project.role_create_failed")
 		}
 		return
 	}
@@ -558,13 +558,13 @@ func (h *ProjectHandler) HandleUpdateRole(c *gin.Context) {
 	key := c.Param("key")
 	roleID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的角色 ID")
+		response.BadRequest(c, "project.role_invalid_id")
 		return
 	}
 
 	var req dto.UpdateProjectRoleRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -576,7 +576,7 @@ func (h *ProjectHandler) HandleUpdateRole(c *gin.Context) {
 		case errors.Is(err, service.ErrRoleNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "更新角色失败")
+			response.InternalError(c, "project.role_update_failed")
 		}
 		return
 	}
@@ -600,7 +600,7 @@ func (h *ProjectHandler) HandleDeleteRole(c *gin.Context) {
 	key := c.Param("key")
 	roleID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的角色 ID")
+		response.BadRequest(c, "project.role_invalid_id")
 		return
 	}
 
@@ -614,12 +614,12 @@ func (h *ProjectHandler) HandleDeleteRole(c *gin.Context) {
 		case errors.Is(err, service.ErrCannotDeleteSystemRole):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "删除角色失败")
+			response.InternalError(c, "project.role_delete_failed")
 		}
 		return
 	}
 
-	response.Success(c, gin.H{"message": "角色删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "project.role_deleted")})
 }
 
 // HandleListRoles 获取项目角色列表
@@ -641,7 +641,7 @@ func (h *ProjectHandler) HandleListRoles(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取角色列表失败")
+		response.InternalError(c, "project.role_list_failed")
 		return
 	}
 
@@ -666,13 +666,13 @@ func (h *ProjectHandler) HandleAddRoleMember(c *gin.Context) {
 	key := c.Param("key")
 	roleID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的角色 ID")
+		response.BadRequest(c, "project.role_invalid_id")
 		return
 	}
 
 	var req dto.AddRoleMemberRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -686,7 +686,7 @@ func (h *ProjectHandler) HandleAddRoleMember(c *gin.Context) {
 		case errors.Is(err, service.ErrRoleMemberExists):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "添加角色成员失败")
+			response.InternalError(c, "project.role_member_add_failed")
 		}
 		return
 	}
@@ -711,12 +711,12 @@ func (h *ProjectHandler) HandleRemoveRoleMember(c *gin.Context) {
 	key := c.Param("key")
 	roleID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的角色 ID")
+		response.BadRequest(c, "project.role_invalid_id")
 		return
 	}
 	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
@@ -730,12 +730,12 @@ func (h *ProjectHandler) HandleRemoveRoleMember(c *gin.Context) {
 		case errors.Is(err, service.ErrRoleMemberNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "移除角色成员失败")
+			response.InternalError(c, "project.role_member_remove_failed")
 		}
 		return
 	}
 
-	response.Success(c, gin.H{"message": "角色成员移除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "project.role_member_removed")})
 }
 
 // HandleListRoleMembers 获取角色成员列表
@@ -753,7 +753,7 @@ func (h *ProjectHandler) HandleListRoleMembers(c *gin.Context) {
 	key := c.Param("key")
 	roleID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的角色 ID")
+		response.BadRequest(c, "project.role_invalid_id")
 		return
 	}
 
@@ -765,7 +765,7 @@ func (h *ProjectHandler) HandleListRoleMembers(c *gin.Context) {
 		case errors.Is(err, service.ErrRoleNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "获取角色成员列表失败")
+			response.InternalError(c, "project.role_member_list_failed")
 		}
 		return
 	}
@@ -788,7 +788,7 @@ func (h *ProjectHandler) HandleGetUserRoles(c *gin.Context) {
 	key := c.Param("key")
 	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
@@ -798,11 +798,41 @@ func (h *ProjectHandler) HandleGetUserRoles(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取用户角色失败")
+		response.InternalError(c, "project.user_roles_failed")
 		return
 	}
 
 	response.Success(c, roles)
+}
+
+// HandleGetMyPermissions 获取当前用户在项目中的权限
+// @Summary 获取我在项目中的权限
+// @Description 返回当前用户在指定项目中的权限集合，供前端决定显示哪些操作入口
+// @Tags 项目
+// @Produce json
+// @Param key path string true "项目标识"
+// @Success 200 {object} response.Response{data=dto.MyProjectPermissionsResponse}
+// @Router /projects/{key}/my-permissions [get]
+// @Security BearerAuth
+func (h *ProjectHandler) HandleGetMyPermissions(c *gin.Context) {
+	key := c.Param("key")
+	userID := c.GetUint64("user_id")
+	if userID == 0 {
+		response.Unauthorized(c, "perm.no_user")
+		return
+	}
+
+	perms, err := h.projectService.GetMyPermissions(c.Request.Context(), key, userID, middleware.IsAdmin(c))
+	if err != nil {
+		if errors.Is(err, service.ErrProjectNotFound) {
+			response.NotFound(c, err.Error())
+			return
+		}
+		response.InternalError(c, "perm.check_failed")
+		return
+	}
+
+	response.Success(c, perms)
 }
 
 // ============ 角色权限管理 ============
@@ -812,7 +842,7 @@ func (h *ProjectHandler) HandleGetRolePermissions(c *gin.Context) {
 	key := c.Param("key")
 	roleID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的角色 ID")
+		response.BadRequest(c, "project.role_invalid_id")
 		return
 	}
 
@@ -824,7 +854,7 @@ func (h *ProjectHandler) HandleGetRolePermissions(c *gin.Context) {
 		case errors.Is(err, service.ErrRoleNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "获取角色权限失败")
+			response.InternalError(c, "project.perm_get_failed")
 		}
 		return
 	}
@@ -837,13 +867,13 @@ func (h *ProjectHandler) HandleSetRolePermissions(c *gin.Context) {
 	key := c.Param("key")
 	roleID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的角色 ID")
+		response.BadRequest(c, "project.role_invalid_id")
 		return
 	}
 
 	var req dto.SetRolePermissionsRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -855,10 +885,10 @@ func (h *ProjectHandler) HandleSetRolePermissions(c *gin.Context) {
 		case errors.Is(err, service.ErrRoleNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "设置角色权限失败")
+			response.InternalError(c, "project.perm_set_failed")
 		}
 		return
 	}
 
-	response.Success(c, gin.H{"message": "权限设置成功"})
+	response.Success(c, gin.H{"message": response.T(c, "project.perm_saved")})
 }

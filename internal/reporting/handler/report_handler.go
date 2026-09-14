@@ -32,13 +32,13 @@ func NewReportHandler(reportService service.ReportService) *ReportHandler {
 func (h *ReportHandler) HandleGetDashboardStats(c *gin.Context) {
 	var req dto.DashboardStatsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	result, err := h.reportService.GetDashboardStats(c.Request.Context(), &req)
 	if err != nil {
-		response.InternalError(c, "获取仪表盘统计失败")
+		response.InternalError(c, "report.dashboard_failed")
 		return
 	}
 
@@ -61,13 +61,13 @@ func (h *ReportHandler) HandleGetDashboardStats(c *gin.Context) {
 func (h *ReportHandler) HandleGetIssueStats(c *gin.Context) {
 	var req dto.IssueStatsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	result, err := h.reportService.GetIssueStats(c.Request.Context(), &req)
 	if err != nil {
-		response.InternalError(c, "获取工单统计失败")
+		response.InternalError(c, "report.issue_stats_failed")
 		return
 	}
 
@@ -89,13 +89,13 @@ func (h *ReportHandler) HandleGetIssueStats(c *gin.Context) {
 func (h *ReportHandler) HandleGetSLAReport(c *gin.Context) {
 	var req dto.SLAReportRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	result, err := h.reportService.GetSLAReport(c.Request.Context(), &req)
 	if err != nil {
-		response.InternalError(c, "获取 SLA 报表失败")
+		response.InternalError(c, "report.sla_failed")
 		return
 	}
 
@@ -118,13 +118,13 @@ func (h *ReportHandler) HandleGetSLAReport(c *gin.Context) {
 func (h *ReportHandler) HandleGetAlertStats(c *gin.Context) {
 	var req dto.AlertStatsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	result, err := h.reportService.GetAlertStats(c.Request.Context(), &req)
 	if err != nil {
-		response.InternalError(c, "获取告警统计失败")
+		response.InternalError(c, "alert.stats_failed")
 		return
 	}
 
@@ -146,13 +146,13 @@ func (h *ReportHandler) HandleGetAlertStats(c *gin.Context) {
 func (h *ReportHandler) HandleGetWorklogStats(c *gin.Context) {
 	var req dto.WorklogStatsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	result, err := h.reportService.GetWorklogStats(c.Request.Context(), &req)
 	if err != nil {
-		response.InternalError(c, "获取工时统计失败")
+		response.InternalError(c, "report.worklog_stats_failed")
 		return
 	}
 
@@ -174,13 +174,13 @@ func (h *ReportHandler) HandleGetWorklogStats(c *gin.Context) {
 func (h *ReportHandler) HandleGetUserPerformance(c *gin.Context) {
 	var req dto.IssueStatsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	result, err := h.reportService.GetUserPerformance(c.Request.Context(), &req)
 	if err != nil {
-		response.InternalError(c, "获取用户绩效失败")
+		response.InternalError(c, "report.performance_failed")
 		return
 	}
 

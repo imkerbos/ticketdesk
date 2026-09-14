@@ -24,12 +24,12 @@ func NewNotificationHandler(svc service.NotificationService) *NotificationHandle
 func resolveUserID(c *gin.Context) (uint64, bool) {
 	userIDVal, exists := c.Get("user_id")
 	if !exists {
-		response.Unauthorized(c, "未登录或用户信息缺失")
+		response.Unauthorized(c, "inbox.not_logged_in")
 		return 0, false
 	}
 	userID, ok := userIDVal.(uint64)
 	if !ok {
-		response.Unauthorized(c, "用户信息类型错误")
+		response.Unauthorized(c, "inbox.user_type_error")
 		return 0, false
 	}
 	return userID, true
@@ -54,7 +54,7 @@ func (h *NotificationHandler) HandleListNotifications(c *gin.Context) {
 
 	var req dto.ListNotificationsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "参数错误")
+		response.BadRequest(c, "inbox.bad_request")
 		return
 	}
 
@@ -108,7 +108,7 @@ func (h *NotificationHandler) HandleMarkAsRead(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的通知ID")
+		response.BadRequest(c, "inbox.invalid_id")
 		return
 	}
 
@@ -160,7 +160,7 @@ func (h *NotificationHandler) HandleDeleteNotification(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的通知ID")
+		response.BadRequest(c, "inbox.invalid_id")
 		return
 	}
 

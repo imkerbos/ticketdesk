@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kerbos/ticketdesk/internal/activity/detail"
+
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/kerbos/ticketdesk/internal/model"
 	"github.com/kerbos/ticketdesk/pkg/cache"
 	"github.com/kerbos/ticketdesk/pkg/logger"
+	"github.com/kerbos/ticketdesk/pkg/safego"
 	"github.com/kerbos/ticketdesk/pkg/sequence"
 )
 
@@ -100,15 +103,22 @@ type NotificationSender interface {
 
 // AlertNotificationRequest 告警通知请求（本地定义，避免依赖 notification-inbox/dto）
 type AlertNotificationRequest struct {
-	UserID     uint64
-	Type       string
-	Title      string
-	Content    string
-	EntityType string
-	EntityID   uint64
-	EntityKey  string
-	ActorID    uint64
-	ActorName  string
+	UserID uint64
+	Type   string
+	Title  string
+	// TitleKey / TitleArgs 标题的语言包 key 与参数。
+	// 用它而不是直接给 Title：标题最终要按收件人的语言渲染，
+	// 而这里还不知道收件人想看哪种语言。
+	TitleKey    string
+	TitleArgs   []any
+	Content     string
+	ContentKey  string
+	ContentArgs []any
+	EntityType  string
+	EntityID    uint64
+	EntityKey   string
+	ActorID     uint64
+	ActorName   string
 }
 
 type alertService struct {
@@ -176,13 +186,33 @@ func NewAlertService(
 }
 
 // HandleWebhook 处理 Webhook 告警
+// maxAlertsPerRequest 单次 Webhook 请求允许处理的告警条数上限。
+//
+// 每条告警都要做静默匹配、指纹查询、落库，还可能自动建单并推送飞书/Telegram。
+// 这些端点无需认证，一个携带十万条告警的 POST 就能让请求持续数分钟、
+// 灌满工单表并触发通知风暴。超出部分直接丢弃并告警，宁可漏也不能被拖垮。
+const maxAlertsPerRequest = 500
+
+// capAlerts 截断超限的告警批次，返回实际处理的条数上限
+func capAlerts(total int, source string) int {
+	if total <= maxAlertsPerRequest {
+		return total
+	}
+	logger.Warn("alert batch exceeds limit, extra alerts dropped",
+		zap.String("source", source),
+		zap.Int("received", total),
+		zap.Int("processed", maxAlertsPerRequest),
+	)
+	return maxAlertsPerRequest
+}
+
 func (s *alertService) HandleWebhook(ctx context.Context, req *dto.AlertWebhookRequest) error {
 	logger.Info("received alert webhook",
 		zap.String("status", req.Status),
 		zap.Int("alert_count", len(req.Alerts)),
 	)
 
-	for _, alertItem := range req.Alerts {
+	for _, alertItem := range req.Alerts[:capAlerts(len(req.Alerts), "prometheus")] {
 		if err := s.processAlertWithSource(ctx, &alertItem, "prometheus", 0); err != nil {
 			logger.Error("failed to process alert",
 				zap.String("fingerprint", alertItem.Fingerprint),
@@ -202,7 +232,7 @@ func (s *alertService) HandleNightingaleWebhook(ctx context.Context, events []dt
 		zap.Int("event_count", len(events)),
 	)
 
-	for _, event := range events {
+	for _, event := range events[:capAlerts(len(events), "nightingale")] {
 		alertItem := event.ToAlertWebhookItem()
 		if err := s.processAlertWithSource(ctx, alertItem, "nightingale", 0); err != nil {
 			logger.Error("failed to process nightingale alert",
@@ -225,7 +255,7 @@ func (s *alertService) HandleWebhookWithSource(ctx context.Context, req *dto.Ale
 		zap.Int("alert_count", len(req.Alerts)),
 	)
 
-	for _, alertItem := range req.Alerts {
+	for _, alertItem := range req.Alerts[:capAlerts(len(req.Alerts), sourceName)] {
 		if err := s.processAlertWithSource(ctx, &alertItem, sourceName, datasourceID); err != nil {
 			logger.Error("failed to process alert",
 				zap.String("source", sourceName),
@@ -246,7 +276,7 @@ func (s *alertService) HandleNightingaleWebhookWithSource(ctx context.Context, e
 		zap.Int("event_count", len(events)),
 	)
 
-	for _, event := range events {
+	for _, event := range events[:capAlerts(len(events), sourceName)] {
 		alertItem := event.ToAlertWebhookItem()
 		if err := s.processAlertWithSource(ctx, alertItem, sourceName, datasourceID); err != nil {
 			logger.Error("failed to process nightingale alert",
@@ -680,21 +710,23 @@ func (s *alertService) createIssueFromAlert(
 	// 记录活动日志
 	if s.activityLogger != nil {
 		_ = s.activityLogger.LogActivity(
-			ctx, reporterID, "alert-bot", "创建工单", "issue",
+			ctx, reporterID, "alert-bot", "issue_created", "issue",
 			issue.ID, issueKey,
-			fmt.Sprintf("告警系统自动创建工单: %s", issue.Title),
+			detail.New("activity.detail.issueCreatedByAlert", "title", issue.Title),
 		)
 	}
 
 	// 站内通知指派人
 	if s.notifSender != nil && assigneeID != nil {
 		go func() {
+			defer safego.Recover("alert.notifyAssignee")
 			notifCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := s.notifSender.CreateNotification(notifCtx, &AlertNotificationRequest{
 				UserID:     *assigneeID,
 				Type:       "issue_assigned",
-				Title:      fmt.Sprintf("告警工单 %s 已指派给您", issueKey),
+				TitleKey:   "inbox.alert_issue_assigned",
+				TitleArgs:  []any{issueKey},
 				Content:    issue.Title,
 				EntityType: "issue",
 				EntityID:   issue.ID,
@@ -722,6 +754,7 @@ func (s *alertService) createIssueFromAlert(
 			}
 		}
 		go func() {
+			defer safego.Recover("alert.notifyProjectChannels")
 			notifCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			if err := s.projectNotifier.NotifyProject(notifCtx, rule.ProjectID, "issue.created", map[string]any{
@@ -756,22 +789,22 @@ func (s *alertService) buildIssueDescription(
 
 	// 告警基本信息
 	desc.WriteString("## 告警信息\n\n")
-	desc.WriteString(fmt.Sprintf("- **告警名称**: %s\n", alert.AlertName))
-	desc.WriteString(fmt.Sprintf("- **严重程度**: %s\n", alert.Severity))
-	desc.WriteString(fmt.Sprintf("- **告警状态**: %s\n", alert.Status))
-	desc.WriteString(fmt.Sprintf("- **开始时间**: %s\n", alert.StartsAt.Format("2006-01-02 15:04:05")))
-	desc.WriteString(fmt.Sprintf("- **告警指纹**: %s\n", alert.Fingerprint))
+	fmt.Fprintf(&desc, "- **告警名称**: %s\n", alert.AlertName)
+	fmt.Fprintf(&desc, "- **严重程度**: %s\n", alert.Severity)
+	fmt.Fprintf(&desc, "- **告警状态**: %s\n", alert.Status)
+	fmt.Fprintf(&desc, "- **开始时间**: %s\n", alert.StartsAt.Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(&desc, "- **告警指纹**: %s\n", alert.Fingerprint)
 
 	// 告警描述
 	if description, ok := annotations["description"]; ok {
-		desc.WriteString(fmt.Sprintf("\n**描述**: %s\n", description))
+		fmt.Fprintf(&desc, "\n**描述**: %s\n", description)
 	}
 
 	// 告警标签
 	if len(labels) > 0 {
 		desc.WriteString("\n## 标签\n\n")
 		for k, v := range labels {
-			desc.WriteString(fmt.Sprintf("- **%s**: %s\n", k, v))
+			fmt.Fprintf(&desc, "- **%s**: %s\n", k, v)
 		}
 	}
 
@@ -780,7 +813,7 @@ func (s *alertService) buildIssueDescription(
 		desc.WriteString("\n## 详细信息\n\n")
 		for k, v := range annotations {
 			if k != "summary" && k != "description" {
-				desc.WriteString(fmt.Sprintf("- **%s**: %s\n", k, v))
+				fmt.Fprintf(&desc, "- **%s**: %s\n", k, v)
 			}
 		}
 	}
@@ -847,8 +880,9 @@ func (s *alertService) appendAlertToIssue(
 	if instance == "" {
 		instance = labels["target_ident"]
 	}
-	commentContent := fmt.Sprintf("🔔 新告警实例已合并：**%s** (指纹: %s，触发时间: %s)",
-		instance, alert.Fingerprint, alert.StartsAt.Format("2006-01-02 15:04:05"))
+	commentContent := detail.New("comment.system.alertInstanceMerged",
+		"instance", instance, "fingerprint", alert.Fingerprint,
+		"time", alert.StartsAt.Format("2006-01-02 15:04:05"))
 	if err := s.addSystemComment(ctx, issueID, commentContent); err != nil {
 		logger.Warn("failed to add merge notification comment",
 			zap.Uint64("issue_id", issueID),
@@ -865,11 +899,9 @@ func (s *alertService) appendAlertToIssue(
 	// 站内通知指派人和关注人：有新告警合并
 	if s.notifSender != nil {
 		go func() {
+			defer safego.Recover("alert.notifyMergeWatchers")
 			notifCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-
-			notifTitle := fmt.Sprintf("🔔 工单 %s 有新告警合并 (%d 个实例)", issue.IssueKey, alertCount)
-			notifContent := fmt.Sprintf("新告警实例: %s (指纹: %s)", instance, alert.Fingerprint)
 
 			// 收集需要通知的用户（指派人 + 关注人）
 			notifyUserIDs := make(map[uint64]bool)
@@ -884,15 +916,17 @@ func (s *alertService) appendAlertToIssue(
 
 			for uid := range notifyUserIDs {
 				_ = s.notifSender.CreateNotification(notifCtx, &AlertNotificationRequest{
-					UserID:     uid,
-					Type:       "alert_merged",
-					Title:      notifTitle,
-					Content:    notifContent,
-					EntityType: "issue",
-					EntityID:   issueID,
-					EntityKey:  issue.IssueKey,
-					ActorID:    0,
-					ActorName:  "alert-bot",
+					UserID:      uid,
+					Type:        "alert_merged",
+					TitleKey:    "inbox.alert_merged",
+					TitleArgs:   []any{issue.IssueKey, alertCount},
+					ContentKey:  "inbox.alert_merged_body",
+					ContentArgs: []any{instance, alert.Fingerprint},
+					EntityType:  "issue",
+					EntityID:    issueID,
+					EntityKey:   issue.IssueKey,
+					ActorID:     0,
+					ActorName:   "alert-bot",
 				})
 			}
 		}()
@@ -901,6 +935,7 @@ func (s *alertService) appendAlertToIssue(
 	// 通知项目外部渠道（飞书/Telegram）
 	if s.projectNotifier != nil {
 		go func() {
+			defer safego.Recover("alert.notifyMergeChannels")
 			notifCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			_ = s.projectNotifier.NotifyProject(notifCtx, issue.ProjectID, "alert.merged", map[string]any{
@@ -967,7 +1002,7 @@ func (s *alertService) autoUpdateIssueOnRecovery(ctx context.Context, issueID ui
 				zap.Uint64("issue_id", issueID), zap.Error(err))
 		}
 
-		commentContent := "告警已自动恢复，工单已自动关闭"
+		commentContent := detail.New("comment.system.alertRecoveredClosed")
 		if err := s.addSystemComment(ctx, issueID, commentContent); err != nil {
 			logger.Error("failed to add system comment for auto-resolve",
 				zap.Uint64("issue_id", issueID),
@@ -977,8 +1012,8 @@ func (s *alertService) autoUpdateIssueOnRecovery(ctx context.Context, issueID ui
 
 		// 记录活动日志
 		if s.activityLogger != nil {
-			_ = s.activityLogger.LogActivity(ctx, 0, "alert-bot", "状态变更",
-				"issue", issueID, issue.IssueKey, "告警自动恢复，工单已自动关闭")
+			_ = s.activityLogger.LogActivity(ctx, 0, "alert-bot", "status_changed",
+				"issue", issueID, issue.IssueKey, detail.New("activity.detail.alertRecoveredClosed"))
 		}
 
 		logger.Info("issue auto-resolved by alert recovery",
@@ -993,7 +1028,7 @@ func (s *alertService) autoUpdateIssueOnRecovery(ctx context.Context, issueID ui
 		// 同步工作流实例为验收中，告警已恢复，等待处理人确认是否关闭工单
 		s.setWorkflowReviewing(ctx, issueID)
 
-		commentContent := fmt.Sprintf("告警已自动恢复于 %s，请确认是否可以关闭工单", now.Format("15:04"))
+		commentContent := detail.New("comment.system.alertRecoveredPendingReview", "time", now.Format("15:04"))
 		if err := s.addSystemComment(ctx, issueID, commentContent); err != nil {
 			logger.Error("failed to add system comment for pending_review",
 				zap.Uint64("issue_id", issueID),
@@ -1003,8 +1038,8 @@ func (s *alertService) autoUpdateIssueOnRecovery(ctx context.Context, issueID ui
 
 		// 记录活动日志
 		if s.activityLogger != nil {
-			_ = s.activityLogger.LogActivity(ctx, 0, "alert-bot", "状态变更",
-				"issue", issueID, issue.IssueKey, "告警自动恢复，工单进入待确认状态")
+			_ = s.activityLogger.LogActivity(ctx, 0, "alert-bot", "status_changed",
+				"issue", issueID, issue.IssueKey, detail.New("activity.detail.alertRecoveredPendingReview"))
 		}
 
 		logger.Info("issue set to pending_review by alert recovery",
@@ -1161,7 +1196,7 @@ func (s *alertService) reactivateIssueIfPendingReview(ctx context.Context, issue
 
 comment:
 	// 添加系统评论
-	_ = s.addSystemComment(ctx, issueID, "新告警触发，工单已从「待确认」恢复为「进行中」")
+	_ = s.addSystemComment(ctx, issueID, detail.New("comment.system.issueReactivated"))
 
 	logger.Info("issue reactivated from pending_review due to new alert",
 		zap.Uint64("issue_id", issueID))
@@ -1412,9 +1447,9 @@ func (s *alertService) AckAlert(ctx context.Context, id uint64, userID uint64, r
 	// 记录活动日志（关联工单）
 	if s.activityLogger != nil && alert.IssueID != nil {
 		if issue, err := s.issueRepo.GetByID(ctx, *alert.IssueID); err == nil && issue != nil {
-			_ = s.activityLogger.LogActivity(ctx, userID, "", "确认告警",
+			_ = s.activityLogger.LogActivity(ctx, userID, "", "alert_acked",
 				"issue", *alert.IssueID, issue.IssueKey,
-				fmt.Sprintf("手动确认告警 [%s]", alert.AlertName))
+				detail.New("activity.detail.alertAcked", "name", alert.AlertName))
 		}
 	}
 
@@ -1443,9 +1478,9 @@ func (s *alertService) ResolveAlert(ctx context.Context, id uint64, userID uint6
 	// 记录活动日志（关联工单）
 	if s.activityLogger != nil && alert.IssueID != nil {
 		if issue, err := s.issueRepo.GetByID(ctx, *alert.IssueID); err == nil && issue != nil {
-			_ = s.activityLogger.LogActivity(ctx, userID, "", "手动解决告警",
+			_ = s.activityLogger.LogActivity(ctx, userID, "", "alert_resolved",
 				"issue", *alert.IssueID, issue.IssueKey,
-				fmt.Sprintf("手动解决告警 [%s]", alert.AlertName))
+				detail.New("activity.detail.alertResolved", "name", alert.AlertName))
 		}
 	}
 

@@ -1,0 +1,202 @@
+// 项目设置各 tab 共用的视觉基元。
+//
+// 每个 tab 拆成独立组件后，这几个类会被多个组件同时用到：
+// scoped 样式只作用于自己的模板，父组件的规则覆盖不到子组件的节点。
+// 提到全局又会和别处同名类打架（.section-header / .section-title
+// 在告警、字段管理里也各有定义）。
+//
+// 用 @use 引入：编译时并入各组件的 scoped 输出，作用域仍然隔离。
+
+.tab-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.danger-tab-label {
+  color: var(--td-color-danger);
+}
+
+.tab-content {
+  padding: var(--td-space-5) 0 0;
+  min-height: 400px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+
+  h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--td-text-primary);
+    margin: 0;
+  }
+}
+
+.custom-dialog {
+  :deep(.el-dialog__header) {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--td-border-color);
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 24px;
+  }
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--td-text-primary);
+}
+
+.form-tip-small {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--td-text-secondary);
+  margin-top: 6px;
+  line-height: 1.5;
+
+  .el-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: var(--td-color-primary);
+  }
+}
+
+/* ── 通知渠道弹窗里的分节与事件多选 ─────────────────
+   这几块原本只写在 ProjectSettings.vue 的 scoped 块里，
+   而 ProjectChannelsTab 是独立组件 —— scoped 样式到不了子组件，
+   结果「添加通知渠道」弹窗里事件复选框没有卡片形状、标题和描述连成一串、
+   开关和文字贴死、分节标题也没了。放到共享 partial，两边都能用。 */
+
+/* ── 事件类型多选 ─────────────────────────────── */
+.event-types-wrapper {
+  width: 100%;
+}
+
+.event-types-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 6px;
+  width: 100%;
+}
+
+.event-type-checkbox {
+  width: 100%;
+  height: 100%;
+  margin-right: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--td-border-color);
+  border-radius: 8px;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out;
+
+  &:hover {
+    border-color: var(--td-border-color-dark);
+    background: var(--td-bg-section);
+  }
+
+  &.is-checked {
+    border-color: var(--td-color-primary);
+    background: var(--td-tag-primary-bg);
+  }
+
+  :deep(.el-checkbox__label) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.45;
+    width: 100%;
+    padding-left: 6px;
+  }
+
+  .event-type-label {
+    font-size: 12.5px;
+    color: var(--td-text-primary);
+    font-weight: 500;
+  }
+
+  .event-type-desc {
+    font-size: 11px;
+    color: var(--td-text-placeholder);
+    margin-top: 2px;
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+/* ── 弹窗内分节 ───────────────────────────────── */
+.dialog-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--td-divider-color);
+
+  &:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+}
+
+.dialog-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 590;
+  color: var(--td-text-secondary);
+  margin-bottom: 10px;
+
+  /* 飞书 / Telegram 是第三方品牌色，保留原值 —— 这两个不是本产品的语义色，
+     换成 token 反而认不出来是哪家。只有这里用，不进全局 token 层。 */
+  .section-title-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+
+    &.lark {
+      background: #3370ff;
+    }
+
+    &.telegram {
+      background: #2aabee;
+    }
+  }
+}
+
+.enable-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  .enable-switch-label {
+    font-size: 12.5px;
+    color: var(--td-text-placeholder);
+    transition: color 150ms ease-out;
+
+    &.active {
+      color: var(--td-text-primary);
+    }
+  }
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

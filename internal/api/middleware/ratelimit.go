@@ -96,7 +96,7 @@ func RateLimitMiddleware(cfg RateLimitConfig) gin.HandlerFunc {
 		if int(count) > limit {
 			retryAfter := windowSec - int(time.Now().Unix()%int64(windowSec))
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
-			response.Error(c, http.StatusTooManyRequests, "TOO_MANY_REQUESTS", "请求过于频繁，请稍后再试")
+			response.ErrorT(c, http.StatusTooManyRequests, "TOO_MANY_REQUESTS", "common.too_many_requests")
 			c.Abort()
 			return
 		}

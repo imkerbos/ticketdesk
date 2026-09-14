@@ -41,7 +41,7 @@ func NewUserHandler(userService service.UserService, mfaService service.MFAServi
 func (h *UserHandler) HandleLogin(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -50,10 +50,12 @@ func (h *UserHandler) HandleLogin(c *gin.Context) {
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
 			response.Unauthorized(c, err.Error())
+		case errors.Is(err, service.ErrAccountUsesSSOLogin):
+			response.Forbidden(c, err.Error())
 		case errors.Is(err, service.ErrUserDisabled):
 			response.Forbidden(c, err.Error())
 		default:
-			response.InternalError(c, "登录失败")
+			response.InternalError(c, "user.login_failed")
 		}
 		return
 	}
@@ -74,7 +76,7 @@ func (h *UserHandler) HandleLogin(c *gin.Context) {
 func (h *UserHandler) HandleRegister(c *gin.Context) {
 	var req dto.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -86,7 +88,7 @@ func (h *UserHandler) HandleRegister(c *gin.Context) {
 		case errors.Is(err, service.ErrEmailExists):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "注册失败")
+			response.InternalError(c, "user.register_failed")
 		}
 		return
 	}
@@ -108,7 +110,7 @@ func (h *UserHandler) HandleRegister(c *gin.Context) {
 func (h *UserHandler) HandleRefreshToken(c *gin.Context) {
 	var req dto.RefreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -116,11 +118,11 @@ func (h *UserHandler) HandleRefreshToken(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrUserNotFound):
-			response.Unauthorized(c, "用户不存在")
+			response.Unauthorized(c, "user.not_found")
 		case errors.Is(err, service.ErrUserDisabled):
 			response.Forbidden(c, err.Error())
 		default:
-			response.Unauthorized(c, "Token 无效或已过期")
+			response.Unauthorized(c, "user.token_invalid")
 		}
 		return
 	}
@@ -140,7 +142,7 @@ func (h *UserHandler) HandleRefreshToken(c *gin.Context) {
 func (h *UserHandler) HandleGetCurrentUser(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	if userID == 0 {
-		response.Unauthorized(c, "未获取到用户信息")
+		response.Unauthorized(c, "user.info_missing")
 		return
 	}
 
@@ -150,7 +152,7 @@ func (h *UserHandler) HandleGetCurrentUser(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取用户信息失败")
+		response.InternalError(c, "user.get_failed")
 		return
 	}
 
@@ -172,13 +174,13 @@ func (h *UserHandler) HandleGetCurrentUser(c *gin.Context) {
 func (h *UserHandler) HandleUpdateCurrentUser(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	if userID == 0 {
-		response.Unauthorized(c, "未获取到用户信息")
+		response.Unauthorized(c, "user.info_missing")
 		return
 	}
 
 	var req dto.UpdateUserRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -190,7 +192,7 @@ func (h *UserHandler) HandleUpdateCurrentUser(c *gin.Context) {
 		case errors.Is(err, service.ErrEmailExists):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "更新用户资料失败")
+			response.InternalError(c, "user.profile_update_failed")
 		}
 		return
 	}
@@ -211,7 +213,7 @@ func (h *UserHandler) HandleUpdateCurrentUser(c *gin.Context) {
 func (h *UserHandler) HandleGetUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
@@ -221,7 +223,7 @@ func (h *UserHandler) HandleGetUser(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取用户信息失败")
+		response.InternalError(c, "user.get_failed")
 		return
 	}
 
@@ -242,7 +244,7 @@ func (h *UserHandler) HandleGetUser(c *gin.Context) {
 func (h *UserHandler) HandleCreateUser(c *gin.Context) {
 	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -254,7 +256,7 @@ func (h *UserHandler) HandleCreateUser(c *gin.Context) {
 		case errors.Is(err, service.ErrEmailExists):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "创建用户失败")
+			response.InternalError(c, "user.create_failed")
 		}
 		return
 	}
@@ -278,13 +280,13 @@ func (h *UserHandler) HandleCreateUser(c *gin.Context) {
 func (h *UserHandler) HandleUpdateUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
 	var req dto.UpdateUserRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -296,7 +298,7 @@ func (h *UserHandler) HandleUpdateUser(c *gin.Context) {
 		case errors.Is(err, service.ErrEmailExists):
 			response.BadRequest(c, err.Error())
 		default:
-			response.InternalError(c, "更新用户失败")
+			response.InternalError(c, "user.update_failed")
 		}
 		return
 	}
@@ -318,13 +320,13 @@ func (h *UserHandler) HandleUpdateUser(c *gin.Context) {
 func (h *UserHandler) HandleUpdatePassword(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	if userID == 0 {
-		response.Unauthorized(c, "未获取到用户信息")
+		response.Unauthorized(c, "user.info_missing")
 		return
 	}
 
 	var req dto.UpdatePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -336,12 +338,12 @@ func (h *UserHandler) HandleUpdatePassword(c *gin.Context) {
 		case errors.Is(err, service.ErrUserNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "修改密码失败")
+			response.InternalError(c, "user.change_password_failed")
 		}
 		return
 	}
 
-	response.Success(c, gin.H{"message": "密码修改成功"})
+	response.Success(c, gin.H{"message": response.T(c, "user.password_changed")})
 }
 
 // HandleResetPassword 重置用户密码（管理员）
@@ -360,13 +362,13 @@ func (h *UserHandler) HandleUpdatePassword(c *gin.Context) {
 func (h *UserHandler) HandleResetPassword(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
 	var req dto.ResetPasswordRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -376,11 +378,11 @@ func (h *UserHandler) HandleResetPassword(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "重置密码失败")
+		response.InternalError(c, "user.reset_password_failed")
 		return
 	}
 
-	response.Success(c, gin.H{"message": "密码重置成功"})
+	response.Success(c, gin.H{"message": response.T(c, "user.password_reset")})
 }
 
 // HandleEnableUser 启用用户
@@ -396,7 +398,7 @@ func (h *UserHandler) HandleResetPassword(c *gin.Context) {
 func (h *UserHandler) HandleEnableUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
@@ -406,11 +408,11 @@ func (h *UserHandler) HandleEnableUser(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "启用用户失败")
+		response.InternalError(c, "user.enable_failed")
 		return
 	}
 
-	response.Success(c, gin.H{"message": "用户已启用"})
+	response.Success(c, gin.H{"message": response.T(c, "user.already_enabled")})
 }
 
 // HandleDisableUser 禁用用户
@@ -426,18 +428,18 @@ func (h *UserHandler) HandleEnableUser(c *gin.Context) {
 func (h *UserHandler) HandleDisableUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
 	// 禁止禁用自己
 	if currentUserID := c.GetUint64("user_id"); currentUserID == id {
-		response.Forbidden(c, "不能禁用自己")
+		response.Forbidden(c, "user.cannot_disable_self")
 		return
 	}
 	// 禁止禁用 admin (id=1)
 	if id == 1 {
-		response.Forbidden(c, "不能禁用系统管理员")
+		response.Forbidden(c, "user.cannot_disable_admin")
 		return
 	}
 
@@ -447,11 +449,11 @@ func (h *UserHandler) HandleDisableUser(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "禁用用户失败")
+		response.InternalError(c, "user.disable_failed")
 		return
 	}
 
-	response.Success(c, gin.H{"message": "用户已禁用"})
+	response.Success(c, gin.H{"message": response.T(c, "user.already_disabled")})
 }
 
 // HandleDeleteUser 删除用户
@@ -467,18 +469,18 @@ func (h *UserHandler) HandleDisableUser(c *gin.Context) {
 func (h *UserHandler) HandleDeleteUser(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的用户 ID")
+		response.BadRequest(c, "user.invalid_id")
 		return
 	}
 
 	// 禁止删除自己
 	if currentUserID := c.GetUint64("user_id"); currentUserID == id {
-		response.Forbidden(c, "不能删除自己")
+		response.Forbidden(c, "user.cannot_delete_self")
 		return
 	}
 	// 禁止删除 admin (id=1)
 	if id == 1 {
-		response.Forbidden(c, "不能删除系统管理员")
+		response.Forbidden(c, "user.cannot_delete_admin")
 		return
 	}
 
@@ -488,11 +490,11 @@ func (h *UserHandler) HandleDeleteUser(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "删除用户失败")
+		response.InternalError(c, "user.delete_failed")
 		return
 	}
 
-	response.Success(c, gin.H{"message": "用户删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "user.deleted")})
 }
 
 // HandleListUsers 获取用户列表
@@ -510,13 +512,13 @@ func (h *UserHandler) HandleDeleteUser(c *gin.Context) {
 func (h *UserHandler) HandleListUsers(c *gin.Context) {
 	var req dto.ListUsersRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	users, total, err := h.userService.ListUsers(c.Request.Context(), &req)
 	if err != nil {
-		response.InternalError(c, "获取用户列表失败")
+		response.InternalError(c, "user.list_failed")
 		return
 	}
 
@@ -542,7 +544,7 @@ func (h *UserHandler) HandleListAllUsers(c *gin.Context) {
 
 	users, _, err := h.userService.ListUsers(c.Request.Context(), req)
 	if err != nil {
-		response.InternalError(c, "获取用户列表失败")
+		response.InternalError(c, "user.list_failed")
 		return
 	}
 
@@ -572,7 +574,7 @@ func (h *UserHandler) HandleListAllUsers(c *gin.Context) {
 func (h *UserHandler) HandleGetMFAStatus(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	if userID == 0 {
-		response.Unauthorized(c, "未获取到用户信息")
+		response.Unauthorized(c, "user.info_missing")
 		return
 	}
 
@@ -582,7 +584,7 @@ func (h *UserHandler) HandleGetMFAStatus(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取 MFA 状态失败")
+		response.InternalError(c, "user.mfa_status_failed")
 		return
 	}
 
@@ -601,7 +603,7 @@ func (h *UserHandler) HandleGetMFAStatus(c *gin.Context) {
 func (h *UserHandler) HandleSetupMFA(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	if userID == 0 {
-		response.Unauthorized(c, "未获取到用户信息")
+		response.Unauthorized(c, "user.info_missing")
 		return
 	}
 
@@ -613,7 +615,7 @@ func (h *UserHandler) HandleSetupMFA(c *gin.Context) {
 		case errors.Is(err, service.ErrUserNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "设置 MFA 失败")
+			response.InternalError(c, "user.mfa_setup_failed")
 		}
 		return
 	}
@@ -635,13 +637,13 @@ func (h *UserHandler) HandleSetupMFA(c *gin.Context) {
 func (h *UserHandler) HandleEnableMFA(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	if userID == 0 {
-		response.Unauthorized(c, "未获取到用户信息")
+		response.Unauthorized(c, "user.info_missing")
 		return
 	}
 
 	var req dto.MFAVerifyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -657,12 +659,12 @@ func (h *UserHandler) HandleEnableMFA(c *gin.Context) {
 		case errors.Is(err, service.ErrUserNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "启用 MFA 失败")
+			response.InternalError(c, "user.mfa_enable_failed")
 		}
 		return
 	}
 
-	response.Success(c, gin.H{"message": "MFA 已启用"})
+	response.Success(c, gin.H{"message": response.T(c, "user.mfa_enabled")})
 }
 
 // HandleDisableMFA 禁用 MFA
@@ -679,13 +681,13 @@ func (h *UserHandler) HandleEnableMFA(c *gin.Context) {
 func (h *UserHandler) HandleDisableMFA(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	if userID == 0 {
-		response.Unauthorized(c, "未获取到用户信息")
+		response.Unauthorized(c, "user.info_missing")
 		return
 	}
 
 	var req dto.MFAVerifyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -699,50 +701,52 @@ func (h *UserHandler) HandleDisableMFA(c *gin.Context) {
 		case errors.Is(err, service.ErrUserNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "禁用 MFA 失败")
+			response.InternalError(c, "user.mfa_disable_failed")
 		}
 		return
 	}
 
-	response.Success(c, gin.H{"message": "MFA 已禁用"})
+	response.Success(c, gin.H{"message": response.T(c, "user.mfa_disabled")})
 }
 
-// HandleVerifyMFA 验证 MFA 码（登录流程）
+// HandleVerifyMFA 验证 MFA 码并完成登录
 // @Summary 验证 MFA 码
-// @Description 登录流程中验证 MFA 码
+// @Description 登录第二步：提交登录第一步下发的挑战令牌与 TOTP 码，换取正式令牌对
 // @Tags MFA
 // @Accept json
 // @Produce json
 // @Param request body dto.MFALoginRequest true "MFA 登录请求"
 // @Success 200 {object} response.Response{data=dto.LoginResponse}
 // @Failure 400 {object} response.ErrorResponse
+// @Failure 401 {object} response.ErrorResponse "挑战令牌无效或已过期"
 // @Router /api/v1/auth/mfa/verify [post]
 func (h *UserHandler) HandleVerifyMFA(c *gin.Context) {
 	var req dto.MFALoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
-	err := h.mfaService.VerifyMFA(c.Request.Context(), req.UserID, req.Code)
+	result, err := h.userService.CompleteMFALogin(c.Request.Context(), req.MFAToken, req.Code)
 	if err != nil {
 		switch {
+		case errors.Is(err, service.ErrInvalidMFAToken):
+			response.Unauthorized(c, err.Error())
 		case errors.Is(err, service.ErrMFANotEnabled):
 			response.BadRequest(c, err.Error())
 		case errors.Is(err, service.ErrMFAInvalidCode):
-			response.BadRequest(c, "验证码错误")
+			response.BadRequest(c, "user.code_wrong")
+		case errors.Is(err, service.ErrUserDisabled):
+			response.Forbidden(c, err.Error())
 		case errors.Is(err, service.ErrUserNotFound):
 			response.NotFound(c, err.Error())
 		default:
-			response.InternalError(c, "验证 MFA 失败")
+			response.InternalError(c, "user.mfa_verify_failed")
 		}
 		return
 	}
 
-	// 验证成功后，生成完整的登录 Token
-	// 这里需要调用 userService 来完成登录
-	// 暂时返回成功消息
-	response.Success(c, gin.H{"message": "MFA 验证成功"})
+	response.Success(c, result)
 }
 
 // HandleForgotPassword 处理忘记密码请求
@@ -758,17 +762,17 @@ func (h *UserHandler) HandleVerifyMFA(c *gin.Context) {
 func (h *UserHandler) HandleForgotPassword(c *gin.Context) {
 	var req dto.ForgotPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	err := h.userService.ForgotPassword(c.Request.Context(), &req)
 	if err != nil {
-		response.InternalError(c, "处理请求失败")
+		response.InternalError(c, "user.request_failed")
 		return
 	}
 
-	response.Success(c, gin.H{"message": "如果该邮箱已注册，您将收到重置密码的邮件"})
+	response.Success(c, gin.H{"message": response.T(c, "user.reset_mail_sent")})
 }
 
 // HandleVerifyResetToken 验证重置密码令牌
@@ -783,7 +787,7 @@ func (h *UserHandler) HandleForgotPassword(c *gin.Context) {
 func (h *UserHandler) HandleVerifyResetToken(c *gin.Context) {
 	var req dto.VerifyResetTokenRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -791,16 +795,16 @@ func (h *UserHandler) HandleVerifyResetToken(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidResetToken):
-			response.BadRequest(c, "重置密码令牌无效")
+			response.BadRequest(c, "user.reset_token_invalid")
 		case errors.Is(err, service.ErrResetTokenExpired):
-			response.BadRequest(c, "重置密码令牌已过期")
+			response.BadRequest(c, "user.reset_token_expired")
 		default:
-			response.InternalError(c, "验证令牌失败")
+			response.InternalError(c, "user.verify_token_failed")
 		}
 		return
 	}
 
-	response.Success(c, gin.H{"message": "令牌有效"})
+	response.Success(c, gin.H{"message": response.T(c, "user.token_valid")})
 }
 
 // HandleResetPasswordWithToken 使用令牌重置密码
@@ -816,7 +820,7 @@ func (h *UserHandler) HandleVerifyResetToken(c *gin.Context) {
 func (h *UserHandler) HandleResetPasswordWithToken(c *gin.Context) {
 	var req dto.ResetPasswordWithTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -824,14 +828,14 @@ func (h *UserHandler) HandleResetPasswordWithToken(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidResetToken):
-			response.BadRequest(c, "重置密码令牌无效")
+			response.BadRequest(c, "user.reset_token_invalid")
 		case errors.Is(err, service.ErrResetTokenExpired):
-			response.BadRequest(c, "重置密码令牌已过期")
+			response.BadRequest(c, "user.reset_token_expired")
 		default:
-			response.InternalError(c, "重置密码失败")
+			response.InternalError(c, "user.reset_password_failed")
 		}
 		return
 	}
 
-	response.Success(c, gin.H{"message": "密码重置成功"})
+	response.Success(c, gin.H{"message": response.T(c, "user.password_reset")})
 }

@@ -1,0 +1,26 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} 已部署到命名空间 {{ .Release.Namespace }}。
+
+访问地址：
+{{- if .Values.ingress.enabled }}
+  http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ .Release.Name }}-frontend 8080:80
+  然后打开 http://127.0.0.1:8080
+{{- end }}
+
+────────────────────────────────────────────────────────────
+首次部署：完成初始化向导
+────────────────────────────────────────────────────────────
+
+本系统不预置任何默认管理员账号。打开上面的地址会自动进入初始化向导，
+在那里创建管理员、填写站点域名和平台语言。
+
+向导需要一个初始化令牌，用下面的命令取：
+
+  kubectl -n {{ .Release.Namespace }} get secret {{ .Release.Name }}-secret \
+    -o jsonpath='{.data.setup-token}' | base64 -d; echo
+
+（这里刻意不直接把令牌打印出来 —— helm install 的输出通常会进 CI 日志。）
+
+如果这是在已有数据库上重装，初始化早已完成，打开地址会直接进登录页，
+上面的令牌用不上，可以忽略。

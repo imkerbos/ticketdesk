@@ -10,7 +10,7 @@
       @blur="validate"
     >
       <template v-if="readonly && isValid" #append>
-        <el-button link type="primary" @click="open">打开</el-button>
+        <el-button link type="primary" @click="open">{{ t('component.field.open') }}</el-button>
       </template>
     </el-input>
     <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
@@ -18,8 +18,11 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, watch } from 'vue'
 import type { FieldDefinition, FieldSchemeItem } from '@/types/field'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   field: FieldDefinition
@@ -55,7 +58,7 @@ const validate = () => {
     return
   }
   if (!isValid.value) {
-    errorMsg.value = 'URL 格式无效（需 http:// 或 https://）'
+    errorMsg.value = t('component.field.urlInvalid')
   } else {
     errorMsg.value = ''
   }
@@ -91,7 +94,7 @@ const handleChange = (value: string) => {
 }
 
 .error {
-  color: var(--td-color-danger, #ef4444);
+  color: var(--td-color-danger, var(--td-color-danger));
   font-size: 12px;
   margin-top: 4px;
 }

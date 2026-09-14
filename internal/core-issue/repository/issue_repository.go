@@ -41,6 +41,8 @@ type ListStats struct {
 	Total           int64
 	Resolved        int64
 	AvgResolveHours float64
+	// Capped 为 true 表示命中扫描上限，统计值为基于前 maxCountLimit 行的近似结果
+	Capped bool `gorm:"-"`
 }
 
 // ProjectOverviewStats 项目概述统计（按状态分组）
@@ -162,12 +164,18 @@ func (r *issueRepository) buildFilterQuery(ctx context.Context, filter *IssueFil
 		query = query.Where("epic_id = ?", *filter.EpicID)
 	}
 	if filter.Keyword != "" {
+		// 注意：前导通配符使索引不可用。实测 34 万行全库搜索约 65ms，
+		// 但叠加 project_id 过滤后优化器先走项目索引、只扫该项目的行，约 5ms。
+		// 曾尝试改用 ngram 全文索引，实测在「项目内搜索」这一主场景下反而慢 20 倍
+		// （全文索引先命中大量行再回表过滤），故保留 LIKE。
+		// 若将来全库搜索成为瓶颈，正解是接入外部检索引擎而非 MySQL 全文索引。
 		keyword := "%" + filter.Keyword + "%"
 		query = query.Where("issue_key LIKE ? OR title LIKE ?", keyword, keyword)
 	}
-	if filter.Category == "alert" {
+	switch filter.Category {
+	case "alert":
 		query = query.Where("issue_type_id IN (SELECT id FROM issue_types WHERE name = 'Alert')")
-	} else if filter.Category == "normal" {
+	case "normal":
 		query = query.Where("issue_type_id NOT IN (SELECT id FROM issue_types WHERE name = 'Alert')")
 	}
 	if filter.StartDate != nil {
@@ -235,20 +243,33 @@ func (r *issueRepository) List(ctx context.Context, filter *IssueFilter, offset,
 }
 
 // GetListStats 根据过滤条件聚合统计工单数据
+//
+// 与 List 一样对扫描行数封顶：原实现对同一组过滤条件做无上限的
+// COUNT + SUM + AVG(TIMESTAMPDIFF)，在大表上是一次全量扫描，
+// 恰好抵消了 List 里做的封顶计数优化。
+// 这里先用子查询取最多 maxCountLimit 行，再在其上聚合。
 func (r *issueRepository) GetListStats(ctx context.Context, filter *IssueFilter) (*ListStats, error) {
 	query := r.buildFilterQuery(ctx, filter)
 	if query == nil {
 		return &ListStats{}, nil
 	}
 
+	sub := query.Session(&gorm.Session{}).
+		Select("status", "created_at", "resolved_at").
+		Limit(maxCountLimit)
+
 	var stats ListStats
-	err := query.Select(
+	err := r.db.WithContext(ctx).Table("(?) AS capped", sub).Select(
 		"COUNT(*) AS total",
 		"SUM(CASE WHEN status IN ('resolved','closed') THEN 1 ELSE 0 END) AS resolved",
 		"COALESCE(AVG(CASE WHEN resolved_at IS NOT NULL THEN TIMESTAMPDIFF(SECOND, created_at, resolved_at) END) / 3600, 0) AS avg_resolve_hours",
 	).Scan(&stats).Error
 	if err != nil {
 		return nil, err
+	}
+	if stats.Total >= int64(maxCountLimit) {
+		stats.Total = int64(maxCountLimit - 1)
+		stats.Capped = true
 	}
 	return &stats, nil
 }

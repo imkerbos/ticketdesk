@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/kerbos/ticketdesk/internal/model"
 	"github.com/kerbos/ticketdesk/pkg/config"
 	"github.com/kerbos/ticketdesk/pkg/logger"
+	"github.com/kerbos/ticketdesk/pkg/safehttp"
 )
 
 // DatasourceService 数据源服务接口
@@ -250,7 +252,7 @@ func (s *datasourceService) TestConnection(ctx context.Context, req *dto.TestDat
 				Message: fmt.Sprintf("请求创建失败: %v", err),
 			}, nil
 		}
-		httpClient := &http.Client{Timeout: 10 * time.Second}
+		httpClient := safehttp.NewClient(10 * time.Second)
 		resp, err := httpClient.Do(httpReq)
 		latency := time.Since(start).Milliseconds()
 		if err != nil {
@@ -487,7 +489,10 @@ func (s *datasourceService) toDatasourceResponse(ds *model.AlertDatasource) *dto
 	var configMap map[string]interface{}
 	_ = json.Unmarshal([]byte(ds.Config), &configMap)
 
-	webhookURL := fmt.Sprintf("/api/v1/alerts/datasource/%s/webhook", ds.Name)
+	// 数据源名允许中文和空格，直接拼进路径会得到一个复制到 Prometheus / 夜莺
+	// 配置里就用不了的 URL（形如 .../datasource/夜莺 N9E/webhook）。
+	// 这里做路径转义，路由侧拿到的仍是解码后的原名，行为不变。
+	webhookURL := fmt.Sprintf("/api/v1/alerts/datasource/%s/webhook", url.PathEscape(ds.Name))
 
 	return &dto.DatasourceResponse{
 		ID:           ds.ID,

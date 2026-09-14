@@ -41,7 +41,7 @@ func NewActivityHandler(activityService service.ActivityService) *ActivityHandle
 func (h *ActivityHandler) HandleListActivities(c *gin.Context) {
 	var req dto.ListActivitiesRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 

@@ -7,7 +7,9 @@
   border-radius: var(--td-radius-xl) !important;
   overflow: hidden;
   box-shadow: var(--td-elevation-4) !important;
-  background: var(--td-bg-card) !important;
+  background: var(--td-overlay-bg-translucent) !important;
+  backdrop-filter: saturate(180%) blur(30px);
+  -webkit-backdrop-filter: saturate(180%) blur(30px);
 }
 
 .el-dialog__header {
@@ -29,10 +31,12 @@
   font-size: var(--td-font-md);
 }
 
+// 页脚不另起底色：一条上边线已经把操作区和表单分开了，
+// 再加一层灰底就成了「白头 + 白身 + 灰脚」的三段拼色，
+// 而那条灰带本身不表达任何信息
 .el-dialog__footer {
   padding: var(--td-space-3) var(--td-space-6) !important;
   border-top: 1px solid var(--td-border-color);
-  background: var(--td-bg-section);
 }
 
 .el-dialog__headerbtn {
@@ -59,9 +63,26 @@
   backdrop-filter: blur(2px);
 }
 
+// ============ el-button ============
+// Apple 的按钮是 30px 高、13px 字。Element 默认 32/14，
+// 只设 --el-component-size 不够，尺寸走的是自己的 padding。
+.el-button {
+  height: var(--el-component-size);
+  padding: 0 13px;
+  font-size: var(--td-font-base);
+  font-weight: var(--td-weight-medium);
+}
+
+.el-button--small {
+  height: var(--el-component-size-small);
+  padding: 0 10px;
+  font-size: var(--td-font-sm);
+}
+
 // ============ el-tabs ============
+// 与页内其它块保持同一节奏（样张是 14px 等距）
 .el-tabs__header {
-  margin: 0 0 var(--td-space-4) 0 !important;
+  margin: 0 0 14px 0 !important;
 }
 
 .el-tabs__nav-wrap::after {
@@ -70,18 +91,18 @@
 }
 
 .el-tabs__active-bar {
-  background-color: var(--td-color-primary) !important;
+  background-color: var(--td-text-primary) !important;
   height: 2px !important;
   border-radius: var(--td-radius-xs);
 }
 
 .el-tabs__item {
-  font-size: var(--td-font-md) !important;
-  font-weight: var(--td-weight-medium) !important;
+  font-size: var(--td-font-body) !important;
+  font-weight: var(--td-weight-regular) !important;
   color: var(--td-text-secondary) !important;
-  padding: 0 var(--td-space-5) !important;
-  height: 44px !important;
-  line-height: 44px !important;
+  padding: 0 var(--td-space-3) !important;
+  height: 28px !important;
+  line-height: 28px !important;
   transition: var(--td-transition-color);
 
   &:hover {
@@ -89,7 +110,7 @@
   }
 
   &.is-active {
-    color: var(--td-color-primary) !important;
+    color: var(--td-text-primary) !important;
     font-weight: var(--td-weight-semibold) !important;
   }
 
@@ -121,11 +142,13 @@
       border-color: var(--td-color-primary);
     }
 
+    // 当前页用"淡底 + 深色字"，不用实心主色：
+    // 一屏里的实心填充只留给唯一的主操作（创建工单）
     &.is-active {
-      background: var(--td-color-primary) !important;
-      color: #fff !important;
-      border-color: var(--td-color-primary);
-      box-shadow: var(--td-elevation-1);
+      background: var(--td-bg-section) !important;
+      color: var(--td-text-primary) !important;
+      border-color: var(--td-border-color);
+      font-weight: var(--td-weight-semibold);
     }
 
     &.is-disabled {
@@ -204,10 +227,14 @@
 }
 
 // ============ el-dropdown-menu ============
+// 边框 / 阴影 / 圆角统一交给外层 .el-popper 那一层承担（见下面「下拉浮层」）。
+// 两层各画一遍的后果：外层是 Element 默认的 4px、内层 8px，
+// 外圆角比内圆角还小，边上会露出一圈，也违反同心圆角。
 .el-dropdown-menu {
-  border-radius: var(--td-radius-md) !important;
-  box-shadow: var(--td-elevation-3) !important;
-  border: 1px solid var(--td-border-color) !important;
+  border-radius: inherit !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  background: transparent !important;
   padding: var(--td-space-1) !important;
 }
 
@@ -253,20 +280,60 @@
   box-shadow: var(--td-elevation-3) !important;
   border: 1px solid var(--td-border-color) !important;
   padding: var(--td-space-3) !important;
+  background: var(--td-overlay-bg-translucent) !important;
+  backdrop-filter: saturate(180%) blur(30px);
+  -webkit-backdrop-filter: saturate(180%) blur(30px);
 }
 
-// ============ el-card (强化默认) ============
+// ============ 下拉浮层（select / dropdown）============
+// 和弹窗同一套材质：它们都真正盖在内容之上，背后有东西可透。
+// 注意不要叠玻璃 —— 浮层里的子项保持不透明，否则层级会糊成一片。
+.el-select__popper.el-popper,
+.el-dropdown__popper.el-popper {
+  // Element 默认给 .el-popper 的是 4px —— 圆角标度里没有这一档
+  // （徽章 5 / 按钮 8 / 卡片 12 / 弹窗 18）。浮层按「卡片」这一档走。
+  border-radius: var(--td-radius-lg) !important;
+  border: 1px solid var(--td-border-color) !important;
+  box-shadow: var(--td-elevation-3) !important;
+  background: var(--td-overlay-bg-translucent) !important;
+  backdrop-filter: saturate(180%) blur(30px);
+  -webkit-backdrop-filter: saturate(180%) blur(30px);
+  overflow: hidden;
+}
+
+// 下拉里的选项：内圆角 = 外圆角 − 容器内边距（4px），保持同心
+.el-select__popper .el-select-dropdown__item,
+.el-dropdown__popper .el-dropdown-menu__item {
+  border-radius: var(--td-radius-md) !important;
+}
+
+// ============ el-card ============
+// 方向 A：卡片只保留一条发丝边框，不再浮起。
+// 页面里同时存在页头盒、筛选盒、统计盒、表格盒时，
+// 统一的圆角 + 阴影会让四者视觉权重完全相同，等于没有层级。
 .el-card {
   border-radius: var(--td-radius-lg) !important;
   border: 1px solid var(--td-border-color);
   background: var(--td-bg-card);
+  box-shadow: none !important;
 
+  // hover 抬升同样取消：列表页里十几张卡片一起抖动是噪音
   &.is-hover-shadow {
-    transition: var(--td-transition-shadow);
+    transition: var(--td-transition-border);
 
     &:hover {
-      box-shadow: var(--td-elevation-3) !important;
+      box-shadow: none !important;
+      border-color: var(--td-border-color-dark);
     }
+  }
+
+  .el-card__header {
+    border-bottom: 1px solid var(--td-border-color-light);
+    padding: var(--td-space-3) var(--td-space-4);
+  }
+
+  .el-card__body {
+    padding: var(--td-space-4);
   }
 }
 
@@ -308,4 +375,209 @@
   .el-breadcrumb__inner {
     transition: none !important;
   }
+}
+
+// ============ 图标色块 ============
+// 这里原来有一条 17 个类名的大锤：统一 !important 掉宽高、底色、圆角和颜色，
+// 把「浅色圆角方块 + 图标」一次性压成弱色图标。
+//
+// 现在删掉了，因为那些色块已经在各自的组件里从源头去掉了，
+// 而这条大锤的 !important 反过来会盖掉组件里**刻意**写的样式：
+//   · .security-icon  账户安全里的 ✓ / ⓘ 是状态指示，需要绿色和橙色
+//   · .section-title-icon / .type-card-icon  飞书与 Telegram 的品牌色标，
+//     代表「这是哪个平台」，属于数据
+//   · .error-icon  SSO 出错页的图标要红色
+// 这些都被压成了同一个灰。
+//
+// 新增图标时按 §3.1 判断：装饰性的别加色块，承载状态或身份的在组件里自己写。
+
+// ============ 状态标签：实心 → 淡底（方向 A 核心）============
+// Element 的 effect="dark" 会渲染成饱和实心块。工单详情页一屏里同时出现
+// 蓝色「故障」、红色「P0」、绿色「进行中」、橙色「进行中」四个实心药丸，
+// 每一个都在抢注意力，结果就是没有重点，也是"廉价感"最直接的来源。
+//
+// 大厂做法：状态用「淡底 + 深色文字 + 发丝边」，实心填充只留给一屏里唯一的主操作。
+// 这里统一改写，不必逐页去掉 effect="dark"。
+.el-tag {
+  --el-tag-border-radius: var(--td-radius-sm);
+  border-radius: var(--td-radius-sm) !important;
+  font-weight: var(--td-weight-medium);
+  border-width: 1px !important;
+  border-style: solid !important;
+
+  &.el-tag--dark,
+  &.el-tag--plain,
+  &.el-tag--light {
+    background-color: var(--td-tag-info-bg) !important;
+    border-color: var(--td-tag-info-border) !important;
+    color: var(--td-tag-info-text) !important;
+  }
+
+  &.el-tag--danger  { background-color: var(--td-tag-danger-bg) !important;  border-color: var(--td-tag-danger-border) !important;  color: var(--td-tag-danger-text) !important; }
+  &.el-tag--warning { background-color: var(--td-tag-warning-bg) !important; border-color: var(--td-tag-warning-border) !important; color: var(--td-tag-warning-text) !important; }
+  &.el-tag--success { background-color: var(--td-tag-success-bg) !important; border-color: var(--td-tag-success-border) !important; color: var(--td-tag-success-text) !important; }
+  &.el-tag--primary { background-color: var(--td-tag-primary-bg) !important; border-color: var(--td-tag-primary-border) !important; color: var(--td-tag-primary-text) !important; }
+  &.el-tag--info    { background-color: var(--td-tag-info-bg) !important;    border-color: var(--td-tag-info-border) !important;    color: var(--td-tag-info-text) !important; }
+}
+
+// ============ 破坏性按钮：实心红 → 克制 ============
+// 每个详情页右上角常驻一个实心红「删除」，视觉权重高于真正的主操作。
+// 改为淡底红字，hover 才加深；真正危险的确认动作在弹窗里，那里才需要实心。
+.el-button--danger:not(.is-link):not(.is-text) {
+  background-color: var(--td-tag-danger-bg) !important;
+  border-color: var(--td-tag-danger-border) !important;
+  color: var(--td-tag-danger-text) !important;
+
+  &:hover, &:focus-visible {
+    background-color: var(--td-color-danger) !important;
+    border-color: var(--td-color-danger) !important;
+    color: #fff !important;
+  }
+}
+
+// 成功按钮同理：审批「通过」不需要一块实心绿
+.el-button--success:not(.is-link):not(.is-text) {
+  background-color: var(--td-tag-success-bg) !important;
+  border-color: var(--td-tag-success-border) !important;
+  color: var(--td-tag-success-text) !important;
+
+  &:hover, &:focus-visible {
+    background-color: var(--td-color-success) !important;
+    border-color: var(--td-color-success) !important;
+    color: #fff !important;
+  }
+}
+
+// ============ 破坏性文字链接 ============
+// 「删除」「移除」「取消关注」这类以红色文字常驻在列表每一行/每个面板角落，
+// 会让页面看上去到处是警告。默认降为中性色，hover 才转红——
+// 意图仍然明确，但不再持续占用注意力。
+.el-button.is-link.el-button--danger,
+.el-button.is-text.el-button--danger {
+  color: var(--td-text-secondary) !important;
+
+  &:hover, &:focus-visible {
+    color: var(--td-color-danger) !important;
+    background: transparent !important;
+  }
+}
+
+// ============ 卡片头部的装饰性图标 ============
+// 「描述」「详细信息」「扩展字段」这类标题前的小图标不承载信息，
+// 每个面板重复一次反而削弱标题本身。统一压到最弱的一档。
+.el-card__header .el-icon,
+.card-header .el-icon:first-child,
+.panel-header .el-icon:first-child {
+  color: var(--td-text-disabled);
+}
+
+// ============ 交互三态补全（方向 A）============
+// 之前只有 hover 有反馈，focus 与 active 基本缺席：
+// 键盘用户看不到自己在哪，鼠标按下也没有"被接住"的确认。
+
+// 统一的键盘焦点环。只用 :focus-visible，避免鼠标点击后残留焦点框。
+.el-button:focus-visible,
+.el-tag:focus-visible,
+.el-checkbox__input:focus-visible .el-checkbox__inner,
+.el-radio__input:focus-visible .el-radio__inner,
+.el-switch:focus-visible .el-switch__core,
+.el-pagination button:focus-visible,
+.el-tabs__item:focus-visible,
+.el-dropdown-menu__item:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--td-focus-ring) !important;
+  border-radius: var(--td-radius-sm);
+}
+
+// 按下态：轻微下沉 + 加深，给出"接住了"的确认。
+// 不用位移动画，避免布局抖动。
+.el-button:not(.is-disabled):active {
+  transform: translateY(0.5px);
+  filter: brightness(0.96);
+}
+
+// 表格行：hover 之外补一个按下态，长列表里点击目标更明确
+.el-table .el-table__row:active > td.el-table__cell {
+  background: var(--td-bg-card-hover) !important;
+}
+
+// 可点击的行/卡片：光标与过渡统一
+.el-table .el-table__row,
+.clickable-row {
+  cursor: pointer;
+}
+
+// 输入框：hover 也给出边界反馈，不必等到聚焦
+.el-input__wrapper:hover:not(.is-focus),
+.el-textarea__inner:hover:not(:focus) {
+  border-color: var(--td-border-color-dark);
+}
+
+// ============ 分段控件 ============
+// 一组互斥选项（全部/我的待办/我创建的、表格/看板）原来用的是
+// el-button-group + type="primary"，当前项是饱和实心蓝。一屏里这样的
+// 实心蓝有三处，主操作「创建工单」就不再是主操作了。
+//
+// 改成 macOS 的分段控件：整组一个灰底槽，当前项是一枚浅色滑块。
+// 加 .td-segmented 到 el-button-group / el-radio-group 上即可。
+.td-segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--td-radius-md);
+  background: var(--td-segmented-track);
+
+  .el-button,
+  .el-radio-button__inner {
+    height: 25px;
+    padding: 0 11px;
+    border: none !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--td-text-secondary) !important;
+    font-size: var(--td-font-sm);
+    font-weight: var(--td-weight-regular);
+    margin: 0;
+    transition: var(--td-transition-bg), var(--td-transition-color);
+  }
+
+  .el-button:hover,
+  .el-radio-button__inner:hover {
+    color: var(--td-text-primary) !important;
+  }
+
+  // 当前项：浅色滑块。用轻微阴影把它"抬"起来，这是整个界面里
+  // 少数几处该有阴影的地方——它确实浮在槽上面。
+  .el-button.el-button--primary,
+  .el-button.is-active,
+  .el-radio-button.is-active .el-radio-button__inner {
+    background: var(--td-segmented-thumb) !important;
+    color: var(--td-text-primary) !important;
+    font-weight: var(--td-weight-medium);
+    box-shadow: var(--td-segmented-shadow) !important;
+  }
+
+  // 组内按钮之间不要 Element 默认的负边距和分隔线
+  .el-button + .el-button {
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .td-segmented .el-button,
+  .td-segmented .el-radio-button__inner {
+    transition: none;
+  }
+}
+
+// 链接按钮 hover 时加下划线，颜色之外再给一个非色彩线索（色觉障碍可辨）
+.el-button.is-link:hover,
+.el-button.is-text:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .el-button:not(.is-disabled):active { transform: none; }
 }

@@ -1,7 +1,7 @@
 <template>
   <el-input
     v-model="internalValue"
-    :placeholder="field.description || '例如: 2h 30m, 1d 4h'"
+    :placeholder="field.description || t('component.field.timeEstimatePlaceholder')"
     :disabled="disabled"
     :readonly="readonly"
     clearable
@@ -9,7 +9,7 @@
   >
     <template #suffix>
       <el-tooltip
-        content="支持格式: 1w 2d 3h 4m (周/天/小时/分钟)"
+        :content="t('component.field.timeEstimateTip')"
         placement="top"
       >
         <el-icon><QuestionFilled /></el-icon>
@@ -19,9 +19,12 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, watch } from 'vue'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import type { FieldDefinition, FieldSchemeItem } from '@/types/field'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   field: FieldDefinition

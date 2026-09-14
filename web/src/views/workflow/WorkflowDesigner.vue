@@ -5,7 +5,7 @@
       <div class="toolbar-left">
         <el-button text @click="goBack">
           <el-icon><ArrowLeft /></el-icon>
-          返回
+          {{ t('common.back') }}
         </el-button>
         <el-divider direction="vertical" />
         <div class="workflow-title">
@@ -22,19 +22,19 @@
             @blur="finishEditTitle"
             @keyup.enter="finishEditTitle"
           />
-          <el-tag v-if="hasUnsavedChanges" type="warning" size="small" class="unsaved-tag">未保存</el-tag>
+          <el-tag v-if="hasUnsavedChanges" type="warning" size="small" class="unsaved-tag">{{ t('workflow.designer.unsaved') }}</el-tag>
         </div>
       </div>
       <div class="toolbar-right">
-        <el-button :icon="Rank" @click="autoLayout">自动布局</el-button>
+        <el-button :icon="Rank" @click="autoLayout">{{ t('workflow.designer.autoLayout') }}</el-button>
         <el-button type="primary" :loading="saving" :icon="Check" @click="handleSave">
-          保存
+          {{ t('common.save') }}
         </el-button>
       </div>
     </div>
 
     <!-- 主体区域 -->
-    <div v-loading="loading" class="designer-body" element-loading-text="加载工作流...">
+    <div v-loading="loading" class="designer-body" :element-loading-text="t('workflow.designer.loading')">
       <!-- 左侧节点工具栏 -->
       <NodeToolbar />
 
@@ -57,10 +57,18 @@
           @connect="onConnect"
           @node-drag-stop="onNodeDragStop"
         >
-          <Background :gap="20" :size="1" pattern-color="#e5e7eb" />
+          <Background :gap="20" :size="1" pattern-color="var(--td-border-color)" />
           <Controls position="bottom-left" />
-          <MiniMap position="bottom-right" :pannable="true" :zoomable="true" />
+          <!-- 没有节点时缩略图就是一块空白板子，只剩噪音 -->
+          <MiniMap v-if="nodes.length > 0" position="bottom-right" :pannable="true" :zoomable="true" />
         </VueFlow>
+
+        <!-- 空画布要说清楚下一步怎么做：草稿工作流打开就是一整片网格，
+             没有任何提示时看不出「从左边拖一个节点进来」是入口。 -->
+        <div v-if="!loading && nodes.length === 0" class="canvas-empty">
+          <div class="canvas-empty-title">{{ t('workflow.designer.emptyTitle') }}</div>
+          <div class="canvas-empty-desc">{{ t('workflow.designer.emptyDesc') }}</div>
+        </div>
       </div>
 
       <!-- 右侧配置面板 -->
@@ -87,6 +95,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, onMounted, markRaw, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { VueFlow, ConnectionMode, MarkerType, useVueFlow } from '@vue-flow/core'
@@ -126,6 +135,8 @@ import NodeToolbar from './components/NodeToolbar.vue'
 import NodeConfigPanel from './components/NodeConfigPanel.vue'
 import EdgeConfigPanel from './components/EdgeConfigPanel.vue'
 
+const { t } = useI18n()
+
 // 避免 unused 警告
 void ConnectionIcon
 
@@ -149,10 +160,10 @@ const nodeTypes: any = {
 const defaultEdgeOptions = {
   type: 'smoothstep',
   animated: true,
-  style: { stroke: '#94a3b8', strokeWidth: 2 },
+  style: { stroke: 'var(--td-border-color-dark)', strokeWidth: 1.5 },
   markerEnd: {
     type: MarkerType.ArrowClosed,
-    color: '#94a3b8',
+    color: 'var(--td-border-color-dark)',
   },
 }
 
@@ -210,7 +221,7 @@ const loadWorkflow = async () => {
     allUsers.value = (edgesRes.data as any).data || []
     hasUnsavedChanges.value = false
   } catch {
-    ElMessage.error('加载工作流失败')
+    ElMessage.error(t('workflow.designer.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -238,26 +249,34 @@ const convertBackendNodeToFlow = (node: WorkflowNode): Node => {
 }
 
 // 预设条件的显示名称映射
-const presetConditionLabels: Record<string, string> = {
-  approved: '通过',
-  rejected: '拒绝',
-}
+const presetConditionLabels = (): Record<string, string> => ({
+  approved: t('workflow.edge.approved'),
+  rejected: t('issue.detail.reject'),
+})
 
 const convertBackendEdgeToFlow = (edge: WorkflowEdge): Edge => {
   // 将条件表达式转为友好标签：预设条件用中文，自定义条件直接显示
-  const conditionLabel = presetConditionLabels[edge.condition_expr] || edge.condition_expr || ''
+  const conditionLabel = presetConditionLabels()[edge.condition_expr] || edge.condition_expr || ''
   return {
     id: String(edge.id),
     source: String(edge.source_node_id),
     target: String(edge.target_node_id),
     type: 'smoothstep',
     animated: true,
-    style: { stroke: '#94a3b8', strokeWidth: 2 },
+    style: { stroke: 'var(--td-border-color-dark)', strokeWidth: 1.5 },
     markerEnd: {
       type: MarkerType.ArrowClosed,
-      color: '#94a3b8',
+      color: 'var(--td-border-color-dark)',
     },
     label: conditionLabel,
+    // 边标签是 SVG 文本，而节点是 HTML 层、天然盖在边层之上。
+    // 单靠 z-index 压不过去（那会让连线也盖住节点，更糟），
+    // 因此给标签配一块不透明底：即使与节点重叠，文字本身依然可读。
+    labelShowBg: true,
+    labelBgPadding: [6, 3] as [number, number],
+    labelBgBorderRadius: 4,
+    labelBgStyle: { fill: 'var(--td-bg-card)', stroke: 'var(--td-border-color)', strokeWidth: 1 },
+    labelStyle: { fill: 'var(--td-text-secondary)', fontSize: 11 },
     data: {
       conditionExpr: edge.condition_expr || '',
       backendId: edge.id,
@@ -289,11 +308,11 @@ const onDrop = (event: DragEvent) => {
   })
 
   const defaultNames: Record<string, string> = {
-    start: '开始',
-    end: '结束',
-    approval: '审批节点',
-    work: '工作节点',
-    system: '系统节点',
+    start: t('workflow.nodeTypeMap.start'),
+    end: t('workflow.nodeTypeMap.end'),
+    approval: t('workflow.nodeTypeFullMap.approval'),
+    work: t('workflow.nodeTypeFullMap.work'),
+    system: t('workflow.nodeTypeFullMap.system'),
   }
 
   const newNode: Node = {
@@ -301,7 +320,7 @@ const onDrop = (event: DragEvent) => {
     type: nodeType,
     position,
     data: {
-      label: defaultNames[nodeType] || '新节点',
+      label: defaultNames[nodeType] || t('workflow.designer.newNode'),
       nodeType: nodeType,
       config: {},
       backendId: undefined,
@@ -335,8 +354,13 @@ const onPaneClick = () => {
   selectedEdge.value = null
 }
 
-const onNodesChange = (_changes: NodeChange[]) => {
-  hasUnsavedChanges.value = true
+const onNodesChange = (changes: NodeChange[]) => {
+  // Vue Flow 首次渲染时会发出 dimensions 变更（测量节点尺寸），select 只是
+  // 选中态 —— 两者都不是对图的修改。原来不加区分地标脏，页面一打开就常驻
+  // 「未保存」，离开时还会弹一次"有未保存变更"的确认框。
+  if (changes.some((c) => c.type !== 'dimensions' && c.type !== 'select')) {
+    hasUnsavedChanges.value = true
+  }
 }
 
 const onNodeDragStop = () => {
@@ -349,7 +373,7 @@ const onConnect = (connection: Connection) => {
     e => e.source === connection.source && e.target === connection.target
   )
   if (exists) {
-    ElMessage.warning('该连接已存在')
+    ElMessage.warning(t('workflow.designer.edgeExists'))
     return
   }
 
@@ -359,10 +383,10 @@ const onConnect = (connection: Connection) => {
     target: connection.target,
     type: 'smoothstep',
     animated: true,
-    style: { stroke: '#94a3b8', strokeWidth: 2 },
+    style: { stroke: 'var(--td-border-color-dark)', strokeWidth: 1.5 },
     markerEnd: {
       type: MarkerType.ArrowClosed,
-      color: '#94a3b8',
+      color: 'var(--td-border-color-dark)',
     },
     data: {
       conditionExpr: '',
@@ -403,7 +427,7 @@ const onEdgeConfigUpdate = (payload: { id: string; conditionExpr: string; label?
 
   const updated = { ...edges.value[idx] }
   // 使用显式标签，如果没有则用条件表达式的友好名称
-  const conditionLabel = presetConditionLabels[payload.conditionExpr] || payload.conditionExpr
+  const conditionLabel = presetConditionLabels()[payload.conditionExpr] || payload.conditionExpr
   updated.label = payload.label || conditionLabel || ''
   updated.data = {
     ...updated.data,
@@ -419,7 +443,7 @@ const onEdgeConfigUpdate = (payload: { id: string; conditionExpr: string; label?
 
 const onDeleteNode = async (nodeId: string) => {
   try {
-    await ElMessageBox.confirm('确定要删除该节点吗？关联的边也会被删除。', '删除确认', {
+    await ElMessageBox.confirm(t('workflow.designer.confirmDeleteNode'), t('issue.list.deleteTitle'), {
       type: 'warning',
     })
   } catch {
@@ -436,7 +460,7 @@ const onDeleteNode = async (nodeId: string) => {
 
 const onDeleteEdge = async (edgeId: string) => {
   try {
-    await ElMessageBox.confirm('确定要删除该连接吗？', '删除确认', {
+    await ElMessageBox.confirm(t('workflow.designer.confirmDeleteEdge'), t('issue.list.deleteTitle'), {
       type: 'warning',
     })
   } catch {
@@ -453,11 +477,11 @@ const onDeleteEdge = async (edgeId: string) => {
 const autoLayout = () => {
   if (nodes.value.length === 0) return
 
-  // 简单的自上而下自动布局
+  // 简单的从左到右自动布局
   // 找到开始节点
   const startNode = nodes.value.find(n => n.data.nodeType === 'start')
   if (!startNode) {
-    ElMessage.warning('未找到开始节点')
+    ElMessage.warning(t('workflow.designer.noStartNode'))
     return
   }
 
@@ -498,22 +522,23 @@ const autoLayout = () => {
     levelGroups.get(level)!.push(nodeId)
   }
 
-  // 计算位置
-  const yGap = 150
-  const xGap = 220
+  // 从左往右排：层级决定 x，同层内的分支往下错开。
+  // 节点的 handle 在左右两边（见 nodes/*.vue），纵向排会让每条边都绕 U 形。
+  const xGap = 300
+  const yGap = 170
 
   const updatedNodes = nodes.value.map(node => {
     const level = levels.get(node.id) || 0
     const group = levelGroups.get(level) || [node.id]
     const indexInGroup = group.indexOf(node.id)
-    const groupWidth = (group.length - 1) * xGap
-    const startX = 400 - groupWidth / 2
+    const groupHeight = (group.length - 1) * yGap
+    const startY = 240 - groupHeight / 2
 
     return {
       ...node,
       position: {
-        x: startX + indexInGroup * xGap,
-        y: 50 + level * yGap,
+        x: 60 + level * xGap,
+        y: startY + indexInGroup * yGap,
       },
     }
   })
@@ -539,10 +564,10 @@ const handleSave = async () => {
     // 4. 重新加载数据以获取最新的后端 ID
     await loadWorkflow()
 
-    ElMessage.success('保存成功')
+    ElMessage.success(t('common.saveSuccess'))
     hasUnsavedChanges.value = false
   } catch {
-    ElMessage.error('保存失败')
+    ElMessage.error(t('project.fieldConfig.saveFailed'))
   } finally {
     saving.value = false
   }
@@ -648,9 +673,9 @@ const finishEditTitle = () => {
 const goBack = async () => {
   if (hasUnsavedChanges.value) {
     try {
-      await ElMessageBox.confirm('有未保存的更改，确定要离开吗？', '提示', {
-        confirmButtonText: '离开',
-        cancelButtonText: '取消',
+      await ElMessageBox.confirm(t('workflow.designer.leaveConfirm'), t('issue.msg.tipTitle'), {
+        confirmButtonText: t('workflow.designer.leave'),
+        cancelButtonText: t('common.cancel'),
         type: 'warning',
       })
     } catch {
@@ -668,30 +693,37 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+/* 设计器要占满内容区：吃掉 .ap .content 的 20/24/24 内边距，
+   高度按 52px 顶栏算。 */
 .workflow-designer {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
-  width: 100%;
+  height: calc(100vh - 52px);
+  width: calc(100% + var(--td-content-pad-x) * 2);
+  /* 抵消 .content 的内边距做满幅。跟着变量走 —— 写死 24px 的话，
+     窄屏下 .content 变成 16px，两边各多撑 8px，页面主体就横滚了。 */
+  margin: calc(var(--td-content-pad-top) * -1) calc(var(--td-content-pad-x) * -1)
+    calc(var(--td-content-pad-bottom) * -1);
   background: var(--td-bg-page);
-  margin: -24px;
-  width: calc(100% + 48px);
 }
 
 .designer-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 20px;
+  gap: 12px;
+  padding: 0 16px;
+  height: 48px;
+  flex-shrink: 0;
   background: var(--td-bg-card);
   border-bottom: 1px solid var(--td-border-color);
-  flex-shrink: 0;
   z-index: 10;
 
   .toolbar-left {
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
   }
 
   .toolbar-right {
@@ -703,20 +735,25 @@ onMounted(() => {
   .workflow-title {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
+    min-width: 0;
 
     .title-icon {
-      font-size: 20px;
-      color: var(--td-color-primary);
+      font-size: 15px;
+      color: var(--td-text-placeholder);
     }
 
     .title-text {
-      font-size: 16px;
-      font-weight: 600;
+      font-size: 15px;
+      font-weight: 590;
+      letter-spacing: -0.015em;
       color: var(--td-text-primary);
       cursor: pointer;
       padding: 2px 6px;
-      border-radius: 4px;
+      border-radius: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
 
       &:hover {
         background: var(--td-bg-section);
@@ -724,7 +761,7 @@ onMounted(() => {
     }
 
     .unsaved-tag {
-      margin-left: 4px;
+      margin-left: 2px;
     }
   }
 }
@@ -741,62 +778,120 @@ onMounted(() => {
   overflow: hidden;
 }
 
+/* 空画布提示：只说话不挡操作 —— pointer-events: none，拖拽和点击照样落到画布上 */
+.canvas-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+  text-align: center;
+  padding: 0 24px;
+}
+
+.canvas-empty-title {
+  font-size: 15px;
+  font-weight: 590;
+  letter-spacing: -0.01em;
+  color: var(--td-text-secondary);
+}
+
+.canvas-empty-desc {
+  font-size: 12.5px;
+  color: var(--td-text-placeholder);
+  max-width: 32ch;
+  line-height: var(--td-leading-normal);
+}
+
 .vue-flow-canvas {
   width: 100%;
   height: 100%;
   background: var(--td-bg-page);
 }
 
-// Vue Flow 全局样式覆盖
+/* ── Vue Flow 覆盖 ───────────────────────────────── */
+/* 连线粗细与 convertBackendEdgeToFlow 里写的 1.5 对齐，
+   否则没走那条路径生成的边会粗一档 */
 :deep(.vue-flow__edge-path) {
-  stroke: #94a3b8;
-  stroke-width: 2;
+  stroke: var(--td-border-color-dark);
+  stroke-width: 1.5;
 }
 
 :deep(.vue-flow__edge.selected .vue-flow__edge-path) {
-  stroke: #3b82f6;
-  stroke-width: 3;
+  stroke: var(--td-color-primary);
+  stroke-width: 2;
 }
 
 :deep(.vue-flow__connection-line) {
-  stroke: #3b82f6;
-  stroke-width: 2;
+  stroke: var(--td-color-primary);
+  stroke-width: 1.5;
   stroke-dasharray: 5;
 }
 
 :deep(.vue-flow__handle) {
-  width: 10px;
-  height: 10px;
-  background: var(--td-text-secondary);
+  width: 9px;
+  height: 9px;
+  background: var(--td-text-placeholder);
   border: 2px solid var(--td-bg-card);
   border-radius: 50%;
-  transition: all 150ms ease-out;
+  transition: background-color 150ms ease-out;
 
   &:hover {
     background: var(--td-color-primary);
-    transform: scale(1.3);
   }
 }
 
+/* 边标签的背景块由 labelBgStyle 提供（见 convertBackendEdgeToFlow），
+   这里只统一字号，避免不同浏览器默认值不一致。 */
+:deep(.vue-flow__edge-text) {
+  font-size: 11px;
+}
+
 :deep(.vue-flow__minimap) {
+  border: 1px solid var(--td-border-color);
   border-radius: 8px;
+  background: var(--td-bg-card);
+  box-shadow: var(--td-elevation-3);
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 缩略图里的节点块和遮罩是 vue-flow 写死的浅灰，暗色下会变成一块亮斑 */
+:deep(.vue-flow__minimap-node) {
+  fill: var(--td-border-color-dark);
+  stroke: none;
+}
+
+:deep(.vue-flow__minimap-mask) {
+  /* 遮罩盖的是视口之外的区域，用页面底色半透明压暗，两种主题都成立 */
+  fill: var(--td-bg-page);
+  fill-opacity: 0.6;
 }
 
 :deep(.vue-flow__controls) {
+  border: 1px solid var(--td-border-color);
   border-radius: 8px;
+  box-shadow: var(--td-elevation-3);
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+  button {
+    background: var(--td-bg-card);
+    border-bottom: 1px solid var(--td-border-color-light);
+    color: var(--td-text-secondary);
+
+    /* 控件图标同样是写死的深色 fill，暗色下等于看不见 */
+    svg { fill: currentColor; }
+
+    &:hover { background: var(--td-bg-card-hover); }
+    &:last-child { border-bottom: none; }
+  }
 }
 
-.edge-label-badge {
-  background: var(--td-bg-card);
-  border: 1px solid var(--td-border-color);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 11px;
-  color: var(--td-text-secondary);
-  white-space: nowrap;
+@media (prefers-reduced-motion: reduce) {
+  :deep(.vue-flow__handle) {
+    transition: none;
+  }
 }
 </style>

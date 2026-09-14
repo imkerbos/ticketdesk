@@ -7,9 +7,9 @@
           <img v-if="brandStore.logoUrl" :src="brandStore.logoUrl" :alt="brandStore.systemName" class="logo-custom" />
           <span class="logo-text">{{ brandStore.systemName }}</span>
         </div>
-        <h1 class="brand-title">重置密码</h1>
+        <h1 class="brand-title">{{ t('auth.resetTitle') }}</h1>
         <p class="brand-description">
-          请输入您的新密码，密码长度至少为 6 位。
+          {{ t('auth.resetIntro') }}
         </p>
       </div>
       <div class="brand-footer">
@@ -22,17 +22,17 @@
       <div class="form-container">
         <div v-if="!tokenValid" class="error-state">
           <el-icon class="error-icon" :size="64"><CircleClose /></el-icon>
-          <h2 class="error-title">链接无效或已过期</h2>
-          <p class="error-message">重置密码链接已失效，请重新申请。</p>
+          <h2 class="error-title">{{ t('auth.linkInvalid') }}</h2>
+          <p class="error-message">{{ t('auth.linkInvalidDesc') }}</p>
           <el-button type="primary" size="large" @click="router.push('/forgot-password')">
-            重新申请
+            {{ t('auth.reapply') }}
           </el-button>
         </div>
 
         <div v-else>
           <div class="form-header">
-            <h2 class="form-title">设置新密码</h2>
-            <p class="form-subtitle">请输入您的新密码</p>
+            <h2 class="form-title">{{ t('auth.setNewPassword') }}</h2>
+            <p class="form-subtitle">{{ t('auth.setNewPasswordSubtitle') }}</p>
           </div>
 
           <el-form
@@ -44,11 +44,11 @@
             hide-required-asterisk
             @submit.prevent="handleSubmit"
           >
-            <el-form-item prop="newPassword" label="新密码">
+            <el-form-item prop="newPassword" :label="t('auth.newPassword')">
               <el-input
                 v-model="form.newPassword"
                 type="password"
-                placeholder="请输入新密码（至少6位）"
+                :placeholder="t('auth.newPasswordPlaceholder')"
                 size="large"
                 show-password
                 class="form-input"
@@ -59,11 +59,11 @@
               </el-input>
             </el-form-item>
 
-            <el-form-item prop="confirmPassword" label="确认密码">
+            <el-form-item prop="confirmPassword" :label="t('auth.confirmPassword')">
               <el-input
                 v-model="form.confirmPassword"
                 type="password"
-                placeholder="请再次输入新密码"
+                :placeholder="t('auth.confirmPasswordPlaceholder')"
                 size="large"
                 show-password
                 class="form-input"
@@ -83,7 +83,7 @@
                 :loading="loading"
                 @click="handleSubmit"
               >
-                {{ loading ? '重置中...' : '重置密码' }}
+                {{ loading ? t('auth.resetting') : t('auth.resetTitle') }}
               </el-button>
             </el-form-item>
           </el-form>
@@ -91,7 +91,7 @@
           <div class="form-footer">
             <router-link to="/login" class="back-link">
               <el-icon><ArrowLeft /></el-icon>
-              <span>返回登录</span>
+              <span>{{ t('auth.backToLogin') }}</span>
             </router-link>
           </div>
         </div>
@@ -101,12 +101,15 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Lock, ArrowLeft, CircleClose } from '@element-plus/icons-vue'
 import { verifyResetToken, resetPasswordWithToken } from '@/api/auth'
 import { useBrandStore } from '@/stores/brand'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const brandStore = useBrandStore()
@@ -123,9 +126,9 @@ const form = reactive({
 
 const validateConfirmPassword = (_rule: any, value: any, callback: any) => {
   if (value === '') {
-    callback(new Error('请再次输入密码'))
+    callback(new Error(t('auth.confirmRequired')))
   } else if (value !== form.newPassword) {
-    callback(new Error('两次输入的密码不一致'))
+    callback(new Error(t('auth.passwordMismatch')))
   } else {
     callback()
   }
@@ -133,11 +136,11 @@ const validateConfirmPassword = (_rule: any, value: any, callback: any) => {
 
 const rules: FormRules = {
   newPassword: [
-    { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, message: '密码长度至少为 6 位', trigger: 'blur' },
+    { required: true, message: t('auth.newPasswordRequired'), trigger: ['blur', 'change'] },
+    { min: 6, message: t('auth.passwordMinLen'), trigger: 'blur' },
   ],
   confirmPassword: [
-    { required: true, message: '请再次输入密码', trigger: 'blur' },
+    { required: true, message: t('auth.confirmRequired'), trigger: ['blur', 'change'] },
     { validator: validateConfirmPassword, trigger: 'blur' },
   ],
 }
@@ -146,7 +149,7 @@ const rules: FormRules = {
 const checkToken = async () => {
   token.value = route.query.token as string
   if (!token.value) {
-    ElMessage.error('缺少重置密码令牌')
+    ElMessage.error(t('auth.missingToken'))
     tokenValid.value = false
     return
   }
@@ -171,7 +174,7 @@ const handleSubmit = async () => {
         token: token.value,
         new_password: form.newPassword,
       })
-      ElMessage.success('密码重置成功，请使用新密码登录')
+      ElMessage.success(t('auth.resetSuccess'))
       // 2秒后跳转到登录页
       setTimeout(() => {
         router.push('/login')
@@ -203,8 +206,11 @@ onMounted(() => {
   flex-direction: column;
   justify-content: space-between;
   padding: 48px;
-  background: var(--td-sidebar-bg);
-  color: var(--td-text-white);
+  /* 侧边栏翻成浅色之后，这里再用 --td-sidebar-bg 配白字就是白底白字。
+     品牌面板改成分区底色 + 正常文字色，和应用内保持一套。 */
+  background: var(--td-bg-section);
+  color: var(--td-text-primary);
+  border-right: 1px solid var(--td-border-color);
 }
 
 .brand-content {
@@ -240,13 +246,13 @@ onMounted(() => {
 .brand-description {
   font-size: 16px;
   line-height: 1.8;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--td-text-secondary);
   margin: 0;
 }
 
 .brand-footer {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--td-text-placeholder);
 }
 
 /* 右侧表单区域 */
@@ -328,7 +334,7 @@ onMounted(() => {
 }
 
 .form-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  box-shadow: var(--td-focus-ring);
 }
 
 .input-icon {
@@ -347,7 +353,6 @@ onMounted(() => {
 }
 
 .submit-button:hover {
-  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
 }
 
 .form-footer {

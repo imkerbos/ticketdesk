@@ -1,267 +1,156 @@
 <template>
-  <div class="alert-list-container">
-    <!-- 页面头部 -->
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><Bell /></el-icon>
+  <!-- 结构同工单列表：.page / .toolbar / .card / table.issues -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('alert.listTitle') }}</h1>
+      <div class="grow"></div>
+      <el-popover placement="bottom-end" :width="480" trigger="click">
+        <template #reference>
+          <button class="btn secondary">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+            {{ t('alert.labelFilter') }}
+            <span v-if="labelFilters.length" class="btn-count">{{ labelFilters.length }}</span>
+          </button>
+        </template>
+        <div class="label-filter-panel">
+          <div v-for="(filter, index) in labelFilters" :key="index" class="label-filter-row">
+            <el-select v-model="filter.key" :placeholder="t('alert.labelKeyPlaceholder')" size="small" style="width: 140px" filterable allow-create default-first-option>
+              <el-option v-for="k in labelKeyOptions" :key="k" :label="k" :value="k" />
+            </el-select>
+            <el-select v-model="filter.op" size="small" style="width: 110px">
+              <el-option :label="t('alert.opEq')" value="==" />
+              <el-option :label="t('alert.opNe')" value="!=" />
+              <el-option :label="t('alert.opMatch')" value="=~" />
+              <el-option :label="t('alert.opNotMatch')" value="!~" />
+            </el-select>
+            <el-input v-model="filter.value" :placeholder="t('alert.labelValuePlaceholder')" size="small" style="width: 160px" />
+            <el-button :icon="Close" size="small" text type="danger" @click="removeLabelFilter(index)" />
+          </div>
+          <div class="label-filter-actions">
+            <el-button size="small" text type="primary" :icon="Plus" @click="addLabelFilter">{{ t('alert.addCondition') }}</el-button>
+            <el-button size="small" type="primary" @click="applyLabelFilters">{{ t('alert.apply') }}</el-button>
+          </div>
         </div>
-      </template>
-      <template #title>告警列表</template>
-      <template #subtitle>监控和管理所有告警事件</template>
-    </TdPageHeader>
+      </el-popover>
+    </div>
 
-    <!-- 统计卡片 -->
-    <el-row :gutter="16" class="stat-row">
-      <el-col :xs="12" :sm="8" :md="4">
-        <TdStatTile
-          label="总告警数"
-          :value="stats.total"
-          tone="info"
-          :icon-component="Bell"
-          interactive
-          :active="!queryParams.status && !queryParams.severity"
-          @click="handleStatClick()"
-        />
-      </el-col>
-      <el-col :xs="12" :sm="8" :md="4">
-        <TdStatTile
-          label="活跃告警"
-          :value="stats.firing"
-          tone="primary"
-          :icon-component="Promotion"
-          interactive
-          :active="queryParams.status === 'firing' && !queryParams.severity"
-          @click="handleStatClick('firing')"
-        />
-      </el-col>
-      <el-col :xs="12" :sm="8" :md="4">
-        <TdStatTile
-          label="已解决"
-          :value="stats.resolved"
-          tone="success"
-          :icon-component="CircleCheck"
-          interactive
-          :active="queryParams.status === 'resolved' && !queryParams.severity"
-          @click="handleStatClick('resolved')"
-        />
-      </el-col>
-      <el-col :xs="12" :sm="8" :md="4">
-        <TdStatTile
-          label="严重"
-          :value="stats.critical"
-          tone="danger"
-          :icon-component="WarningFilled"
-          interactive
-          :active="queryParams.severity === 'critical' && !queryParams.status"
-          @click="handleStatClick(undefined, 'critical')"
-        />
-      </el-col>
-      <el-col :xs="12" :sm="8" :md="4">
-        <TdStatTile
-          label="警告"
-          :value="stats.warning"
-          tone="warning"
-          :icon-component="Warning"
-          interactive
-          :active="queryParams.severity === 'warning' && !queryParams.status"
-          @click="handleStatClick(undefined, 'warning')"
-        />
-      </el-col>
-      <el-col :xs="12" :sm="8" :md="4">
-        <TdStatTile
-          label="信息"
-          :value="stats.info"
-          tone="info"
-          :icon-component="InfoFilled"
-          interactive
-          :active="queryParams.severity === 'info' && !queryParams.status"
-          @click="handleStatClick(undefined, 'info')"
-        />
-      </el-col>
-    </el-row>
+    <div class="toolbar">
+      <label class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        <input v-model="queryParams.alert_name" type="search" :placeholder="t('alert.searchPlaceholder')" @keyup.enter="handleQuery" @search="handleQuery" />
+      </label>
+      <el-select v-model="queryParams.status" :placeholder="t('issue.status')" clearable class="filter-select" @change="handleQuery">
+        <el-option :label="t('alert.statusMap.firing')" value="firing" />
+        <el-option :label="t('alert.statusMap.resolved')" value="resolved" />
+      </el-select>
+      <el-select v-model="queryParams.severity" :placeholder="t('alert.severity')" clearable class="filter-select" @change="handleQuery">
+        <el-option :label="t('alert.severityMap.critical')" value="critical" />
+        <el-option :label="t('alert.severityMap.warning')" value="warning" />
+        <el-option :label="t('alert.severityMap.info')" value="info" />
+      </el-select>
+      <button class="btn secondary" @click="handleReset">
+        <el-icon><Refresh /></el-icon>{{ t('common.reset') }}
+      </button>
+      <div class="grow"></div>
+      <el-select v-if="viewMode === 'group'" v-model="groupBy" class="filter-select" @change="loadGroupData">
+        <el-option :label="t('alert.groupCluster')" value="cluster" />
+        <el-option :label="t('alert.groupNamespace')" value="namespace" />
+        <el-option :label="t('alert.groupService')" value="service" />
+        <el-option :label="t('alert.instance')" value="instance" />
+      </el-select>
+    </div>
 
-    <!-- 筛选器 -->
-    <el-card shadow="never" class="filter-card">
-      <div class="filter-content">
-        <div class="filter-left">
-          <el-input
-            v-model="queryParams.alert_name"
-            placeholder="搜索告警名称"
-            clearable
-            class="search-input"
-            @clear="handleQuery"
-            @keyup.enter="handleQuery"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-          <el-select v-model="queryParams.status" placeholder="状态" clearable class="filter-select" @change="handleQuery">
-            <el-option label="触发中" value="firing" />
-            <el-option label="已解决" value="resolved" />
-          </el-select>
-          <el-select v-model="queryParams.severity" placeholder="严重程度" clearable class="filter-select" @change="handleQuery">
-            <el-option label="严重" value="critical" />
-            <el-option label="警告" value="warning" />
-            <el-option label="信息" value="info" />
-          </el-select>
-          <el-popover placement="bottom-start" :width="480" trigger="click">
-            <template #reference>
-              <el-button :icon="Filter" :type="labelFilters.length > 0 ? 'primary' : ''">
-                标签筛选{{ labelFilters.length > 0 ? ` (${labelFilters.length})` : '' }}
-              </el-button>
-            </template>
-            <div class="label-filter-panel">
-              <div v-for="(filter, index) in labelFilters" :key="index" class="label-filter-row">
-                <el-select v-model="filter.key" placeholder="标签名" size="small" style="width: 140px" filterable allow-create default-first-option>
-                  <el-option v-for="k in labelKeyOptions" :key="k" :label="k" :value="k" />
-                </el-select>
-                <el-select v-model="filter.op" size="small" style="width: 110px">
-                  <el-option label="等于 ==" value="==" />
-                  <el-option label="不等于 !=" value="!=" />
-                  <el-option label="匹配 =~" value="=~" />
-                  <el-option label="不匹配 !~" value="!~" />
-                </el-select>
-                <el-input v-model="filter.value" placeholder="值（=~/!~ 支持 % 通配）" size="small" style="width: 160px" />
-                <el-button :icon="Close" size="small" text type="danger" @click="removeLabelFilter(index)" />
-              </div>
-              <div class="label-filter-actions">
-                <el-button size="small" text type="primary" :icon="Plus" @click="addLabelFilter">添加条件</el-button>
-                <el-button size="small" type="primary" @click="applyLabelFilters">应用</el-button>
-              </div>
-            </div>
-          </el-popover>
-        </div>
-        <div class="filter-right">
-          <el-button :icon="Refresh" @click="handleReset">重置</el-button>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- 内容区 -->
-    <el-card shadow="never" class="table-card">
-      <div class="toolbar">
-        <div class="toolbar-left">
-          <el-radio-group v-model="viewMode" class="view-toggle" @change="handleViewModeChange">
-            <el-radio-button value="list">
-              <el-icon><List /></el-icon>
-              列表
-            </el-radio-button>
-            <el-radio-button value="group">
-              <el-icon><Grid /></el-icon>
-              分组
-            </el-radio-button>
-          </el-radio-group>
-        </div>
-        <div v-if="viewMode === 'group'" class="toolbar-right">
-          <span class="group-label">分组字段:</span>
-          <el-select v-model="groupBy" size="default" class="group-select" @change="loadGroupData">
-            <el-option label="集群" value="cluster" />
-            <el-option label="命名空间" value="namespace" />
-            <el-option label="服务" value="service" />
-            <el-option label="实例" value="instance" />
-          </el-select>
+    <section class="card">
+      <div class="kpis">
+        <!-- 指标可点：点一下就是一次筛选，比再去下拉里选一遍快 -->
+        <button class="kpi as-filter" :class="{ 'is-active': !queryParams.status && !queryParams.severity }" @click="handleStatClick()">
+          <div class="k">{{ t('alert.metricTotal') }}</div><div class="v">{{ stats.total }}</div>
+        </button>
+        <button class="kpi as-filter" :class="{ 'is-active': queryParams.status === 'firing' && !queryParams.severity }" @click="handleStatClick('firing')">
+          <div class="k">{{ t('alert.metricActive') }}</div><div class="v">{{ stats.firing }}</div>
+        </button>
+        <button class="kpi as-filter" :class="{ 'is-active': queryParams.status === 'resolved' && !queryParams.severity }" @click="handleStatClick('resolved')">
+          <div class="k">{{ t('alert.metricResolved') }}</div><div class="v">{{ stats.resolved }}</div>
+        </button>
+        <button class="kpi as-filter" :class="{ 'is-active': queryParams.severity === 'critical' && !queryParams.status }" @click="handleStatClick(undefined, 'critical')">
+          <div class="k">{{ t('alert.severityMap.critical') }}</div><div class="v">{{ stats.critical }}</div>
+        </button>
+        <div class="grow"></div>
+        <div class="count">{{ t('common.total', { n: total }) }}</div>
+        <div class="seg" role="group" :aria-label="t('alert.listView')">
+          <button :aria-pressed="viewMode === 'list'" @click="switchView('list')">{{ t('alert.listView') }}</button>
+          <button :aria-pressed="viewMode === 'group'" @click="switchView('group')">{{ t('alert.groupView') }}</button>
         </div>
       </div>
 
-      <!-- 列表视图 -->
-      <div v-if="viewMode === 'list'">
-        <el-table
-          v-loading="loading"
-          :data="alertList"
-          style="width: 100%"
-          :row-class-name="() => 'clickable-row'"
-          @row-click="handleRowClick"
-        >
-          <el-table-column prop="alert_name" label="告警名称" min-width="200">
-            <template #default="{ row }">
-              <div class="alert-name-cell">
-                <div class="severity-indicator" :class="row.severity"></div>
-                <div class="alert-info">
-                  <div class="alert-name">{{ row.alert_name }}</div>
-                  <div class="alert-fingerprint">{{ row.fingerprint.substring(0, 16) }}...</div>
+      <div v-if="viewMode === 'list'" v-loading="loading" class="table-wrap">
+        <table class="issues">
+          <colgroup>
+            <col /><col style="width: 84px" /><col style="width: 86px" /><col style="width: 300px" />
+            <col style="width: 110px" /><col style="width: 150px" /><col style="width: 140px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ t('alert.name') }}</th>
+              <th>{{ t('alert.severity') }}</th>
+              <th>{{ t('issue.status') }}</th>
+              <th>{{ t('alert.labels') }}</th>
+              <th>{{ t('alert.linkedIssue') }}</th>
+              <th>{{ t('alert.startsAt') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in alertList" :key="row.id" @click="handleRowClick(row, $event)">
+              <td>
+                <div class="title-cell">
+                  <span class="dot" :style="{ background: severityColor(row.severity) }"></span>
+                  <span class="txt">{{ row.alert_name }}</span>
+                  <span class="fingerprint">{{ row.fingerprint.substring(0, 8) }}</span>
                 </div>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="severity" label="严重程度" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag :type="getSeverityType(row.severity)" size="small" effect="dark">
-                {{ getSeverityText(row.severity) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="100" align="center">
-            <template #default="{ row }">
-              <div class="status-badge" :class="row.status">
-                <span class="status-dot"></span>
-                <span>{{ getStatusText(row.status) }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="标签" min-width="200">
-            <template #default="{ row }">
-              <div class="labels-cell">
-                <el-tag
-                  v-for="(value, key) in getMainLabels(row.labels)"
-                  :key="key"
-                  size="small"
-                  effect="plain"
-                  type="info"
-                  class="label-tag"
-                >
-                  {{ key }}={{ value }}
-                </el-tag>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="issue_key" label="关联工单" width="120" align="center">
-            <template #default="{ row }">
-              <el-link v-if="row.issue_key" type="primary" @click.stop="$router.push(`/issues/${row.issue_key}`)">
-                {{ row.issue_key }}
-              </el-link>
-              <span v-else class="text-muted">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="starts_at" label="开始时间" width="160">
-            <template #default="{ row }">
-              <div class="time-cell">
-                <el-icon><Clock /></el-icon>
-                <span>{{ formatTime(row.starts_at) }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="160" fixed="right" align="center">
-            <template #default="{ row }">
-              <div class="action-buttons">
-                <el-tooltip v-if="row.status === 'firing' && !row.ack_at" content="确认" placement="top">
-                  <el-button link type="primary" @click.stop="handleAck(row)">
-                    <el-icon><Check /></el-icon>
-                  </el-button>
-                </el-tooltip>
-                <el-tooltip v-if="row.status === 'firing'" content="解决" placement="top">
-                  <el-button link type="success" @click.stop="handleResolve(row)">
-                    <el-icon><CircleCheck /></el-icon>
-                  </el-button>
-                </el-tooltip>
-                <el-tooltip content="详情" placement="top">
-                  <el-button link type="info" @click.stop="handleViewDetail(row, $event)">
-                    <el-icon><View /></el-icon>
-                  </el-button>
-                </el-tooltip>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
+              </td>
+              <td><span class="pill" :class="severityTone(row.severity)">{{ getSeverityText(row.severity) }}</span></td>
+              <td><span class="pill" :class="row.status === 'firing' ? 'orange' : 'green'">{{ getStatusText(row.status) }}</span></td>
+              <td>
+                <div class="labels-cell">
+                  <span v-for="[key, value] in visibleLabels(row.labels)" :key="key" class="pill neutral" :title="`${key}=${value}`">
+                    {{ key }}={{ value }}
+                  </span>
+                  <el-tooltip v-if="hiddenLabelCount(row.labels) > 0" placement="top" :show-after="120">
+                    <template #content>
+                      <div v-for="[key, value] in allLabels(row.labels)" :key="key">{{ key }}={{ value }}</div>
+                    </template>
+                    <span class="pill neutral">+{{ hiddenLabelCount(row.labels) }}</span>
+                  </el-tooltip>
+                  <span v-if="allLabels(row.labels).length === 0" class="muted">-</span>
+                </div>
+              </td>
+              <td>
+                <a v-if="row.issue_key" class="key link" @click.stop="$router.push(`/issues/${row.issue_key}`)">{{ row.issue_key }}</a>
+                <span v-else class="muted">-</span>
+              </td>
+              <td class="time">{{ formatTime(row.starts_at) }}</td>
+              <td>
+                <div class="row-actions">
+                  <button v-if="row.status === 'firing' && !row.ack_at" class="link-btn" @click.stop="handleAck(row)">{{ t('alert.ack') }}</button>
+                  <button v-if="row.status === 'firing'" class="link-btn" @click.stop="handleResolve(row)">{{ t('alert.resolve') }}</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
 
-        <div class="pagination-wrapper">
+        <div v-if="!loading && alertList.length === 0" class="empty">
+          <TdEmptyState preset="no-data" :title="t('alert.empty')" />
+        </div>
+
+        <div v-if="total > queryParams.page_size" class="table-foot">
           <el-pagination
             v-model:current-page="queryParams.page"
             v-model:page-size="queryParams.page_size"
             :total="total"
             :page-sizes="[10, 20, 50, 100]"
-            layout="total, sizes, prev, pager, next, jumper"
+            layout="sizes, prev, pager, next"
             @size-change="handlePageChange"
             @current-change="handlePageChange"
           />
@@ -287,73 +176,73 @@
               <div class="group-severity-row">
                 <div class="severity-item critical">
                   <span class="severity-dot"></span>
-                  <span>严重 {{ group.severity.critical || 0 }}</span>
+                  <span>{{ t('alert.severityMap.critical') }} {{ group.severity.critical || 0 }}</span>
                 </div>
                 <div class="severity-item warning">
                   <span class="severity-dot"></span>
-                  <span>警告 {{ group.severity.warning || 0 }}</span>
+                  <span>{{ t('alert.severityMap.warning') }} {{ group.severity.warning || 0 }}</span>
                 </div>
                 <div class="severity-item info">
                   <span class="severity-dot"></span>
-                  <span>信息 {{ group.severity.info || 0 }}</span>
+                  <span>{{ t('alert.severityMap.info') }} {{ group.severity.info || 0 }}</span>
                 </div>
               </div>
             </div>
           </el-col>
         </el-row>
       </div>
-    </el-card>
+    </section>
 
     <!-- 确认对话框 -->
-    <el-dialog v-model="ackDialogVisible" title="确认告警" width="460px" class="alert-dialog">
+    <el-dialog v-model="ackDialogVisible" :title="t('alert.ackTitle')" width="460px" class="alert-dialog">
       <div class="dialog-icon-header">
         <div class="dialog-icon ack">
           <el-icon><Check /></el-icon>
         </div>
-        <p class="dialog-tip">确认此告警已知悉并开始处理</p>
+        <p class="dialog-tip">{{ t('alert.ackTip') }}</p>
       </div>
       <el-form :model="ackForm" label-position="top">
-        <el-form-item label="备注">
+        <el-form-item :label="t('alert.remark')">
           <el-input
             v-model="ackForm.comment"
             type="textarea"
             :rows="3"
-            placeholder="请输入确认备注（可选）"
+            :placeholder="t('alert.ackPlaceholder')"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="ackDialogVisible = false">取消</el-button>
+        <el-button @click="ackDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" @click="confirmAck">
           <el-icon><Check /></el-icon>
-          确认
+          {{ t('alert.ack') }}
         </el-button>
       </template>
     </el-dialog>
 
     <!-- 解决对话框 -->
-    <el-dialog v-model="resolveDialogVisible" title="解决告警" width="460px" class="alert-dialog">
+    <el-dialog v-model="resolveDialogVisible" :title="t('alert.resolveTitle')" width="460px" class="alert-dialog">
       <div class="dialog-icon-header">
         <div class="dialog-icon resolve">
           <el-icon><CircleCheck /></el-icon>
         </div>
-        <p class="dialog-tip">标记此告警为已解决</p>
+        <p class="dialog-tip">{{ t('alert.resolveTip') }}</p>
       </div>
       <el-form :model="resolveForm" label-position="top">
-        <el-form-item label="备注">
+        <el-form-item :label="t('alert.remark')">
           <el-input
             v-model="resolveForm.comment"
             type="textarea"
             :rows="3"
-            placeholder="请输入解决备注（可选）"
+            :placeholder="t('alert.resolvePlaceholder')"
           />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="resolveDialogVisible = false">取消</el-button>
+        <el-button @click="resolveDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="success" @click="confirmResolve">
           <el-icon><CircleCheck /></el-icon>
-          解决
+          {{ t('alert.resolve') }}
         </el-button>
       </template>
     </el-dialog>
@@ -361,16 +250,19 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Search, Refresh, List, Grid, Bell, Clock, Check, CircleCheck,
-  View, WarningFilled, Warning, Promotion, InfoFilled, Filter, Close, Plus
+  Refresh, Check, CircleCheck,
+  Close, Plus
 } from '@element-plus/icons-vue'
 import { getAlertList, getAlertStats, ackAlert, resolveAlert, getAlertGroup, getAlertLabelKeys } from '@/api/alert'
 import type { Alert, AlertGroupItem, AlertStatsResponse } from '@/types/alert'
 import dayjs from 'dayjs'
+
+const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -392,8 +284,7 @@ const queryParams = reactive({
   severity: undefined as 'critical' | 'warning' | 'info' | undefined,
   alert_name: undefined as string | undefined,
   issue_id: undefined as number | undefined,
-  label_filters: undefined as string | undefined,
-})
+  label_filters: undefined as string | undefined })
 
 const ackDialogVisible = ref(false)
 const ackForm = reactive({ id: 0, comment: '' })
@@ -426,8 +317,7 @@ const loadGroupData = async () => {
   loading.value = true
   try {
     const { data } = await getAlertGroup(groupBy.value, {
-      status: queryParams.status, severity: queryParams.severity,
-    })
+      status: queryParams.status, severity: queryParams.severity })
     groupData.value = data.data.items
   } catch {
     // ignored
@@ -493,8 +383,13 @@ const handlePageChange = () => {
   loadData()
 }
 
+const switchView = (mode: 'list' | 'group') => {
+  viewMode.value = mode
+  handleViewModeChange()
+}
+
 const handleViewModeChange = () => { if (viewMode.value === 'list') { loadData() } else { loadGroupData() } }
-const handleRowClick = (row: Alert, _col: any, event: MouseEvent) => {
+const handleRowClick = (row: Alert, event: MouseEvent) => {
   const path = `/alerts/${row.id}`
   if (event.metaKey || event.ctrlKey) {
     window.open(router.resolve(path).href, '_blank')
@@ -502,20 +397,11 @@ const handleRowClick = (row: Alert, _col: any, event: MouseEvent) => {
     router.push(path)
   }
 }
-const handleViewDetail = (row: Alert, event?: MouseEvent) => {
-  const path = `/alerts/${row.id}`
-  if (event && (event.metaKey || event.ctrlKey)) {
-    window.open(router.resolve(path).href, '_blank')
-  } else {
-    router.push(path)
-  }
-}
-
 const handleAck = (row: Alert) => { ackForm.id = row.id; ackForm.comment = ''; ackDialogVisible.value = true }
 const confirmAck = async () => {
   try {
     await ackAlert(ackForm.id, ackForm.comment)
-    ElMessage.success('确认成功'); ackDialogVisible.value = false; loadData()
+    ElMessage.success(t('alert.ackSuccess')); ackDialogVisible.value = false; loadData()
   } catch { /* ignored */ }
 }
 
@@ -523,28 +409,46 @@ const handleResolve = (row: Alert) => { resolveForm.id = row.id; resolveForm.com
 const confirmResolve = async () => {
   try {
     await resolveAlert(resolveForm.id, resolveForm.comment)
-    ElMessage.success('解决成功'); resolveDialogVisible.value = false; loadData()
+    ElMessage.success(t('alert.resolveSuccess')); resolveDialogVisible.value = false; loadData()
   } catch { /* ignored */ }
 }
 
-const getSeverityType = (severity: string) => {
-  const map: Record<string, any> = { critical: 'danger', warning: 'warning', info: 'info' }
-  return map[severity] || 'info'
-}
+// 告警级别：圆点色与药丸色调。原来的 getSeverityType 只是把级别映射成
+// el-tag 的 type，换成原生药丸后不需要了。
+const severityColor = (s: string) =>
+  s === 'critical' ? 'var(--td-color-danger)' : s === 'warning' ? 'var(--td-color-warning)' : 'var(--td-text-placeholder)'
+
+const severityTone = (s: string) => (s === 'critical' ? 'sla' : s === 'warning' ? 'orange' : 'neutral')
 const getSeverityText = (severity: string) => {
-  const map: Record<string, string> = { critical: '严重', warning: '警告', info: '信息' }
+  const map: Record<string, string> = { critical: t('alert.severityMap.critical'), warning: t('alert.severityMap.warning'), info: t('alert.severityMap.info') }
   return map[severity] || severity
 }
 const getStatusText = (status: string) => {
-  const map: Record<string, string> = { firing: '触发中', resolved: '已解决' }
+  const map: Record<string, string> = {
+    firing: t('alert.statusMap.firing'),
+    acked: t('alert.statusMap.acked'),
+    resolved: t('alert.statusMap.resolved') }
   return map[status] || status
 }
-const getMainLabels = (labels: Record<string, string>) => {
-  const mainKeys = ['cluster', 'namespace', 'service', 'instance']
-  const result: Record<string, string> = {}
-  mainKeys.forEach((key) => { if (labels[key]) result[key] = labels[key] })
-  return result
+// 行内最多显示 2 个标签。告警的标签动辄十几个，全铺开会把行高撑到 100px 以上，
+// 且各行不等高，扫读成本极高。
+const INLINE_LABEL_LIMIT = 2
+// service / instance 逐行不同，是真正能区分告警的；cluster / namespace 往往整列一个值，
+// 排在前面等于把两个格子浪费在噪音上，所以按区分度排序。
+const LABEL_PRIORITY = ['service', 'instance', 'cluster', 'namespace']
+
+const allLabels = (labels: Record<string, string>): [string, string][] => {
+  if (!labels) return []
+  const entries = Object.entries(labels)
+  return entries.sort(([a], [b]) => {
+    const ia = LABEL_PRIORITY.indexOf(a)
+    const ib = LABEL_PRIORITY.indexOf(b)
+    return (ia < 0 ? LABEL_PRIORITY.length : ia) - (ib < 0 ? LABEL_PRIORITY.length : ib)
+  })
 }
+const visibleLabels = (labels: Record<string, string>) => allLabels(labels).slice(0, INLINE_LABEL_LIMIT)
+const hiddenLabelCount = (labels: Record<string, string>) =>
+  Math.max(0, allLabels(labels).length - INLINE_LABEL_LIMIT)
 const formatTime = (time: string) => dayjs(time).format('YYYY-MM-DD HH:mm')
 
 onMounted(() => {
@@ -571,8 +475,7 @@ onMounted(() => {
         labelFilters.push({
           key: trimmed.substring(0, idx).trim(),
           op,
-          value: trimmed.substring(idx + op.length).trim(),
-        })
+          value: trimmed.substring(idx + op.length).trim() })
       }
     }
   }
@@ -593,162 +496,26 @@ const loadLabelKeys = async () => {
 </script>
 
 <style scoped lang="scss">
-.alert-list-container {
-  width: 100%;
+// 列表部分的样式都在 _apple.scss 里，这一页只留分组视图、对话框和标签筛选面板。
+
+// 告警指纹：跟在名字后面的弱色短哈希，用来区分同名告警的不同实例
+.fingerprint {
+  font-family: var(--td-font-mono);
+  font-size: 11px;
+  color: var(--td-text-placeholder);
 }
 
-// 页面头部 icon (TdPageHeader leading slot)
-.page-header-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--td-tag-primary-bg);
-  border-radius: var(--td-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--td-color-primary);
-  flex-shrink: 0;
-}
-
-// 统计卡片
-.stat-row { margin-bottom: var(--td-space-5); }
-
-// 筛选
-.filter-card {
-  margin-bottom: 20px;
-  border: none;
-  box-shadow: var(--td-elevation-1);
-  transition: var(--td-transition-shadow);
-  border-radius: var(--td-radius-lg);
-
-  &:hover { box-shadow: var(--td-elevation-2); }
-
-  :deep(.el-card__body) { padding: 16px 20px; }
-
-  .filter-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-  .filter-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .search-input { width: 220px; }
-  .filter-select { width: 130px; }
-}
-
-// 表格卡片
-.table-card {
-  border-radius: 12px;
-  :deep(.el-card__body) { padding: 20px; }
-}
-
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-
-  .toolbar-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-
-    .group-label { font-size: 13px; color: var(--td-text-secondary); }
-    .group-select { width: 120px; }
-  }
-}
-
-// 表格
-:deep(.el-table) {
-  border-radius: 8px;
-
-  th.el-table__cell {
-    background: var(--td-bg-page);
-    font-weight: 600;
-    color: var(--td-text-regular);
-  }
-
-  .clickable-row {
-    cursor: pointer;
-    &:hover { background-color: var(--td-bg-page); }
-  }
-}
-
-.alert-name-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  .severity-indicator {
-    width: 4px;
-    height: 36px;
-    border-radius: 2px;
-    flex-shrink: 0;
-
-    &.critical { background: var(--td-color-danger); }
-    &.warning { background: var(--td-color-warning); }
-    &.info { background: var(--td-text-secondary); }
-  }
-
-  .alert-info {
-    .alert-name { font-weight: 500; color: var(--td-text-primary); font-size: 14px; }
-    .alert-fingerprint { font-size: 12px; color: var(--td-text-placeholder); margin-top: 2px; }
-  }
-}
-
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-
-  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
-
-  &.firing { background: var(--td-tag-danger-bg); color: var(--td-color-danger); .status-dot { background: var(--td-color-danger); } }
-  &.resolved { background: var(--td-tag-success-bg); color: var(--td-color-success); .status-dot { background: var(--td-color-success); } }
-}
-
+// 标签列：一行放不下就截断，多出来的收进 +N
 .labels-cell {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.text-muted { color: var(--td-text-disabled); }
-
-.time-cell {
-  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--td-text-secondary);
-  .el-icon { font-size: 14px; color: var(--td-text-placeholder); }
+  gap: 4px;
+  overflow: hidden;
 }
 
-.action-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
+.key.link { cursor: pointer; }
+.key.link:hover { text-decoration: underline; text-underline-offset: 2px; }
 
-  .el-button {
-    font-size: 16px;
-    padding: 4px;
-    &:hover { background: var(--td-bg-section); border-radius: 6px; }
-  }
-}
-
-.pagination-wrapper {
-  padding-top: 20px;
-  display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid var(--td-divider-color);
-  margin-top: 16px;
-}
-
-// 分组卡片
 .group-col { margin-bottom: 20px; }
 
 .group-card {
@@ -756,11 +523,11 @@ const loadLabelKeys = async () => {
   border-radius: 12px;
   padding: 20px;
   border: 1px solid var(--td-divider-color);
-  transition: box-shadow 150ms ease-out;
+  transition: border-color 150ms ease-out;
   cursor: pointer;
 
   &:hover {
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    border-color: var(--td-border-color-dark);
   }
 
   .group-name {
@@ -817,10 +584,10 @@ const loadLabelKeys = async () => {
       margin: 0 auto 12px;
       border-radius: 12px;
       display: flex; align-items: center; justify-content: center;
-      font-size: 24px; color: var(--td-text-white);
+      font-size: 22px;
 
-      &.ack { background: var(--td-color-primary); }
-      &.resolve { background: var(--td-color-success); }
+      &.ack { background: var(--td-tag-primary-bg); color: var(--td-tag-primary-text); }
+      &.resolve { background: var(--td-tag-success-bg); color: var(--td-tag-success-text); }
     }
 
     .dialog-tip { font-size: 14px; color: var(--td-text-secondary); margin: 0; }
@@ -848,8 +615,6 @@ const loadLabelKeys = async () => {
 
 // 响应式
 @media (max-width: 768px) {
-  .filter-card .filter-content { flex-direction: column; align-items: stretch; }
-  .filter-card .filter-left { flex-direction: column; }
-  .search-input, .filter-select { width: 100% !important; }
+  .filter-select { width: 100% !important; }
 }
 </style>

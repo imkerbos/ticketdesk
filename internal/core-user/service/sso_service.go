@@ -30,13 +30,13 @@ import (
 
 // SSO 相关错误定义
 var (
-	ErrSSODisabled       = errors.New("SSO 未启用")
-	ErrSSOInvalidState   = errors.New("无效的 state 参数")
-	ErrSSOCodeExchange   = errors.New("授权码交换失败")
-	ErrSSOTokenVerify    = errors.New("ID Token 验证失败")
-	ErrSSOUserDisabled   = errors.New("用户已被禁用")
-	ErrSSOUserNotAllowed = errors.New("用户不允许登录，请联系管理员")
-	ErrSSONonceMismatch  = errors.New("nonce 不匹配")
+	ErrSSODisabled       = errors.New("user.sso_disabled")
+	ErrSSOInvalidState   = errors.New("user.sso_state_invalid")
+	ErrSSOCodeExchange   = errors.New("user.sso_code_failed")
+	ErrSSOTokenVerify    = errors.New("user.sso_id_token_failed")
+	ErrSSOUserDisabled   = errors.New("user.disabled")
+	ErrSSOUserNotAllowed = errors.New("user.login_not_allowed")
+	ErrSSONonceMismatch  = errors.New("user.sso_nonce_mismatch")
 )
 
 // ssoConfigSnapshot 从数据库读取的 SSO 配置快照
@@ -325,12 +325,12 @@ func (s *ssoService) HandleCallback(ctx context.Context, req *dto.SSOCallbackReq
 	}
 
 	// 10. 生成 TicketDesk JWT
-	accessToken, err := s.jwtManager.GenerateAccessToken(user.ID, user.Username)
+	accessToken, err := s.jwtManager.GenerateAccessToken(user.ID, user.Username, user.TokenVersion)
 	if err != nil {
 		return nil, fmt.Errorf("生成 Access Token 失败: %w", err)
 	}
 
-	refreshToken, err := s.jwtManager.GenerateRefreshToken(user.ID, user.Username)
+	refreshToken, err := s.jwtManager.GenerateRefreshToken(user.ID, user.Username, user.TokenVersion)
 	if err != nil {
 		return nil, fmt.Errorf("生成 Refresh Token 失败: %w", err)
 	}
@@ -430,10 +430,7 @@ func (s *ssoService) matchOrCreateUser(ctx context.Context, info *dto.SSOUserInf
 	if info.Email != "" {
 		user, err = s.userRepo.GetByEmail(ctx, info.Email)
 		if err == nil {
-			user.SSOProvider = providerName
-			user.SSOSubject = info.Subject
-			if err := s.userRepo.Update(ctx, user); err != nil {
-				// 关键 link 写入失败必须直接报错，避免静默漏数据导致下次登录又走本地分支
+			if err := s.linkLocalUserToSSO(ctx, user, providerName, info.Subject); err != nil {
 				logger.Error("failed to link SSO to existing user by email",
 					zap.Uint64("user_id", user.ID),
 					zap.String("email", info.Email),
@@ -455,9 +452,7 @@ func (s *ssoService) matchOrCreateUser(ctx context.Context, info *dto.SSOUserInf
 	// 优先级 3: Username 匹配
 	user, err = s.userRepo.GetByUsername(ctx, info.Username)
 	if err == nil {
-		user.SSOProvider = providerName
-		user.SSOSubject = info.Subject
-		if err := s.userRepo.Update(ctx, user); err != nil {
+		if err := s.linkLocalUserToSSO(ctx, user, providerName, info.Subject); err != nil {
 			logger.Error("failed to link SSO to existing user by username",
 				zap.Uint64("user_id", user.ID),
 				zap.String("username", info.Username),
@@ -482,6 +477,22 @@ func (s *ssoService) matchOrCreateUser(ctx context.Context, info *dto.SSOUserInf
 
 	return s.createSSOUser(ctx, info, providerName, cfg.DefaultRole)
 }
+
+// linkLocalUserToSSO 将本地账号升级为 SSO 账号
+// 写入 SSOProvider/SSOSubject 的同时清空 PasswordHash（占位为不可用值），
+// 切断本地密码登录通道，防止「升级后旧密码仍可登录」的双轨绕过
+func (s *ssoService) linkLocalUserToSSO(ctx context.Context, user *model.User, provider, subject string) error {
+	user.SSOProvider = provider
+	user.SSOSubject = subject
+	// PasswordHash 字段 not null，写一个非 bcrypt 格式的占位值
+	// bcrypt.CompareHashAndPassword 对非法 hash 直接返回错误，无法匹配任何明文
+	user.PasswordHash = ssoPasswordPlaceholder
+	return s.userRepo.Update(ctx, user)
+}
+
+// ssoPasswordPlaceholder SSO 升级后写入 PasswordHash 的占位值
+// 非 bcrypt 格式（不以 $2 开头），bcrypt 解析会直接失败
+const ssoPasswordPlaceholder = "!sso-login-only"
 
 // createSSOUser 创建 SSO 用户
 func (s *ssoService) createSSOUser(ctx context.Context, info *dto.SSOUserInfo, providerName, defaultRole string) (*model.User, error) {

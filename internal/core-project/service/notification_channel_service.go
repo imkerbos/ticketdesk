@@ -18,12 +18,13 @@ import (
 	"github.com/kerbos/ticketdesk/internal/notification/telegram"
 	configService "github.com/kerbos/ticketdesk/internal/system-config/service"
 	"github.com/kerbos/ticketdesk/pkg/logger"
+	"github.com/kerbos/ticketdesk/pkg/safego"
 )
 
 // 业务错误定义
 var (
-	ErrChannelNotFound = errors.New("通知渠道不存在")
-	ErrInvalidConfig   = errors.New("渠道配置无效")
+	ErrChannelNotFound = errors.New("project.channel_not_found")
+	ErrInvalidConfig   = errors.New("project.channel_invalid")
 )
 
 // NotificationChannelService 项目通知渠道服务接口
@@ -223,6 +224,7 @@ func (s *notificationChannelService) NotifyProject(ctx context.Context, projectI
 			continue
 		}
 		go func(channel *model.ProjectNotificationChannel) {
+			defer safego.Recover("project.notifyChannel")
 			var sendErr error
 			switch channel.ChannelType {
 			case "lark":
@@ -292,18 +294,22 @@ func (s *notificationChannelService) validateAndMarshalConfig(channelType string
 	case "lark":
 		var larkConfig dto.LarkChannelConfig
 		if err := json.Unmarshal(configBytes, &larkConfig); err != nil {
-			return "", fmt.Errorf("%w: 飞书配置格式错误", ErrInvalidConfig)
+			logger.Warn("invalid lark channel config", zap.Error(err))
+			return "", ErrInvalidConfig
 		}
 		if larkConfig.WebhookURL == "" {
-			return "", fmt.Errorf("%w: 飞书 Webhook URL 不能为空", ErrInvalidConfig)
+			logger.Warn("lark channel missing webhook url")
+			return "", ErrInvalidConfig
 		}
 	case "telegram":
 		var tgConfig dto.TelegramChannelConfig
 		if err := json.Unmarshal(configBytes, &tgConfig); err != nil {
-			return "", fmt.Errorf("%w: Telegram 配置格式错误", ErrInvalidConfig)
+			logger.Warn("invalid telegram channel config", zap.Error(err))
+			return "", ErrInvalidConfig
 		}
 		if tgConfig.ChatID == "" {
-			return "", fmt.Errorf("%w: Telegram Chat ID 不能为空", ErrInvalidConfig)
+			logger.Warn("telegram channel missing chat id")
+			return "", ErrInvalidConfig
 		}
 	default:
 		return "", fmt.Errorf("不支持的渠道类型: %s", channelType)

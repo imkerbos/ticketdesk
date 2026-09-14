@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kerbos/ticketdesk/internal/activity/detail"
+
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
@@ -260,8 +262,9 @@ func (s *alertService) mergeOldIssues(ctx context.Context, rule *model.AlertRule
 		}
 
 		// 添加系统评论记录合并信息
-		mergeComment := fmt.Sprintf("📎 已合并 **%d** 个旧工单（%s），共迁移 **%d** 个告警实例",
-			len(mergedKeys), strings.Join(mergedKeys, ", "), migratedAlertCount)
+		mergeComment := detail.New("comment.system.issuesMerged",
+			"count", len(mergedKeys), "keys", strings.Join(mergedKeys, ", "),
+			"alerts", migratedAlertCount)
 		if err := s.addSystemComment(ctx, newIssueID, mergeComment); err != nil {
 			logger.Warn("failed to add merge comment", zap.Error(err))
 		}
@@ -275,13 +278,13 @@ func (s *alertService) mergeOldIssues(ctx context.Context, rule *model.AlertRule
 		// 记录合并活动日志
 		if s.activityLogger != nil {
 			for _, oldIssue := range directOldIssues {
-				_ = s.activityLogger.LogActivity(ctx, 0, "alert-bot", "工单合并",
+				_ = s.activityLogger.LogActivity(ctx, 0, "alert-bot", "issue_merged",
 					"issue", oldIssue.ID, oldIssue.IssueKey,
-					fmt.Sprintf("工单已合并到 %s", newIssueKey))
+					detail.New("activity.detail.issueMergedInto", "target", newIssueKey))
 			}
-			_ = s.activityLogger.LogActivity(ctx, 0, "alert-bot", "工单合并",
+			_ = s.activityLogger.LogActivity(ctx, 0, "alert-bot", "issue_merged",
 				"issue", newIssueID, newIssueKey,
-				fmt.Sprintf("合并了 %d 个旧工单（%s），迁移 %d 个告警", len(mergedKeys), strings.Join(mergedKeys, ", "), migratedAlertCount))
+				detail.New("activity.detail.issuesMerged", "count", len(mergedKeys), "keys", strings.Join(mergedKeys, ", "), "alerts", migratedAlertCount))
 		}
 
 		return nil

@@ -1,10 +1,20 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import ElementPlus from 'element-plus'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
-import 'element-plus/dist/index.css'
+// 组件按需引入：由 vite.config.ts 里的 unplugin-vue-components + ElementPlusResolver
+// 在编译期按实际使用注入组件与对应样式。
+// 这里刻意不再 `import ElementPlus` 与全量 index.css ——
+// 全量引入会把整个组件库塞进首屏主包（约 1.2MB JS + 388KB CSS），
+// 同时让上面那套按需配置完全失效。
+// ElMessage / ElMessageBox / ElNotification 是在脚本里显式 import 使用的，
+// 其样式无法被模板扫描发现，因此在此单独引入。
+import 'element-plus/theme-chalk/el-message.css'
+import 'element-plus/theme-chalk/el-message-box.css'
+import 'element-plus/theme-chalk/el-notification.css'
+import 'element-plus/theme-chalk/el-loading.css'
 import 'element-plus/theme-chalk/dark/css-vars.css'
 
+import { i18n } from './i18n'
 import App from './App.vue'
 import router from './router'
 import './styles/theme.scss'
@@ -13,18 +23,17 @@ import './styles/index.scss'
 import './styles/_table.scss'
 import './styles/_form.scss'
 import './styles/_components.scss'
+// Apple 组件层：自带 DOM + 自带样式，收在 .ap 命名空间下，放最后
+import './styles/_apple.scss'
 import { useUserStore } from './stores/user'
 import { useThemeStore } from './stores/theme'
 import { useBrandStore } from './stores/brand'
 
-// 全局 layout primitive 组件 (UI Phase 0)
-import TdPageHeader from '@/components/td/TdPageHeader.vue'
-import TdCard from '@/components/td/TdCard.vue'
-import TdSection from '@/components/td/TdSection.vue'
+// 空态组件，全站 40 多处在用，全局注册省掉每页一行 import
 import TdEmptyState from '@/components/td/TdEmptyState.vue'
-import TdStatTile from '@/components/td/TdStatTile.vue'
 
 const app = createApp(App)
+app.use(i18n)
 
 // 注册所有 Element Plus 图标
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
@@ -45,17 +54,13 @@ themeStore.init()
 // 加载品牌配置
 const brandStore = useBrandStore()
 
+
 app.use(router)
-app.use(ElementPlus)
 
-// 注册 Td primitive 组件 (全局可用)
-app.component('TdPageHeader', TdPageHeader)
-app.component('TdCard', TdCard)
-app.component('TdSection', TdSection)
 app.component('TdEmptyState', TdEmptyState)
-app.component('TdStatTile', TdStatTile)
 
-// 等待品牌配置和路由初始导航完成后再挂载，避免闪屏
+// 等待品牌配置和路由初始导航完成后再挂载，避免闪屏。
+// 初始化状态由路由守卫自己保证，不放在这里 —— 首次导航早于任何 then 回调。
 Promise.all([brandStore.loadBrandConfig(), router.isReady()]).then(() => {
   app.mount('#app')
 })

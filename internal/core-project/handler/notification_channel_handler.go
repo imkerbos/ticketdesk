@@ -35,9 +35,9 @@ func (h *NotificationChannelHandler) resolveProjectID(c *gin.Context) (uint64, b
 	project, err := h.projectService.GetProject(c.Request.Context(), key)
 	if err != nil {
 		if errors.Is(err, service.ErrProjectNotFound) {
-			response.NotFound(c, "项目不存在")
+			response.NotFound(c, "workflow.project_not_found")
 		} else {
-			response.InternalError(c, "获取项目失败")
+			response.InternalError(c, "project.get_failed")
 		}
 		return 0, false
 	}
@@ -62,7 +62,7 @@ func (h *NotificationChannelHandler) HandleListChannels(c *gin.Context) {
 
 	channels, err := h.channelService.ListChannels(c.Request.Context(), projectID)
 	if err != nil {
-		response.InternalError(c, "查询通知渠道失败")
+		response.InternalError(c, "project.channel_query_failed")
 		return
 	}
 
@@ -89,7 +89,7 @@ func (h *NotificationChannelHandler) HandleCreateChannel(c *gin.Context) {
 
 	var req dto.CreateNotificationChannelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -101,7 +101,7 @@ func (h *NotificationChannelHandler) HandleCreateChannel(c *gin.Context) {
 			response.BadRequest(c, err.Error())
 			return
 		}
-		response.InternalError(c, "创建通知渠道失败")
+		response.InternalError(c, "project.channel_create_failed")
 		return
 	}
 
@@ -128,17 +128,17 @@ func (h *NotificationChannelHandler) HandleGetChannel(c *gin.Context) {
 
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的渠道 ID")
+		response.BadRequest(c, "project.channel_invalid_id")
 		return
 	}
 
 	result, err := h.channelService.GetChannel(c.Request.Context(), id)
 	if err != nil {
 		if errors.Is(err, service.ErrChannelNotFound) {
-			response.NotFound(c, "通知渠道不存在")
+			response.NotFound(c, "project.channel_not_found")
 			return
 		}
-		response.InternalError(c, "获取通知渠道失败")
+		response.InternalError(c, "project.channel_get_failed")
 		return
 	}
 
@@ -167,27 +167,27 @@ func (h *NotificationChannelHandler) HandleUpdateChannel(c *gin.Context) {
 
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的渠道 ID")
+		response.BadRequest(c, "project.channel_invalid_id")
 		return
 	}
 
 	var req dto.UpdateNotificationChannelRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
 	result, err := h.channelService.UpdateChannel(c.Request.Context(), id, &req)
 	if err != nil {
 		if errors.Is(err, service.ErrChannelNotFound) {
-			response.NotFound(c, "通知渠道不存在")
+			response.NotFound(c, "project.channel_not_found")
 			return
 		}
 		if errors.Is(err, service.ErrInvalidConfig) {
 			response.BadRequest(c, err.Error())
 			return
 		}
-		response.InternalError(c, "更新通知渠道失败")
+		response.InternalError(c, "project.channel_update_failed")
 		return
 	}
 
@@ -213,16 +213,16 @@ func (h *NotificationChannelHandler) HandleDeleteChannel(c *gin.Context) {
 
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的渠道 ID")
+		response.BadRequest(c, "project.channel_invalid_id")
 		return
 	}
 
 	if err := h.channelService.DeleteChannel(c.Request.Context(), id); err != nil {
 		if errors.Is(err, service.ErrChannelNotFound) {
-			response.NotFound(c, "通知渠道不存在")
+			response.NotFound(c, "project.channel_not_found")
 			return
 		}
-		response.InternalError(c, "删除通知渠道失败")
+		response.InternalError(c, "project.channel_delete_failed")
 		return
 	}
 
@@ -248,18 +248,18 @@ func (h *NotificationChannelHandler) HandleTestChannel(c *gin.Context) {
 
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的渠道 ID")
+		response.BadRequest(c, "project.channel_invalid_id")
 		return
 	}
 
 	if err := h.channelService.TestChannel(c.Request.Context(), id); err != nil {
 		if errors.Is(err, service.ErrChannelNotFound) {
-			response.NotFound(c, "通知渠道不存在")
+			response.NotFound(c, "project.channel_not_found")
 			return
 		}
-		response.BadRequest(c, "测试发送失败: "+err.Error())
+		response.BadRequest(c, response.T(c, "project.test_failed")+err.Error())
 		return
 	}
 
-	response.Success(c, gin.H{"message": "测试消息发送成功"})
+	response.Success(c, gin.H{"message": response.T(c, "project.test_sent")})
 }

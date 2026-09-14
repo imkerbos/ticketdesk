@@ -1,4 +1,4 @@
-.PHONY: all build run dev test clean lint fmt swagger wire dev-docker-up dev-docker-up-d dev-docker-down dev-docker-logs dev-docker-rebuild prod prod-d prod-stop prod-logs prod-rebuild prod-ps helm-lint helm-template helm-install helm-upgrade helm-uninstall init migrate help
+.PHONY: all build run dev test clean lint palette-check fmt swagger wire dev-docker-up dev-docker-up-d dev-docker-down dev-docker-logs dev-docker-rebuild prod prod-d prod-stop prod-logs prod-rebuild prod-ps helm-lint helm-template helm-install helm-upgrade helm-uninstall init migrate help
 
 # 变量定义
 APP_NAME := ticketdesk
@@ -122,6 +122,12 @@ test-coverage:
 lint:
 	@echo ">>> 代码静态检查..."
 	golangci-lint run ./...
+
+# 色板可辨性校验（六项：明度带 / 彩度下限 / 色觉障碍相邻分离度 /
+# 正常视力分离度 / 对比度 / 亮暗一致性）。改了 --td-* 色值就必须跑。
+palette-check:
+	@echo ">>> 色板可辨性校验..."
+	node scripts/palette-check.mjs
 
 # 格式化代码
 fmt:

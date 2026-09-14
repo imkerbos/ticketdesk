@@ -325,25 +325,28 @@ export function parseFieldOptions(optionsJson: string): FieldOption[] {
   }
 }
 
-// 获取字段类型显示名称
-export function getFieldTypeLabel(type: FieldTypeValue): string {
-  const labels: Record<FieldTypeValue, string> = {
-    [FieldType.TEXT]: '单行文本',
-    [FieldType.TEXTAREA]: '多行文本',
-    [FieldType.NUMBER]: '数字',
-    [FieldType.DATE]: '日期',
-    [FieldType.DATETIME]: '日期时间',
-    [FieldType.SELECT]: '单选',
-    [FieldType.MULTISELECT]: '多选',
-    [FieldType.USER]: '用户',
-    [FieldType.MULTIUSER]: '多用户',
-    [FieldType.VERSION]: '版本',
-    [FieldType.COMPONENT]: '组件',
-    [FieldType.LABEL]: '标签',
-    [FieldType.EPIC_LINK]: 'Epic链接',
-    [FieldType.TIME_ESTIMATE]: '时间估算',
-    [FieldType.URL]: '链接',
-    [FieldType.CHECKBOX]: '复选框',
+// 字段类型对应的 i18n key
+//
+// 这里只返回 key、不返回文案：本文件是纯类型/常量模块，拿不到组件里的 t，
+// 写死中文会在切语言时不跟随。
+export function getFieldTypeLabelKey(type: FieldTypeValue): string {
+  const keys: Record<FieldTypeValue, string> = {
+    [FieldType.TEXT]: 'field.typeMap.text',
+    [FieldType.TEXTAREA]: 'field.typeMap.textarea',
+    [FieldType.NUMBER]: 'field.typeMap.number',
+    [FieldType.DATE]: 'field.typeMap.date',
+    [FieldType.DATETIME]: 'field.typeMap.datetime',
+    [FieldType.SELECT]: 'field.typeMap.select',
+    [FieldType.MULTISELECT]: 'field.typeMap.multiselect',
+    [FieldType.USER]: 'field.typeMap.user',
+    [FieldType.MULTIUSER]: 'field.typeMap.multiuser',
+    [FieldType.VERSION]: 'field.typeMap.version',
+    [FieldType.COMPONENT]: 'field.typeMap.component',
+    [FieldType.LABEL]: 'field.typeMap.label',
+    [FieldType.EPIC_LINK]: 'field.typeMap.epic_link',
+    [FieldType.TIME_ESTIMATE]: 'field.typeMap.time_estimate',
+    [FieldType.URL]: 'field.typeMap.url',
+    [FieldType.CHECKBOX]: 'field.typeMap.checkbox',
   }
-  return labels[type] || type
+  return keys[type] || type
 }

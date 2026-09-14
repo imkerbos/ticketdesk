@@ -181,3 +181,19 @@ type ProjectRoleMemberResponse struct {
 	User      *UserBrief `json:"user,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
 }
+
+// MyProjectPermissionsResponse 当前用户在某个项目里的权限。
+//
+// 前端需要它来决定「显示什么」——原来没有这个接口，项目设置和项目角色页
+// 对任何项目成员都照常渲染，包括「危险操作 → 删除此项目」；点下去才被后端
+// 403 挡掉。控件摆在那里却一按就报错，比不显示更糟。
+type MyProjectPermissionsResponse struct {
+	// IsAdmin 系统管理员在所有项目里都拥有全部权限
+	IsAdmin bool `json:"is_admin"`
+	// IsMember 是否为该项目成员
+	IsMember bool `json:"is_member"`
+	// IsOwner 项目 owner 拥有全部权限
+	IsOwner bool `json:"is_owner"`
+	// Permissions 合并后的权限键集合；IsAdmin 或 IsOwner 为真时前端应视为全通过
+	Permissions []string `json:"permissions"`
+}

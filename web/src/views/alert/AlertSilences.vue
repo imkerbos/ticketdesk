@@ -1,121 +1,90 @@
 <template>
-  <div class="alert-silences-container">
-    <!-- 页面头部 -->
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><BellFilled /></el-icon>
+  <!-- 结构同其它列表页 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('alert.silences.title') }}</h1>
+      <div class="grow"></div>
+      <button class="btn primary" @click="handleCreate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('alert.silences.create') }}
+      </button>
+    </div>
+
+    <section class="card">
+      <div v-loading="loading" class="table-wrap">
+        <table class="issues">
+          <colgroup>
+            <col style="width: 180px" /><col style="width: 96px" /><col /><col style="width: 260px" />
+            <col style="width: 160px" /><col style="width: 160px" /><col style="width: 86px" /><col style="width: 96px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ t('alert.silences.name') }}</th>
+              <th>{{ t('issue.type') }}</th>
+              <th>{{ t('issue.description') }}</th>
+              <th>{{ t('alert.silences.matchers') }}</th>
+              <th>{{ t('alert.silences.startsAt') }}</th>
+              <th>{{ t('alert.silences.endsAt') }}</th>
+              <th>{{ t('issue.status') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in silenceList" :key="row.id">
+              <td>{{ row.name }}</td>
+              <td>
+                <span class="pill" :class="row.silence_type === 1 ? 'orange' : 'neutral'">
+                  {{ row.silence_type === 1 ? t('alert.silences.typeInstant') : t('alert.silences.typeScheduled') }}
+                </span>
+              </td>
+              <td class="muted desc">{{ row.description || '-' }}</td>
+              <td>
+                <div class="labels-cell">
+                  <span
+                    v-for="(matcher, index) in row.label_matchers.slice(0, 2)"
+                    :key="index"
+                    class="pill neutral"
+                    :title="`${matcher.key} ${matcher.operator} ${matcher.value}`"
+                  >
+                    {{ matcher.key }} {{ matcher.operator }} {{ matcher.value }}
+                  </span>
+                  <span v-if="row.label_matchers.length > 2" class="pill neutral">+{{ row.label_matchers.length - 2 }}</span>
+                </div>
+              </td>
+              <!-- 纯时间戳才走 .time 的等宽；混了中文的分支用普通弱色，
+                   否则中文跟着等宽排，和数字之间会豁开一格 -->
+              <td :class="row.silence_type === 1 ? 'muted' : 'time'">
+                {{ row.silence_type === 1 ? t('alert.silences.startsAtFrom', { time: formatTime(row.starts_at) }) : formatTime(row.starts_at) }}
+              </td>
+              <td :class="row.silence_type === 1 ? 'muted' : 'time'">
+                {{ row.silence_type === 1 ? t('alert.silences.manualClose') : (row.ends_at ? formatTime(row.ends_at) : '-') }}
+              </td>
+              <td><span class="pill" :class="statusTone(row.status)">{{ getStatusText(row.status) }}</span></td>
+              <td>
+                <div class="row-actions">
+                  <button class="link-btn" @click="handleEdit(row)">{{ t('common.edit') }}</button>
+                  <el-dropdown trigger="click">
+                    <button class="more" :aria-label="t('common.operation')" @click.stop>···</button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item v-if="row.status === 0" @click="handleEnable(row)">{{ t('common.enabled') }}</el-dropdown-item>
+                        <el-dropdown-item v-if="row.status === 1" @click="handleDisable(row)">{{ t('common.close') }}</el-dropdown-item>
+                        <el-dropdown-item divided @click="handleDelete(row)">{{ t('common.delete') }}</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="!loading && silenceList.length === 0" class="empty">
+          <TdEmptyState preset="no-data" :title="t('alert.silences.empty')" />
         </div>
-      </template>
-      <template #title>告警静默</template>
-      <template #subtitle>管理告警静默规则，临时屏蔽特定告警通知</template>
-      <template #actions>
-        <el-button type="primary" @click="handleCreate">
-          <el-icon><Plus /></el-icon>
-          创建静默
-        </el-button>
-      </template>
-    </TdPageHeader>
-
-    <!-- 静默列表 -->
-    <el-card shadow="never" class="table-card">
-      <el-table
-        v-loading="loading"
-        :data="silenceList"
-        style="width: 100%"
-      >
-        <el-table-column prop="name" label="静默名称" min-width="150" />
-        <el-table-column label="类型" width="110" align="center">
-          <template #default="{ row }">
-            <el-tag :type="row.silence_type === 1 ? 'warning' : 'info'" size="small">
-              {{ row.silence_type === 1 ? '即时静默' : '预约静默' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
-        <el-table-column label="标签匹配器" min-width="200">
-          <template #default="{ row }">
-            <el-tag
-              v-for="(matcher, index) in row.label_matchers.slice(0, 2)"
-              :key="index"
-              size="small"
-              style="margin-right: 4px"
-            >
-              {{ matcher.key }} {{ matcher.operator }} {{ matcher.value }}
-            </el-tag>
-            <el-tag v-if="row.label_matchers.length > 2" size="small">
-              +{{ row.label_matchers.length - 2 }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="生效时间" width="160">
-          <template #default="{ row }">
-            <template v-if="row.silence_type === 1">
-              {{ formatTime(row.starts_at) }} 起
-            </template>
-            <template v-else>
-              {{ formatTime(row.starts_at) }}
-            </template>
-          </template>
-        </el-table-column>
-        <el-table-column label="结束时间" width="160">
-          <template #default="{ row }">
-            <template v-if="row.silence_type === 1">
-              <span class="text-secondary">手动关闭</span>
-            </template>
-            <template v-else>
-              {{ formatTime(row.ends_at) }}
-            </template>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
-          <template #default="{ row }">
-            <div class="status-badge" :class="getStatusClass(row.status)">
-              <span class="status-dot"></span>
-              <span class="status-text">{{ getStatusText(row.status) }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right" align="center">
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-tooltip v-if="row.status === 0" content="启用" placement="top">
-                <el-button link type="success" @click="handleEnable(row)">
-                  <el-icon><CircleCheck /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip v-if="row.status === 1" content="关闭" placement="top">
-                <el-button link type="warning" @click="handleDisable(row)">
-                  <el-icon><CircleClose /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip content="编辑" placement="top">
-                <el-button link type="primary" @click="handleEdit(row)">
-                  <el-icon><Edit /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip content="删除" placement="top">
-                <el-button link type="danger" @click="handleDelete(row)">
-                  <el-icon><Delete /></el-icon>
-                </el-button>
-              </el-tooltip>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <div class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="queryParams.page"
-          v-model:page-size="queryParams.page_size"
-          :total="total"
-          layout="total, prev, pager, next"
-          @current-change="loadData"
-        />
       </div>
-    </el-card>
+    </section>
 
-    <!-- 创建/编辑对话框 -->
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
@@ -123,104 +92,106 @@
       @close="handleDialogClose"
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
-        <el-form-item label="静默名称" prop="name">
-          <el-input v-model="form.name" placeholder="请输入静默名称" />
+        <el-form-item :label="t('alert.silences.name')" prop="name">
+          <el-input v-model="form.name" :placeholder="t('alert.silences.namePlaceholder')" />
         </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="请输入描述" />
+        <el-form-item :label="t('issue.description')" prop="description">
+          <el-input v-model="form.description" type="textarea" :rows="2" :placeholder="t('alert.silences.descPlaceholder')" />
         </el-form-item>
-        <el-form-item label="静默类型" prop="silence_type">
+        <el-form-item :label="t('alert.silences.type')" prop="silence_type">
           <el-radio-group v-model="form.silence_type">
-            <el-radio :value="1">即时静默 <span class="type-hint">启用即生效，手动关闭</span></el-radio>
-            <el-radio :value="2">预约静默 <span class="type-hint">指定时间范围自动生效/过期</span></el-radio>
+            <el-radio :value="1">{{ t('alert.silences.typeInstant') }} <span class="type-hint">{{ t('alert.silences.typeInstantHint') }}</span></el-radio>
+            <el-radio :value="2">{{ t('alert.silences.typeScheduled') }} <span class="type-hint">{{ t('alert.silences.typeScheduledHint') }}</span></el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="标签匹配器" prop="label_matchers">
+        <el-form-item :label="t('alert.silences.matchers')" prop="label_matchers">
           <div style="width: 100%">
             <div
               v-for="(matcher, index) in form.label_matchers"
               :key="index"
               class="matcher-row"
             >
-              <el-input v-model="matcher.key" placeholder="标签键" style="flex: 1" />
+              <el-input v-model="matcher.key" :placeholder="t('alert.silences.matcherKey')" style="flex: 1" />
               <el-select v-model="matcher.operator" style="width: 100px">
                 <el-option label="==" value="==" />
                 <el-option label="!=" value="!=" />
                 <el-option label="=~" value="=~" />
                 <el-option label="!~" value="!~" />
               </el-select>
-              <el-input v-model="matcher.value" placeholder="标签值" style="flex: 1" />
+              <el-input v-model="matcher.value" :placeholder="t('alert.silences.matcherValue')" style="flex: 1" />
+              <!-- 不常驻红色：这只是删掉一行匹配器，中性图标钮就够（§3.1） -->
               <el-button
-                type="danger"
+                text
                 :icon="Delete"
-                circle
+                class="matcher-remove"
                 @click="removeMatcher(index)"
               />
             </div>
             <el-button type="primary" text @click="addMatcher">
               <el-icon><Plus /></el-icon>
-              添加匹配器
+              {{ t('alert.silences.addMatcher') }}
             </el-button>
           </div>
         </el-form-item>
         <el-row v-if="form.silence_type === 2" :gutter="16">
           <el-col :span="12">
-            <el-form-item label="生效时间" prop="starts_at">
+            <el-form-item :label="t('alert.silences.startsAt')" prop="starts_at">
               <el-date-picker
                 v-model="form.starts_at"
                 type="datetime"
-                placeholder="选择开始时间"
+                :placeholder="t('alert.silences.startsAtPlaceholder')"
                 style="width: 100%"
               />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="结束时间" prop="ends_at">
+            <el-form-item :label="t('alert.silences.endsAt')" prop="ends_at">
               <el-date-picker
                 v-model="form.ends_at"
                 type="datetime"
-                placeholder="选择结束时间"
+                :placeholder="t('alert.silences.endsAtPlaceholder')"
                 style="width: 100%"
               />
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="备注" prop="comment">
-          <el-input v-model="form.comment" type="textarea" :rows="2" placeholder="��输入静默原因" />
+        <el-form-item :label="t('alert.silences.comment')" prop="comment">
+          <el-input v-model="form.comment" type="textarea" :rows="2" :placeholder="t('alert.silences.commentPlaceholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="handleSubmit">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Delete, Edit, CircleClose, CircleCheck, BellFilled } from '@element-plus/icons-vue'
+import { Plus, Delete } from '@element-plus/icons-vue'
 import {
   getAlertSilenceList,
   createAlertSilence,
   updateAlertSilence,
   deleteAlertSilence,
-  cancelAlertSilence,
-} from '@/api/alert'
+  cancelAlertSilence } from '@/api/alert'
 import type { AlertSilence, LabelMatcher } from '@/types/alert'
 import dayjs from 'dayjs'
+
+const { t } = useI18n()
 
 const loading = ref(false)
 const silenceList = ref<AlertSilence[]>([])
 const total = ref(0)
 const queryParams = reactive({
   page: 1,
-  page_size: 20,
-})
+  page_size: 20 })
 
 const dialogVisible = ref(false)
-const dialogTitle = ref('创建静默')
+const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
 const form = reactive({
   id: 0,
@@ -230,34 +201,30 @@ const form = reactive({
   label_matchers: [] as LabelMatcher[],
   starts_at: '',
   ends_at: '',
-  comment: '',
-})
+  comment: '' })
 
 const rules: FormRules = {
-  name: [{ required: true, message: '请输入静默���称', trigger: 'blur' }],
-  silence_type: [{ required: true, message: '请选择静默类型', trigger: 'change' }],
-  label_matchers: [{ required: true, message: '请添加至少一个标签匹配器', trigger: 'change' }],
+  name: [{ required: true, message: t('alert.silences.namePlaceholder'), trigger: ['blur', 'change'] }],
+  silence_type: [{ required: true, message: t('alert.silences.typeRequired'), trigger: 'change' }],
+  label_matchers: [{ required: true, message: t('alert.silences.matcherRequired'), trigger: 'change' }],
   starts_at: [{
     validator: (_rule, _value, callback) => {
       if (form.silence_type === 2 && !form.starts_at) {
-        callback(new Error('请选择开始时间'))
+        callback(new Error(t('alert.silences.startRequired')))
       } else {
         callback()
       }
     },
-    trigger: 'change',
-  }],
+    trigger: 'change' }],
   ends_at: [{
     validator: (_rule, _value, callback) => {
       if (form.silence_type === 2 && !form.ends_at) {
-        callback(new Error('请选择结束时间'))
+        callback(new Error(t('alert.silences.endRequired')))
       } else {
         callback()
       }
     },
-    trigger: 'change',
-  }],
-}
+    trigger: 'change' }] }
 
 const loadData = async () => {
   loading.value = true
@@ -273,7 +240,7 @@ const loadData = async () => {
 }
 
 const handleCreate = () => {
-  dialogTitle.value = '创建静默'
+  dialogTitle.value = t('alert.silences.create')
   form.id = 0
   form.name = ''
   form.description = ''
@@ -286,7 +253,7 @@ const handleCreate = () => {
 }
 
 const handleEdit = (row: AlertSilence) => {
-  dialogTitle.value = '编辑静默'
+  dialogTitle.value = t('alert.silences.edit')
   form.id = row.id
   form.name = row.name
   form.description = row.description
@@ -309,8 +276,7 @@ const handleSubmit = async () => {
         description: form.description,
         silence_type: form.silence_type,
         label_matchers: form.label_matchers,
-        comment: form.comment,
-      }
+        comment: form.comment }
 
       // 预约静默才传时间
       if (form.silence_type === 2) {
@@ -320,10 +286,10 @@ const handleSubmit = async () => {
 
       if (form.id) {
         await updateAlertSilence(form.id, payload)
-        ElMessage.success('更新成功')
+        ElMessage.success(t('issue.msg.updateSuccess'))
       } else {
         await createAlertSilence(payload)
-        ElMessage.success('创建成功')
+        ElMessage.success(t('common.createSuccess'))
       }
       dialogVisible.value = false
       loadData()
@@ -339,21 +305,21 @@ const handleEnable = async (row: AlertSilence) => {
     // 预约静默：如果时间已过期，弹出编辑框让用户更新时间
     if (row.silence_type === 2 && row.ends_at && dayjs(row.ends_at).isBefore(dayjs())) {
       await ElMessageBox.confirm(
-        '该预约静默的时间范围已过期，需要重新设置时间后才能启用。是否打开编辑？',
-        '时间已过期',
-        { type: 'warning', confirmButtonText: '去编辑', cancelButtonText: '取消' }
+        t('alert.silences.expiredMsg'),
+        t('alert.silences.expiredTitle'),
+        { type: 'warning', confirmButtonText: t('alert.silences.goEdit'), cancelButtonText: t('common.cancel') }
       )
       handleEdit(row)
       return
     }
 
     await ElMessageBox.confirm(
-      '启用后，匹配的告警将不会自动创建工单。确定要启用此静默规则吗？',
-      '启用静默',
-      { type: 'info', confirmButtonText: '启用', cancelButtonText: '取消' }
+      t('alert.silences.enableMsg'),
+      t('alert.silences.enableTitle'),
+      { type: 'info', confirmButtonText: t('common.enabled'), cancelButtonText: t('common.cancel') }
     )
     await updateAlertSilence(row.id, { status: 1 })
-    ElMessage.success('已启用')
+    ElMessage.success(t('alert.silences.enabled'))
     loadData()
   } catch (error) {
     if (error !== 'cancel') {
@@ -365,13 +331,12 @@ const handleEnable = async (row: AlertSilence) => {
 // 关闭静默规则
 const handleDisable = async (row: AlertSilence) => {
   try {
-    await ElMessageBox.confirm('关闭后，匹配的告警将恢复正常建单。确定要关闭此静默规则吗？', '关闭静默', {
+    await ElMessageBox.confirm(t('alert.silences.disableMsg'), t('alert.silences.disableTitle'), {
       type: 'warning',
-      confirmButtonText: '关闭',
-      cancelButtonText: '取消',
-    })
+      confirmButtonText: t('alert.silences.disable'),
+      cancelButtonText: t('common.cancel') })
     await cancelAlertSilence(row.id)
-    ElMessage.success('已关闭')
+    ElMessage.success(t('alert.silences.disabled'))
     loadData()
   } catch (error) {
     if (error !== 'cancel') {
@@ -382,11 +347,10 @@ const handleDisable = async (row: AlertSilence) => {
 
 const handleDelete = async (row: AlertSilence) => {
   try {
-    await ElMessageBox.confirm('确定要删除此静默规则吗？删除后不可恢复。', '删除静默', {
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(t('alert.silences.confirmDelete'), t('alert.silences.deleteTitle'), {
+      type: 'warning' })
     await deleteAlertSilence(row.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     loadData()
   } catch (error) {
     if (error !== 'cancel') {
@@ -407,22 +371,15 @@ const handleDialogClose = () => {
   formRef.value?.resetFields()
 }
 
-const getStatusClass = (status: number) => {
-  const map: Record<number, string> = {
-    0: 'disabled',
-    1: 'active',
-    2: 'expired',
-  }
-  return map[status] || 'disabled'
-}
+// 药丸色调：生效中给绿，停用与过期都是中性——过期不是错误，只是失效了
+const statusTone = (status: number) => (status === 1 ? 'green' : 'neutral')
 
 const getStatusText = (status: number) => {
   const map: Record<number, string> = {
-    0: '已关闭',
-    1: '已启用',
-    2: '已过期',
-  }
-  return map[status] || '未知'
+    0: t('alert.silences.disabled'),
+    1: t('alert.silences.enabled'),
+    2: t('alert.silences.expired') }
+  return map[status] || t('common.unknown')
 }
 
 const formatTime = (time: string) => {
@@ -436,131 +393,32 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.alert-silences-container {
-  width: 100%;
-}
 
-// 页面头部 icon (TdPageHeader leading slot)
-.page-header-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--td-tag-primary-bg);
-  border-radius: var(--td-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--td-color-primary);
+/* 删除匹配器：默认弱色，悬停才变红 —— 破坏性操作不常驻红色 */
+.matcher-remove {
+  color: var(--td-text-placeholder);
   flex-shrink: 0;
-}
 
-// 表格卡片
-.table-card {
-  border-radius: 12px;
-
-  :deep(.el-card__body) {
-    padding: 0;
-  }
-
-  :deep(.el-table) {
-    border-radius: 12px;
-
-    th.el-table__cell {
-      background: var(--td-bg-page);
-      font-weight: 600;
-      color: var(--td-text-regular);
-    }
+  &:hover {
+    color: var(--td-color-danger);
   }
 }
+// 列表样式在 _apple.scss 里，这一页只留对话框相关。
 
-// 状态徽章
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
+.labels-cell { display: flex; align-items: center; gap: 4px; overflow: hidden; }
+.desc { max-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-  }
-
-  &.active {
-    background: var(--td-tag-success-bg);
-    color: var(--td-color-success);
-
-    .status-dot {
-      background: var(--td-color-success);
-    }
-  }
-
-  &.disabled {
-    background: var(--td-bg-section);
-    color: var(--td-text-secondary);
-
-    .status-dot {
-      background: var(--td-text-placeholder);
-    }
-  }
-
-  &.expired {
-    background: var(--td-tag-warning-border);
-    color: var(--td-color-warning);
-
-    .status-dot {
-      background: var(--td-color-warning);
-    }
-  }
-}
-
-// 操作按钮
-.action-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-
-  .el-button {
-    font-size: 16px;
-    padding: 4px;
-
-    &:hover {
-      background: var(--td-bg-section);
-      border-radius: 6px;
-    }
-  }
-}
-
-// 分页
-.pagination-wrapper {
-  padding: 20px;
-  display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid var(--td-divider-color);
-}
-
-// 匹配器行
+// 对话框里的匹配器编辑行
 .matcher-row {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
 }
 
-// 类型提示
 .type-hint {
   color: var(--td-text-placeholder);
   font-size: 12px;
   margin-left: 4px;
 }
 
-// 辅助文字
-.text-secondary {
-  color: var(--td-text-secondary);
-  font-size: 13px;
-}
-
-// 响应式
-@media (max-width: 768px) {
-}
 </style>

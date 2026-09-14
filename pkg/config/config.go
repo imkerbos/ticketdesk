@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+
+	"github.com/kerbos/ticketdesk/pkg/storage"
 )
 
 // Config 应用配置结构
@@ -17,6 +19,7 @@ type Config struct {
 	Log         LogConfig         `mapstructure:"log"`
 	Nightingale NightingaleConfig `mapstructure:"nightingale"`
 	SSO         SSOConfig         `mapstructure:"sso"`
+	Storage     storage.Config    `mapstructure:"storage"`
 }
 
 // SSOConfig SSO 单点登录配置
@@ -55,6 +58,31 @@ type AppConfig struct {
 	Env   string `mapstructure:"env"`
 	Port  int    `mapstructure:"port"`
 	Debug bool   `mapstructure:"debug"`
+	// TrustedProxies 可信反向代理网段（CIDR 或 IP）。
+	// 只有当直连对端落在此列表内时，Gin 才会采信 X-Forwarded-For 推导客户端 IP。
+	// 留空则使用 DefaultTrustedProxies（内网网段），覆盖 Docker / K8s Ingress 场景。
+	// 绝不可配成 0.0.0.0/0：那等于任何人都能伪造 IP，限流与审计日志同时失效。
+	TrustedProxies []string `mapstructure:"trusted_proxies"`
+}
+
+// DefaultTrustedProxies 默认可信代理网段：回环 + RFC1918 内网。
+// 反向代理（nginx / Istio / K8s Ingress）通常位于这些网段内，
+// 且会以追加方式写 X-Forwarded-For，因此外部伪造的 XFF 条目会被 Gin 判为不可信而跳过。
+var DefaultTrustedProxies = []string{
+	"127.0.0.1/32",
+	"::1/128",
+	"10.0.0.0/8",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"fc00::/7",
+}
+
+// EffectiveTrustedProxies 返回实际生效的可信代理列表
+func (c *AppConfig) EffectiveTrustedProxies() []string {
+	if len(c.TrustedProxies) == 0 {
+		return DefaultTrustedProxies
+	}
+	return c.TrustedProxies
 }
 
 // DatabaseConfig 数据库配置

@@ -55,7 +55,7 @@ func (s *categoryService) Create(ctx context.Context, req *dto.CreateCategoryReq
 	// 检查名称是否已存在
 	existing, err := s.repo.GetByName(ctx, req.Name)
 	if err == nil && existing.ID > 0 {
-		return nil, errors.New("分类名称已存在")
+		return nil, errors.New("requirement.category_exists")
 	}
 
 	cat := &model.RequirementCategoryDef{
@@ -78,7 +78,7 @@ func (s *categoryService) Update(ctx context.Context, id uint64, req *dto.Update
 	cat, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("分类不存在")
+			return errors.New("requirement.category_not_found")
 		}
 		return fmt.Errorf("获取分类失败: %w", err)
 	}
@@ -115,14 +115,14 @@ func (s *categoryService) Delete(ctx context.Context, id uint64) error {
 	cat, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return errors.New("分类不存在")
+			return errors.New("requirement.category_not_found")
 		}
 		return fmt.Errorf("获取分类失败: %w", err)
 	}
 
 	// 系统预置分类不可删除
 	if cat.IsSystem {
-		return errors.New("系统预置分类不可删除")
+		return errors.New("requirement.category_system")
 	}
 
 	// 检查是否有关联需求

@@ -48,7 +48,7 @@ func (h *WebSocketHandler) HandleWebSocket(c *gin.Context) {
 	// 从查询参数获取 token
 	token := c.Query("token")
 	if token == "" {
-		response.Unauthorized(c, "缺少认证信息")
+		response.Unauthorized(c, "inbox.no_auth")
 		return
 	}
 
@@ -56,7 +56,7 @@ func (h *WebSocketHandler) HandleWebSocket(c *gin.Context) {
 	claims, err := h.jwtManager.ParseToken(token)
 	if err != nil {
 		logger.Warn("ws auth failed", zap.Error(err))
-		response.Unauthorized(c, "Token 无效")
+		response.Unauthorized(c, "inbox.token_invalid")
 		return
 	}
 

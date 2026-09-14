@@ -86,16 +86,17 @@ const handleChange = (value: number[]) => {
 }
 
 .user-avatar {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: var(--td-color-primary);
-  color: var(--td-text-white);
+  background: var(--td-tag-primary-bg);
+  color: var(--td-tag-primary-text);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 600;
+  flex-shrink: 0;
 }
 
 .user-name {

@@ -1,326 +1,286 @@
 <template>
-  <div class="field-management-container">
-    <!-- 页面头部 -->
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><Grid /></el-icon>
+  <!-- 字段管理：两个 tab（字段 / 模板），都改成表格。
+       原来字段是一排排的卡片行、模板是卡片网格，字段固定的东西用表格更好扫。 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('field.title') }}</h1>
+      <div class="grow"></div>
+      <button v-if="activeTab === 'fields'" class="btn primary" @click="openCreateFieldDialog">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('field.create') }}
+      </button>
+      <button v-else class="btn primary" @click="openCreateTemplateDialog">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('field.createTemplate') }}
+      </button>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" :aria-selected="activeTab === 'fields'" @click="activeTab = 'fields'">
+        {{ t('field.globalFields') }}
+      </button>
+      <button class="tab" role="tab" :aria-selected="activeTab === 'templates'" @click="activeTab = 'templates'">
+        {{ t('field.templates') }}
+      </button>
+    </div>
+
+    <!-- ========== 字段 ========== -->
+    <template v-if="activeTab === 'fields'">
+      <div class="toolbar">
+        <label class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+          <input v-model="fieldSearchText" type="search" :placeholder="t('field.searchPlaceholder')" />
+        </label>
+      </div>
+
+      <!-- 系统字段：可折叠，默认收起——它们不可编辑，多数时候不需要看 -->
+      <section class="card">
+        <div class="card-head as-toggle" @click="systemFieldsCollapsed = !systemFieldsCollapsed">
+          <svg class="chev" :class="{ 'is-collapsed': systemFieldsCollapsed }" viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6" /></svg>
+          <h2>{{ t('field.systemFields') }}</h2>
+          <span class="n">{{ filteredSystemFields.length }}</span>
+          <div class="grow"></div>
+          <span class="muted hint">{{ t('field.systemHint') }}</span>
         </div>
-      </template>
-      <template #title>字段管理</template>
-      <template #subtitle>管理全局字段定义和方案模板</template>
-    </TdPageHeader>
 
-    <!-- Tab 切换 -->
-    <el-card shadow="never" class="content-card">
-      <el-tabs v-model="activeTab" class="custom-tabs">
-        <!-- ==================== 全局字段 Tab ==================== -->
-        <el-tab-pane name="fields">
-          <template #label>
-            <div class="tab-label">
-              <el-icon><Grid /></el-icon>
-              <span>全局字段</span>
-            </div>
-          </template>
-
-          <!-- 字段列表头部 -->
-          <div class="tab-header">
-            <el-input
-              v-model="fieldSearchText"
-              placeholder="搜索字段名称或标识..."
-              :prefix-icon="Search"
-              clearable
-              class="search-input"
-            />
-            <el-button type="primary" class="action-btn" @click="openCreateFieldDialog">
-              <el-icon><Plus /></el-icon>
-              创建字段
-            </el-button>
+        <div v-show="!systemFieldsCollapsed" v-loading="fieldsLoading" class="table-wrap">
+          <table class="issues">
+            <!-- 弹性列给「字段名称」：类型列只放「单选」「多行文本」这种短词，
+                 之前让它吃掉全部富余宽度，结果类型列 810px、里面 90% 是空白 -->
+            <colgroup><col /><col style="width: 200px" /><col style="width: 140px" /><col style="width: 96px" /><col style="width: 72px" /></colgroup>
+            <thead>
+              <tr>
+                <th>{{ t('field.fieldName') }}</th>
+                <th>{{ t('field.fieldKey') }}</th>
+                <th>{{ t('issue.type') }}</th>
+                <th>{{ t('field.sort') }}</th>
+                <th>{{ t('issue.status') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="field in filteredSystemFields" :key="field.id">
+                <td>{{ field.field_name }}</td>
+                <td class="key static">{{ field.field_key }}</td>
+                <td class="muted">{{ t(getFieldTypeLabelKey(field.field_type)) }}</td>
+                <td>
+                  <el-input v-model.number="field.sort_order" type="number" size="small" class="sort-input" @change="handleUpdateFieldSort(field)" />
+                </td>
+                <td>
+                  <el-switch v-model="field.is_active" size="small" @change="handleToggleFieldActive(field)" />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="!fieldsLoading && filteredSystemFields.length === 0" class="empty">
+            <TdEmptyState preset="no-result" :title="t('field.noSystemMatch')" />
           </div>
+        </div>
+      </section>
 
-          <!-- 系统字段区 -->
-          <div class="field-section">
-            <div class="section-header" @click="systemFieldsCollapsed = !systemFieldsCollapsed">
-              <div class="section-title-group">
-                <el-icon class="collapse-arrow" :class="{ collapsed: systemFieldsCollapsed }"><ArrowDown /></el-icon>
-                <span class="section-title">系统字段</span>
-                <span class="section-count">{{ filteredSystemFields.length }}</span>
-              </div>
-              <span class="section-hint">系统内置字段，仅可切换启用状态和排序</span>
-            </div>
-            <transition name="collapse">
-              <div v-show="!systemFieldsCollapsed" class="field-card-list">
-                <div v-loading="fieldsLoading">
-                  <div
-                    v-for="field in filteredSystemFields"
-                    :key="field.id"
-                    class="field-card"
-                  >
-                    <div class="field-card-left">
-                      <div class="field-type-icon" :class="getFieldTypeClass(field.field_type)">
-                        <el-icon><component :is="getFieldTypeIcon(field.field_type)" /></el-icon>
-                      </div>
-                      <div class="field-card-info">
-                        <div class="field-card-name">{{ field.field_name }}</div>
-                        <div class="field-card-key">{{ field.field_key }}</div>
-                      </div>
-                      <div class="field-type-tag" :class="'tag-' + getFieldTypeClass(field.field_type)">
-                        {{ getFieldTypeLabel(field.field_type) }}
-                      </div>
-                    </div>
-                    <div class="field-card-right">
-                      <div class="field-card-action">
-                        <span class="action-label">排序</span>
-                        <el-input
-                          v-model.number="field.sort_order"
-                          type="number"
-                          size="small"
-                          class="sort-input"
-                          @change="handleUpdateFieldSort(field)"
-                        />
-                      </div>
-                      <div class="field-card-action">
-                        <el-switch
-                          v-model="field.is_active"
-                          size="small"
-                          @change="handleToggleFieldActive(field)"
-                        />
-                      </div>
-                    </div>
+      <!-- 自定义字段 -->
+      <section class="card">
+        <div class="card-head">
+          <h2>{{ t('field.customFields') }}</h2>
+          <span class="n">{{ filteredCustomFields.length }}</span>
+          <div class="grow"></div>
+          <span class="muted hint">{{ t('field.customHint') }}</span>
+        </div>
+
+        <div v-loading="fieldsLoading" class="table-wrap">
+          <table v-if="filteredCustomFields.length > 0" class="issues">
+            <colgroup><col style="width: 220px" /><col style="width: 200px" /><col style="width: 110px" /><col /><col style="width: 72px" /><col style="width: 110px" /></colgroup>
+            <thead>
+              <tr>
+                <th>{{ t('field.fieldName') }}</th>
+                <th>{{ t('field.fieldKey') }}</th>
+                <th>{{ t('issue.type') }}</th>
+                <th>{{ t('issue.description') }}</th>
+                <th>{{ t('issue.status') }}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="field in filteredCustomFields" :key="field.id">
+                <td>{{ field.field_name }}</td>
+                <td class="key static">{{ field.field_key }}</td>
+                <td class="muted">{{ t(getFieldTypeLabelKey(field.field_type)) }}</td>
+                <td class="muted desc">{{ field.description || '-' }}</td>
+                <td>
+                  <el-switch v-model="field.is_active" size="small" @change="handleToggleFieldActive(field)" />
+                </td>
+                <td>
+                  <div class="row-actions">
+                    <button class="link-btn" @click="handleEditField(field)">{{ t('common.edit') }}</button>
+                    <el-dropdown trigger="click">
+                      <button class="more" :aria-label="t('common.operation')" @click.stop>···</button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item @click="handleDeleteField(field)">{{ t('common.delete') }}</el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
                   </div>
-                  <TdEmptyState v-if="!fieldsLoading && filteredSystemFields.length === 0" preset="no-result" title="无匹配的系统字段" />
-                </div>
-              </div>
-            </transition>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div v-if="!fieldsLoading && filteredCustomFields.length === 0 && !fieldSearchText" class="empty">
+            <TdEmptyState preset="first-time" :title="t('field.noCustom')" :description="t('field.noCustomDesc')">
+              <button class="btn primary" @click="openCreateFieldDialog">{{ t('field.createFirst') }}</button>
+            </TdEmptyState>
           </div>
-
-          <!-- 全局自定义字段区 -->
-          <div class="field-section">
-            <div class="section-header">
-              <div class="section-title-group">
-                <span class="section-title">自定义字段</span>
-                <span class="section-count">{{ filteredCustomFields.length }}</span>
-              </div>
-              <span class="section-hint">全局可用的自定义字段，可被所有项目引用</span>
-            </div>
-            <div v-loading="fieldsLoading" class="field-card-list">
-              <div
-                v-for="field in filteredCustomFields"
-                :key="field.id"
-                class="field-card"
-              >
-                <div class="field-card-left">
-                  <div class="field-type-icon" :class="getFieldTypeClass(field.field_type)">
-                    <el-icon><component :is="getFieldTypeIcon(field.field_type)" /></el-icon>
-                  </div>
-                  <div class="field-card-info">
-                    <div class="field-card-name">{{ field.field_name }}</div>
-                    <div class="field-card-key">{{ field.field_key }}</div>
-                  </div>
-                  <div class="field-type-tag" :class="'tag-' + getFieldTypeClass(field.field_type)">
-                    {{ getFieldTypeLabel(field.field_type) }}
-                  </div>
-                  <div v-if="field.description" class="field-card-desc">{{ field.description }}</div>
-                </div>
-                <div class="field-card-right">
-                  <el-switch
-                    v-model="field.is_active"
-                    size="small"
-                    @change="handleToggleFieldActive(field)"
-                  />
-                  <el-button size="small" text type="primary" @click="handleEditField(field)">
-                    <el-icon><Edit /></el-icon>
-                  </el-button>
-                  <el-button size="small" text type="danger" @click="handleDeleteField(field)">
-                    <el-icon><Delete /></el-icon>
-                  </el-button>
-                </div>
-              </div>
-              <div v-if="!fieldsLoading && filteredCustomFields.length === 0 && !fieldSearchText" class="empty-custom">
-                <TdEmptyState preset="first-time" title="暂无自定义字段" description="创建自定义字段，为工单添加更多属性">
-                  <el-button type="primary" @click="openCreateFieldDialog">
-                    <el-icon><Plus /></el-icon>
-                    创建第一个字段
-                  </el-button>
-                </TdEmptyState>
-              </div>
-              <TdEmptyState v-if="!fieldsLoading && filteredCustomFields.length === 0 && fieldSearchText" preset="no-result" title="无匹配的自定义字段" />
-            </div>
+          <div v-if="!fieldsLoading && filteredCustomFields.length === 0 && fieldSearchText" class="empty">
+            <TdEmptyState preset="no-result" :title="t('field.noCustomMatch')" />
           </div>
-        </el-tab-pane>
+        </div>
+      </section>
+    </template>
 
-        <!-- ==================== 方案模板 Tab ==================== -->
-        <el-tab-pane name="templates">
-          <template #label>
-            <div class="tab-label">
-              <el-icon><CopyDocument /></el-icon>
-              <span>方案模板</span>
-            </div>
-          </template>
+    <!-- ========== 模板 ========== -->
+    <section v-else class="card">
+      <div class="card-head">
+        <h2>{{ t('field.templates') }}</h2>
+        <div class="grow"></div>
+        <span class="muted hint">{{ t('field.templateHint') }}</span>
+      </div>
 
-          <!-- 模板列表头部 -->
-          <div class="tab-header">
-            <div class="tab-header-hint">模板定义了一组字段配置，可快速套用到项目的工单类型</div>
-            <el-button type="primary" class="action-btn" @click="openCreateTemplateDialog">
-              <el-icon><Plus /></el-icon>
-              创建模板
-            </el-button>
-          </div>
-
-          <!-- 模板卡片列表 -->
-          <div v-loading="templatesLoading" class="template-card-list">
-            <div
-              v-for="tpl in templates"
-              :key="tpl.id"
-              class="template-card"
-              @click="openTemplateDetail(tpl)"
-            >
-              <div class="template-card-header">
-                <div class="template-icon">
-                  <el-icon><CopyDocument /></el-icon>
-                </div>
-                <div class="template-meta">
-                  <div class="template-name">{{ tpl.name }}</div>
-                  <div class="template-desc">{{ tpl.description || '暂无描述' }}</div>
-                </div>
-                <el-tag
-                  :type="tpl.is_active ? 'success' : 'info'"
-                  size="small"
-                  class="template-status"
-                  effect="light"
-                >
-                  {{ tpl.is_active ? '启用' : '禁用' }}
-                </el-tag>
-              </div>
-              <div class="template-card-footer">
-                <div class="template-stat">
-                  <el-icon><Grid /></el-icon>
-                  <span>{{ tpl.item_count || 0 }} 个字段</span>
-                </div>
-                <div class="template-actions" @click.stop>
-                  <el-button size="small" type="primary" plain @click="openTemplateDetail(tpl)">
-                    <el-icon><Setting /></el-icon>
-                    配置字段
-                  </el-button>
+      <div v-loading="templatesLoading" class="table-wrap">
+        <table v-if="templates.length > 0" class="issues">
+          <colgroup><col style="width: 240px" /><col /><col style="width: 110px" /><col style="width: 86px" /><col style="width: 130px" /></colgroup>
+          <thead>
+            <tr>
+              <th>{{ t('common.name') }}</th>
+              <th>{{ t('issue.description') }}</th>
+              <th>{{ t('field.fieldCountLabel') }}</th>
+              <th>{{ t('issue.status') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="tpl in templates" :key="tpl.id" @click="openTemplateDetail(tpl)">
+              <td>{{ tpl.name }}</td>
+              <td class="muted desc">{{ tpl.description || t('project.noDescription') }}</td>
+              <td class="time">{{ tpl.item_count || 0 }}</td>
+              <td>
+                <span class="pill" :class="tpl.is_active ? 'green' : 'neutral'">
+                  {{ tpl.is_active ? t('common.enabled') : t('common.disabled') }}
+                </span>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="link-btn" @click.stop="openTemplateDetail(tpl)">{{ t('field.configFields') }}</button>
                   <el-dropdown trigger="click">
-                    <el-button size="small" class="more-btn">
-                      <el-icon><MoreFilled /></el-icon>
-                    </el-button>
+                    <button class="more" :aria-label="t('common.operation')" @click.stop>···</button>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item @click="handleEditTemplate(tpl)">
-                          <el-icon><Edit /></el-icon>
-                          编辑信息
-                        </el-dropdown-item>
-                        <el-dropdown-item divided class="danger-item" @click="handleDeleteTemplate(tpl)">
-                          <el-icon><Delete /></el-icon>
-                          删除模板
-                        </el-dropdown-item>
+                        <el-dropdown-item @click="handleEditTemplate(tpl)">{{ t('field.editInfo') }}</el-dropdown-item>
+                        <el-dropdown-item divided @click="handleDeleteTemplate(tpl)">{{ t('field.deleteTemplate') }}</el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
                 </div>
-              </div>
-            </div>
-            <TdEmptyState v-if="!templatesLoading && templates.length === 0" preset="first-time" title="暂无方案模板" description="方案模板可快速套用到项目的工单类型字段配置">
-              <el-button type="primary" @click="openCreateTemplateDialog">
-                <el-icon><Plus /></el-icon>
-                创建第一个模板
-              </el-button>
-            </TdEmptyState>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-    </el-card>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="!templatesLoading && templates.length === 0" class="empty">
+          <TdEmptyState preset="first-time" :title="t('field.noTemplate')" :description="t('field.noTemplateDesc')">
+            <button class="btn primary" @click="openCreateTemplateDialog">{{ t('field.createFirstTemplate') }}</button>
+          </TdEmptyState>
+        </div>
+      </div>
+    </section>
 
     <!-- 创建/编辑字段对话框 -->
     <el-dialog
       v-model="fieldDialogVisible"
-      :title="isEditFieldMode ? '编辑字段' : '创建全局字段'"
+      :title="isEditFieldMode ? t('field.edit') : t('field.createGlobal')"
       width="560px"
       destroy-on-close
       class="custom-dialog"
     >
       <el-form ref="fieldFormRef" :model="fieldForm" :rules="fieldFormRules" label-position="top">
-        <el-form-item label="字段标识" prop="field_key">
+        <el-form-item :label="t('field.fieldKey')" prop="field_key">
           <el-input
             v-model="fieldForm.field_key"
-            placeholder="如: custom_region (仅英文、数字、下划线)"
+            :placeholder="t('field.fieldKeyPlaceholder')"
             :disabled="isEditFieldMode"
           />
         </el-form-item>
-        <el-form-item label="字段名称" prop="field_name">
-          <el-input v-model="fieldForm.field_name" placeholder="如: 所在区域" />
+        <el-form-item :label="t('field.fieldName')" prop="field_name">
+          <el-input v-model="fieldForm.field_name" :placeholder="t('field.fieldNamePlaceholder')" />
         </el-form-item>
-        <el-form-item v-if="!isEditFieldMode" label="字段类型" prop="field_type">
-          <el-select v-model="fieldForm.field_type" placeholder="请选择字段类型" style="width: 100%">
+        <el-form-item v-if="!isEditFieldMode" :label="t('field.fieldType')" prop="field_type">
+          <el-select v-model="fieldForm.field_type" :placeholder="t('field.fieldTypePlaceholder')" style="width: 100%">
             <el-option
-              v-for="(label, value) in fieldTypeOptions"
+              v-for="(labelKey, value) in fieldTypeOptions"
               :key="value"
-              :label="label"
+              :label="t(labelKey)"
               :value="value"
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="fieldForm.description" type="textarea" :rows="2" placeholder="字段说明" />
+        <el-form-item :label="t('issue.description')">
+          <el-input v-model="fieldForm.description" type="textarea" :rows="2" :placeholder="t('field.descPlaceholder')" />
         </el-form-item>
         <el-form-item
           v-if="fieldForm.field_type === 'select' || fieldForm.field_type === 'multiselect'"
-          label="选项配置"
+          :label="t('field.options')"
         >
           <div class="options-editor">
             <div v-for="(opt, idx) in editingOptions" :key="idx" class="option-row">
-              <el-input v-model="opt.label" placeholder="显示名称" size="small" class="option-input" />
-              <el-input v-model="opt.value" placeholder="值（留空则同名称）" size="small" class="option-input" />
+              <el-input v-model="opt.label" :placeholder="t('field.optionLabelPlaceholder')" size="small" class="option-input" />
+              <el-input v-model="opt.value" :placeholder="t('field.optionValuePlaceholder')" size="small" class="option-input" />
               <el-button type="danger" text size="small" @click="editingOptions.splice(idx, 1)">
                 <el-icon><Delete /></el-icon>
               </el-button>
             </div>
             <el-button size="small" @click="editingOptions.push({ value: '', label: '' })">
-              <el-icon><Plus /></el-icon> 添加选项
+              <el-icon><Plus /></el-icon> {{ t('field.addOption') }}
             </el-button>
           </div>
         </el-form-item>
-        <el-form-item label="默认值">
-          <el-input v-model="fieldForm.default_value" placeholder="字段默认值（可选）" />
+        <el-form-item :label="t('field.defaultValue')">
+          <el-input v-model="fieldForm.default_value" :placeholder="t('field.defaultValuePlaceholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="fieldDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="fieldSubmitLoading" @click="submitFieldForm">确定</el-button>
+        <el-button @click="fieldDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="fieldSubmitLoading" @click="submitFieldForm">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 创建/编辑模板对话框 -->
     <el-dialog
       v-model="templateDialogVisible"
-      :title="isEditTemplateMode ? '编辑模板' : '创建方案模板'"
+      :title="isEditTemplateMode ? t('field.editTemplate') : t('field.createTemplateFull')"
       width="500px"
       destroy-on-close
       class="custom-dialog"
     >
       <el-form ref="templateFormRef" :model="templateForm" :rules="templateFormRules" label-position="top">
-        <el-form-item label="模板名称" prop="name">
-          <el-input v-model="templateForm.name" placeholder="如: Bug 标准模板" />
+        <el-form-item :label="t('field.templateName')" prop="name">
+          <el-input v-model="templateForm.name" :placeholder="t('field.templateNamePlaceholder')" />
         </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="templateForm.description" type="textarea" :rows="3" placeholder="模板描述" />
+        <el-form-item :label="t('issue.description')">
+          <el-input v-model="templateForm.description" type="textarea" :rows="3" :placeholder="t('field.templateDescPlaceholder')" />
         </el-form-item>
-        <el-form-item v-if="isEditTemplateMode" label="状态">
-          <el-switch v-model="templateForm.is_active" active-text="启用" inactive-text="禁用" />
+        <el-form-item v-if="isEditTemplateMode" :label="t('issue.status')">
+          <el-switch v-model="templateForm.is_active" :active-text="t('common.enabled')" :inactive-text="t('common.disabled')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="templateDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="templateSubmitLoading" @click="submitTemplateForm">确定</el-button>
+        <el-button @click="templateDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="templateSubmitLoading" @click="submitTemplateForm">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
 
     <!-- 模板字段配置对话框 -->
     <el-dialog
       v-model="templateDetailVisible"
-      :title="`模板字段配置 - ${currentTemplate?.name || ''}`"
+      :title="t('field.templateConfigTitle', { name: currentTemplate?.name || '' })"
       width="940px"
       destroy-on-close
       class="custom-dialog"
@@ -328,22 +288,19 @@
       <div v-loading="templateDetailLoading" class="template-detail-content">
         <div class="template-detail-header">
           <div class="template-detail-info">
-            <span class="detail-field-count">{{ templateItems.length }} 个字段</span>
-            <el-tag v-if="templateItemsDirty" type="warning" size="small" effect="plain">未保存</el-tag>
+            <span class="detail-field-count">{{ t('field.fieldCount', { n: templateItems.length }) }}</span>
+            <el-tag v-if="templateItemsDirty" type="warning" size="small" effect="plain">{{ t('field.unsaved') }}</el-tag>
           </div>
           <el-button type="primary" size="small" @click="openAddTemplateFieldDialog">
             <el-icon><Plus /></el-icon>
-            添加字段
+            {{ t('field.addField') }}
           </el-button>
         </div>
 
-        <el-table :data="templateItems" stripe class="detail-table" row-class-name="detail-row">
-          <el-table-column label="字段" min-width="200">
+        <el-table v-if="templateItems.length > 0" :data="templateItems" stripe class="detail-table" row-class-name="detail-row">
+          <el-table-column :label="t('field.field')" min-width="200">
             <template #default="{ row }">
               <div class="field-cell">
-                <div class="field-type-icon small" :class="getFieldTypeClass(row.field?.field_type || '')">
-                  <el-icon><component :is="getFieldTypeIcon(row.field?.field_type || '')" /></el-icon>
-                </div>
                 <div class="field-card-info">
                   <div class="field-card-name">{{ row.field?.field_name }}</div>
                   <div class="field-card-key">{{ row.field?.field_key }}</div>
@@ -351,27 +308,27 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="必填" width="70" align="center">
+          <el-table-column :label="t('field.required')" width="70" align="center">
             <template #default="{ row }">
               <el-switch v-model="row.is_required" size="small" @change="markTemplateItemsDirty" />
             </template>
           </el-table-column>
-          <el-table-column label="创建" width="70" align="center">
+          <el-table-column :label="t('field.onCreate')" width="70" align="center">
             <template #default="{ row }">
               <el-switch v-model="row.is_visible_create" size="small" @change="markTemplateItemsDirty" />
             </template>
           </el-table-column>
-          <el-table-column label="编辑" width="70" align="center">
+          <el-table-column :label="t('field.onEdit')" width="70" align="center">
             <template #default="{ row }">
               <el-switch v-model="row.is_visible_edit" size="small" @change="markTemplateItemsDirty" />
             </template>
           </el-table-column>
-          <el-table-column label="详情" width="70" align="center">
+          <el-table-column :label="t('field.onDetail')" width="70" align="center">
             <template #default="{ row }">
               <el-switch v-model="row.is_visible_detail" size="small" @change="markTemplateItemsDirty" />
             </template>
           </el-table-column>
-          <el-table-column label="排序" width="90" align="center">
+          <el-table-column :label="t('field.sort')" width="90" align="center">
             <template #default="{ row }">
               <el-input
                 v-model.number="row.sort_order"
@@ -390,12 +347,12 @@
             </template>
           </el-table-column>
         </el-table>
-        <TdEmptyState v-if="templateItems.length === 0" preset="no-data" title="暂无字段，点击上方按钮添加" />
+        <TdEmptyState v-if="templateItems.length === 0" preset="no-data" :title="t('field.emptyItems')" />
       </div>
       <template #footer>
-        <el-button @click="templateDetailVisible = false">取消</el-button>
+        <el-button @click="templateDetailVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="templateItemsSaving" :disabled="!templateItemsDirty" @click="saveTemplateItems">
-          保存配置
+          {{ t('field.saveConfig') }}
         </el-button>
       </template>
     </el-dialog>
@@ -403,14 +360,14 @@
     <!-- 添加模板字段选择对话框 -->
     <el-dialog
       v-model="addTemplateFieldVisible"
-      title="选择要添加的字段"
+      :title="t('field.pickFieldsTitle')"
       width="620px"
       destroy-on-close
       class="custom-dialog"
     >
       <el-input
         v-model="templateFieldSearch"
-        placeholder="搜索字段..."
+        :placeholder="t('field.searchFieldPlaceholder')"
         :prefix-icon="Search"
         clearable
         style="margin-bottom: 16px"
@@ -422,12 +379,9 @@
         @selection-change="handleTemplateFieldSelectionChange"
       >
         <el-table-column type="selection" width="46" />
-        <el-table-column label="字段" min-width="200">
+        <el-table-column :label="t('field.field')" min-width="200">
           <template #default="{ row }">
             <div class="field-cell">
-              <div class="field-type-icon small" :class="getFieldTypeClass(row.field_type)">
-                <el-icon><component :is="getFieldTypeIcon(row.field_type)" /></el-icon>
-              </div>
               <div class="field-card-info">
                 <div class="field-card-name">{{ row.field_name }}</div>
                 <div class="field-card-key">{{ row.field_key }}</div>
@@ -435,25 +389,25 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="类型" width="110">
+        <el-table-column :label="t('issue.type')" width="110">
           <template #default="{ row }">
-            <div class="field-type-tag inline" :class="'tag-' + getFieldTypeClass(row.field_type)">
-              {{ getFieldTypeLabel(row.field_type) }}
+            <div class="field-type-tag inline">
+              {{ t(getFieldTypeLabelKey(row.field_type)) }}
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="来源" width="90" align="center">
+        <el-table-column :label="t('field.source')" width="90" align="center">
           <template #default="{ row }">
             <el-tag size="small" :type="row.is_system ? 'info' : 'success'" effect="plain" round>
-              {{ row.is_system ? '系统' : '自定义' }}
+              {{ row.is_system ? t('common.system') : t('field.custom') }}
             </el-tag>
           </template>
         </el-table-column>
       </el-table>
       <template #footer>
-        <el-button @click="addTemplateFieldVisible = false">取消</el-button>
+        <el-button @click="addTemplateFieldVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :disabled="selectedFieldsForTemplate.length === 0" @click="confirmAddTemplateFields">
-          添加选中 ({{ selectedFieldsForTemplate.length }})
+          {{ t('field.addSelected', { n: selectedFieldsForTemplate.length }) }}
         </el-button>
       </template>
     </el-dialog>
@@ -461,14 +415,12 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import {
-  Grid, Plus, Search, ArrowDown, Close, MoreFilled,
-  Document, EditPen, List, Edit, Delete, Setting,
-  Tickets, Calendar, User, CopyDocument,
-} from '@element-plus/icons-vue'
+  Plus, Search, Close, Delete } from '@element-plus/icons-vue'
 import {
   getGlobalFields,
   createGlobalField,
@@ -480,16 +432,16 @@ import {
   getTemplate,
   updateTemplate,
   deleteTemplate,
-  updateTemplateItems,
-} from '@/api/admin-field'
+  updateTemplateItems } from '@/api/admin-field'
 import type {
   FieldDefinition,
   FieldSchemeTemplate,
   FieldSchemeTemplateItem,
   FieldUsage,
-  TemplateItemInput,
-} from '@/types/field'
-import { getFieldTypeLabel, FieldType } from '@/types/field'
+  TemplateItemInput } from '@/types/field'
+import { getFieldTypeLabelKey, FieldType } from '@/types/field'
+
+const { t } = useI18n()
 
 // ============ 路由 & Tab 持久化 ============
 
@@ -543,7 +495,7 @@ const loadFields = async () => {
     const { data } = await getGlobalFields()
     allFields.value = data.data || []
   } catch {
-    ElMessage.error('加载字段列表失败')
+    ElMessage.error(t('field.loadFieldsFailed'))
   } finally {
     fieldsLoading.value = false
   }
@@ -555,7 +507,7 @@ const loadTemplates = async () => {
     const { data } = await getTemplates()
     templates.value = data.data || []
   } catch {
-    ElMessage.error('加载模板列表失败')
+    ElMessage.error(t('field.loadTemplatesFailed'))
   } finally {
     templatesLoading.value = false
   }
@@ -574,8 +526,7 @@ const fieldForm = ref({
   field_type: '' as string,
   description: '',
   options: '',
-  default_value: '',
-})
+  default_value: '' })
 // 可视化选项编辑列表
 const editingOptions = ref<{ value: string; label: string }[]>([])
 
@@ -585,8 +536,7 @@ function serializeOptions(): string {
     .filter(o => o.label.trim())
     .map(o => ({
       value: o.value.trim() || o.label.trim(),
-      label: o.label.trim(),
-    }))
+      label: o.label.trim() }))
   return valid.length > 0 ? JSON.stringify(valid) : ''
 }
 
@@ -600,8 +550,7 @@ function deserializeOptions(json: string): { value: string; label: string }[] {
       if (typeof item === 'string') return { value: item, label: item }
       return {
         value: String(item.value ?? item.label ?? ''),
-        label: String(item.label ?? item.value ?? ''),
-      }
+        label: String(item.label ?? item.value ?? '') }
     })
   } catch {
     return []
@@ -610,28 +559,26 @@ function deserializeOptions(json: string): { value: string; label: string }[] {
 
 const fieldFormRules: FormRules = {
   field_key: [
-    { required: true, message: '请输入字段标识', trigger: 'blur' },
-    { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '只能包含英文字母、数字、下划线，且以字母开头', trigger: 'blur' },
+    { required: true, message: t('field.fieldKeyRequired'), trigger: ['blur', 'change'] },
+    { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: t('field.fieldKeyPattern'), trigger: 'blur' },
   ],
-  field_name: [{ required: true, message: '请输入字段名称', trigger: 'blur' }],
-  field_type: [{ required: true, message: '请选择字段类型', trigger: 'change' }],
-}
+  field_name: [{ required: true, message: t('field.fieldNameRequired'), trigger: ['blur', 'change'] }],
+  field_type: [{ required: true, message: t('field.fieldTypeRequired'), trigger: 'change' }] }
 
 // 字段类型下拉选项 (与 FieldType 常量同源, 避免类型遗漏)
 const fieldTypeOptions: Record<string, string> = {
-  [FieldType.TEXT]: getFieldTypeLabel(FieldType.TEXT),
-  [FieldType.TEXTAREA]: getFieldTypeLabel(FieldType.TEXTAREA),
-  [FieldType.NUMBER]: getFieldTypeLabel(FieldType.NUMBER),
-  [FieldType.DATE]: getFieldTypeLabel(FieldType.DATE),
-  [FieldType.DATETIME]: getFieldTypeLabel(FieldType.DATETIME),
-  [FieldType.SELECT]: getFieldTypeLabel(FieldType.SELECT),
-  [FieldType.MULTISELECT]: getFieldTypeLabel(FieldType.MULTISELECT),
-  [FieldType.USER]: getFieldTypeLabel(FieldType.USER),
-  [FieldType.MULTIUSER]: getFieldTypeLabel(FieldType.MULTIUSER),
-  [FieldType.LABEL]: getFieldTypeLabel(FieldType.LABEL),
-  [FieldType.URL]: getFieldTypeLabel(FieldType.URL),
-  [FieldType.CHECKBOX]: getFieldTypeLabel(FieldType.CHECKBOX),
-}
+  [FieldType.TEXT]: getFieldTypeLabelKey(FieldType.TEXT),
+  [FieldType.TEXTAREA]: getFieldTypeLabelKey(FieldType.TEXTAREA),
+  [FieldType.NUMBER]: getFieldTypeLabelKey(FieldType.NUMBER),
+  [FieldType.DATE]: getFieldTypeLabelKey(FieldType.DATE),
+  [FieldType.DATETIME]: getFieldTypeLabelKey(FieldType.DATETIME),
+  [FieldType.SELECT]: getFieldTypeLabelKey(FieldType.SELECT),
+  [FieldType.MULTISELECT]: getFieldTypeLabelKey(FieldType.MULTISELECT),
+  [FieldType.USER]: getFieldTypeLabelKey(FieldType.USER),
+  [FieldType.MULTIUSER]: getFieldTypeLabelKey(FieldType.MULTIUSER),
+  [FieldType.LABEL]: getFieldTypeLabelKey(FieldType.LABEL),
+  [FieldType.URL]: getFieldTypeLabelKey(FieldType.URL),
+  [FieldType.CHECKBOX]: getFieldTypeLabelKey(FieldType.CHECKBOX) }
 
 const openCreateFieldDialog = () => {
   isEditFieldMode.value = false
@@ -642,8 +589,7 @@ const openCreateFieldDialog = () => {
     field_type: '',
     description: '',
     options: '',
-    default_value: '',
-  }
+    default_value: '' }
   editingOptions.value = []
   fieldDialogVisible.value = true
 }
@@ -657,8 +603,7 @@ const handleEditField = (field: FieldDefinition) => {
     field_type: field.field_type,
     description: field.description || '',
     options: field.options || '',
-    default_value: field.default_value || '',
-  }
+    default_value: field.default_value || '' }
   editingOptions.value = deserializeOptions(field.options)
   fieldDialogVisible.value = true
 }
@@ -679,9 +624,8 @@ const submitFieldForm = async () => {
           field_name: fieldForm.value.field_name,
           description: fieldForm.value.description,
           options: optionsJson,
-          default_value: fieldForm.value.default_value,
-        })
-        ElMessage.success('更新成功')
+          default_value: fieldForm.value.default_value })
+        ElMessage.success(t('issue.msg.updateSuccess'))
       } else {
         await createGlobalField({
           field_key: fieldForm.value.field_key,
@@ -689,14 +633,13 @@ const submitFieldForm = async () => {
           field_type: fieldForm.value.field_type as any,
           description: fieldForm.value.description,
           options: optionsJson,
-          default_value: fieldForm.value.default_value,
-        })
-        ElMessage.success('创建成功')
+          default_value: fieldForm.value.default_value })
+        ElMessage.success(t('common.createSuccess'))
       }
       fieldDialogVisible.value = false
       await loadFields()
     } catch {
-      ElMessage.error(isEditFieldMode.value ? '更新字段失败' : '创建字段失败')
+      ElMessage.error(isEditFieldMode.value ? t('field.updateFieldFailed') : t('field.createFieldFailed'))
     } finally {
       fieldSubmitLoading.value = false
     }
@@ -708,7 +651,7 @@ const handleToggleFieldActive = async (field: FieldDefinition) => {
     await updateGlobalField(field.id, { is_active: field.is_active })
   } catch {
     field.is_active = !field.is_active
-    ElMessage.error('更新状态失败')
+    ElMessage.error(t('field.updateStatusFailed'))
   }
 }
 
@@ -716,7 +659,7 @@ const handleUpdateFieldSort = async (field: FieldDefinition) => {
   try {
     await updateGlobalField(field.id, { sort_order: field.sort_order })
   } catch {
-    ElMessage.error('更新排序失败')
+    ElMessage.error(t('field.updateSortFailed'))
     await loadFields()
   }
 }
@@ -726,27 +669,26 @@ const handleDeleteField = async (field: FieldDefinition) => {
     const { data } = await getFieldUsage(field.id)
     const usage: FieldUsage = data.data
 
-    let warningMsg = `确定要删除字段 "${field.field_name}" 吗？`
+    let warningMsg = t('field.confirmDeleteField', { name: field.field_name })
     if (usage.scheme_count > 0 || usage.value_count > 0 || usage.template_count > 0) {
-      warningMsg = `字段 "${field.field_name}" 正在被使用：\n` +
-        `- ${usage.scheme_count} 个字段方案引用\n` +
-        `- ${usage.value_count} 条字段值记录\n` +
-        `- ${usage.template_count} 个模板引用\n\n` +
-        `删除后以上关联数据将一并清除，确定继续？`
+      warningMsg = t('field.inUseWarning', {
+        name: field.field_name,
+        schemes: usage.scheme_count,
+        values: usage.value_count,
+        templates: usage.template_count })
     }
 
-    await ElMessageBox.confirm(warningMsg, '删除确认', {
+    await ElMessageBox.confirm(warningMsg, t('issue.list.deleteTitle'), {
       type: 'warning',
-      confirmButtonText: '确认删除',
-      cancelButtonText: '取消',
-    })
+      confirmButtonText: t('field.confirmDeleteBtn'),
+      cancelButtonText: t('common.cancel') })
 
     await deleteGlobalField(field.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     await loadFields()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除字段失败')
+      ElMessage.error(t('field.deleteFieldFailed'))
     }
   }
 }
@@ -761,11 +703,9 @@ const templateFormRef = ref<FormInstance>()
 const templateForm = ref({
   name: '',
   description: '',
-  is_active: true,
-})
+  is_active: true })
 const templateFormRules: FormRules = {
-  name: [{ required: true, message: '请输入模板名称', trigger: 'blur' }],
-}
+  name: [{ required: true, message: t('field.templateNameRequired'), trigger: ['blur', 'change'] }] }
 
 const openCreateTemplateDialog = () => {
   isEditTemplateMode.value = false
@@ -780,8 +720,7 @@ const handleEditTemplate = (tpl: FieldSchemeTemplate) => {
   templateForm.value = {
     name: tpl.name,
     description: tpl.description || '',
-    is_active: tpl.is_active,
-  }
+    is_active: tpl.is_active }
   templateDialogVisible.value = true
 }
 
@@ -795,20 +734,18 @@ const submitTemplateForm = async () => {
         await updateTemplate(editingTemplateId.value, {
           name: templateForm.value.name,
           description: templateForm.value.description,
-          is_active: templateForm.value.is_active,
-        })
-        ElMessage.success('更新成功')
+          is_active: templateForm.value.is_active })
+        ElMessage.success(t('issue.msg.updateSuccess'))
       } else {
         await createTemplate({
           name: templateForm.value.name,
-          description: templateForm.value.description,
-        })
-        ElMessage.success('创建成功')
+          description: templateForm.value.description })
+        ElMessage.success(t('common.createSuccess'))
       }
       templateDialogVisible.value = false
       await loadTemplates()
     } catch {
-      ElMessage.error(isEditTemplateMode.value ? '更新模板失败' : '创建模板失败')
+      ElMessage.error(isEditTemplateMode.value ? t('field.updateTemplateFailed') : t('field.createTemplateFailed'))
     } finally {
       templateSubmitLoading.value = false
     }
@@ -817,15 +754,14 @@ const submitTemplateForm = async () => {
 
 const handleDeleteTemplate = async (tpl: FieldSchemeTemplate) => {
   try {
-    await ElMessageBox.confirm(`确定要删除模板 "${tpl.name}" 吗？`, '删除确认', {
-      type: 'warning',
-    })
+    await ElMessageBox.confirm(t('field.confirmDeleteTemplate', { name: tpl.name }), t('issue.list.deleteTitle'), {
+      type: 'warning' })
     await deleteTemplate(tpl.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     await loadTemplates()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('删除模板失败')
+      ElMessage.error(t('field.deleteTemplateFailed'))
     }
   }
 }
@@ -848,7 +784,7 @@ const openTemplateDetail = async (tpl: FieldSchemeTemplate) => {
     const { data } = await getTemplate(tpl.id)
     templateItems.value = data.data?.items || []
   } catch {
-    ElMessage.error('加载模板详情失败')
+    ElMessage.error(t('field.loadTemplateDetailFailed'))
   } finally {
     templateDetailLoading.value = false
   }
@@ -874,14 +810,13 @@ const saveTemplateItems = async () => {
       is_visible_edit: item.is_visible_edit,
       is_visible_detail: item.is_visible_detail,
       sort_order: item.sort_order ?? idx,
-      default_value: item.default_value || '',
-    }))
+      default_value: item.default_value || '' }))
     await updateTemplateItems(currentTemplate.value.id, items)
-    ElMessage.success('保存成功')
+    ElMessage.success(t('common.saveSuccess'))
     templateItemsDirty.value = false
     await loadTemplates()
   } catch {
-    ElMessage.error('保存模板配置失败')
+    ElMessage.error(t('field.saveConfigFailed'))
   } finally {
     templateItemsSaving.value = false
   }
@@ -927,50 +862,13 @@ const confirmAddTemplateFields = () => {
       is_visible_edit: true,
       is_visible_detail: true,
       sort_order: maxSort + i + 1,
-      default_value: '',
-    })
+      default_value: '' })
   }
   templateItemsDirty.value = true
   addTemplateFieldVisible.value = false
 }
 
 // ============ 字段图标/样式工具 ============
-
-const getFieldTypeClass = (fieldType: string) => {
-  const classMap: Record<string, string> = {
-    text: 'type-text',
-    textarea: 'type-textarea',
-    number: 'type-number',
-    date: 'type-date',
-    select: 'type-select',
-    multiselect: 'type-multiselect',
-    user: 'type-user',
-    version: 'type-version',
-    component: 'type-component',
-    label: 'type-label',
-    epic_link: 'type-epic',
-    time_estimate: 'type-time',
-  }
-  return classMap[fieldType] || 'type-text'
-}
-
-const getFieldTypeIcon = (fieldType: string) => {
-  const iconMap: Record<string, any> = {
-    text: Document,
-    textarea: EditPen,
-    number: Tickets,
-    date: Calendar,
-    select: List,
-    multiselect: List,
-    user: User,
-    version: Tickets,
-    component: Grid,
-    label: Tickets,
-    epic_link: Tickets,
-    time_estimate: Calendar,
-  }
-  return iconMap[fieldType] || Document
-}
 
 // ============ 初始化 ============
 
@@ -980,443 +878,31 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
-.field-management-container {
-  width: 100%;
-}
+// 列表样式在 _apple.scss 里，这一页只留几处单元格和对话框。
 
-// ============ 页面头部 icon (TdPageHeader leading slot) ============
-.page-header-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--td-tag-primary-bg);
-  border-radius: var(--td-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--td-color-primary);
-  flex-shrink: 0;
-}
-
-// ============ 内容卡片 ============
-.content-card {
-  border: none;
-  box-shadow: var(--td-elevation-1);
-  transition: var(--td-transition-shadow);
-  border-radius: var(--td-radius-lg);
-
-  &:hover { box-shadow: var(--td-elevation-2); }
-
-  :deep(.el-card__body) {
-    padding: 0;
-  }
-}
-
-.custom-tabs {
-  :deep(.el-tabs__header) {
-    padding: 0 28px;
-    margin-bottom: 0;
-    border-bottom: 1px solid var(--td-divider-color);
-  }
-
-  :deep(.el-tabs__content) {
-    padding: 24px 28px 28px;
-  }
-
-  :deep(.el-tabs__item) {
-    height: 56px;
-    line-height: 56px;
-    font-size: 14px;
-  }
-
-  :deep(.el-tabs__nav-wrap::after) {
-    height: 1px;
-  }
-}
-
-.tab-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-// ============ Tab 头部 ============
-.tab-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.tab-header-hint {
-  font-size: 13px;
-  color: var(--td-text-placeholder);
-}
-
-.search-input {
-  width: 280px;
-
-  :deep(.el-input__wrapper) {
-    border-radius: 10px;
-    box-shadow: 0 0 0 1px var(--td-border-color) inset;
-
-    &:hover, &.is-focus {
-      box-shadow: 0 0 0 1px var(--td-color-primary) inset;
-    }
-  }
-}
-
-.action-btn {
-  border-radius: 10px;
-  padding: 10px 20px;
-  font-weight: 500;
-}
-
-// ============ 字段分区 ============
-.field-section {
-  margin-bottom: 28px;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: var(--td-bg-page);
-  border-radius: 10px;
-  margin-bottom: 12px;
+// 可折叠的卡片头（系统字段那一段）
+.card-head.as-toggle {
   cursor: pointer;
-  transition: background 150ms ease-out;
   user-select: none;
 
-  &:hover {
-    background: var(--td-bg-section);
-  }
-}
+  &:hover { background: var(--td-bg-card-hover); }
 
-.section-title-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.collapse-arrow {
-  font-size: 14px;
-  color: var(--td-text-secondary);
-  transition: transform 150ms ease-out;
-
-  &.collapsed {
-    transform: rotate(-90deg);
-  }
-}
-
-.section-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--td-text-primary);
-}
-
-.section-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 7px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--td-text-secondary);
-  background: var(--td-border-color);
-  border-radius: 11px;
-}
-
-.section-hint {
-  font-size: 12px;
-  color: var(--td-text-placeholder);
-}
-
-// ============ 字段卡片列表 ============
-.field-card-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 18px;
-  background: var(--td-bg-card);
-  border: 1px solid var(--td-divider-color);
-  border-radius: 10px;
-  transition: all 150ms ease-out;
-
-  &:hover {
-    border-color: var(--td-tag-primary-border);
-    background: var(--td-bg-section);
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.06);
-  }
-}
-
-.field-card-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
-}
-
-.field-card-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.field-card-action {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.action-label {
-  font-size: 12px;
-  color: var(--td-text-placeholder);
-  white-space: nowrap;
-}
-
-// ============ 字段类型图标 ============
-.field-type-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  color: var(--td-text-white);
-  flex-shrink: 0;
-
-  &.small {
-    width: 32px;
-    height: 32px;
-    font-size: 15px;
-    border-radius: 8px;
+  .chev {
+    width: 12px;
+    height: 12px;
+    stroke: var(--td-text-placeholder);
+    stroke-width: 1.8;
+    fill: none;
+    transition: transform var(--td-duration-fast) var(--td-ease-out);
   }
 
-  &.type-text      { background: var(--td-color-primary); }
-  &.type-textarea   { background: #6366f1; }
-  &.type-number     { background: var(--td-color-warning); }
-  &.type-date       { background: var(--td-color-success); }
-  &.type-select     { background: #8b5cf6; }
-  &.type-multiselect { background: #a78bfa; }
-  &.type-user       { background: #ec4899; }
-  &.type-version    { background: #06b6d4; }
-  &.type-component  { background: #14b8a6; }
-  &.type-label      { background: #f97316; }
-  &.type-epic       { background: #6366f1; }
-  &.type-time       { background: #64748b; }
+  .chev.is-collapsed { transform: rotate(180deg); }
 }
 
-// ============ 字段类型标签 ============
-.field-type-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  flex-shrink: 0;
+.hint { font-size: 12px; }
+.desc { max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sort-input { width: 72px; }
 
-  &.inline {
-    padding: 3px 10px;
-  }
-
-  &.tag-type-text       { background: var(--td-tag-primary-border); color: var(--td-color-primary-hover); }
-  &.tag-type-textarea   { background: var(--td-tag-indigo-bg); color: var(--td-tag-indigo-text); }
-  &.tag-type-number     { background: var(--td-tag-warning-bg); color: var(--td-tag-orange-text); }
-  &.tag-type-date       { background: var(--td-tag-success-bg); color: var(--td-tag-success-text); }
-  &.tag-type-select     { background: var(--td-tag-purple-bg); color: var(--td-tag-purple-text); }
-  &.tag-type-multiselect { background: var(--td-tag-purple-bg); color: var(--td-tag-purple-text); }
-  &.tag-type-user       { background: var(--td-tag-pink-bg); color: var(--td-tag-pink-text); }
-  &.tag-type-version    { background: var(--td-tag-cyan-bg); color: var(--td-tag-cyan-text); }
-  &.tag-type-component  { background: var(--td-tag-teal-bg); color: var(--td-tag-teal-text); }
-  &.tag-type-label      { background: var(--td-tag-orange-bg); color: var(--td-tag-orange-text); }
-  &.tag-type-epic       { background: var(--td-tag-indigo-bg); color: var(--td-tag-indigo-text); }
-  &.tag-type-time       { background: var(--td-bg-section); color: var(--td-text-regular); }
-}
-
-// ============ 字段信息 ============
-.field-card-info {
-  min-width: 0;
-
-  .field-card-name {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--td-text-primary);
-    line-height: 1.4;
-  }
-
-  .field-card-key {
-    font-size: 12px;
-    color: var(--td-text-placeholder);
-    font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
-    line-height: 1.3;
-  }
-}
-
-.field-card-desc {
-  font-size: 12px;
-  color: var(--td-text-placeholder);
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sort-input {
-  width: 64px;
-
-  :deep(.el-input__wrapper) {
-    padding: 0 8px;
-  }
-
-  // 隐藏 number 输入框的上下箭头
-  :deep(input[type="number"]) {
-    -moz-appearance: textfield;
-    text-align: center;
-
-    &::-webkit-outer-spin-button,
-    &::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-  }
-}
-
-.empty-custom {
-  padding: 24px 0;
-}
-
-// ============ 模板卡片 ============
-.template-card-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 16px;
-}
-
-.template-card {
-  background: var(--td-bg-card);
-  border: 1px solid var(--td-border-color);
-  border-radius: 12px;
-  padding: 20px;
-  cursor: pointer;
-  transition: all 150ms ease-out;
-
-  &:hover {
-    border-color: var(--td-tag-primary-border);
-    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1);
-  }
-}
-
-.template-card-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  margin-bottom: 16px;
-}
-
-.template-icon {
-  width: 44px;
-  height: 44px;
-  background: var(--td-tag-purple-bg);
-  color: var(--td-tag-purple-text);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  flex-shrink: 0;
-}
-
-.template-meta {
-  flex: 1;
-  min-width: 0;
-}
-
-.template-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--td-text-primary);
-  margin-bottom: 4px;
-  line-height: 1.3;
-}
-
-.template-desc {
-  font-size: 13px;
-  color: var(--td-text-placeholder);
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.template-status {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.template-card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 14px;
-  border-top: 1px solid var(--td-border-color);
-}
-
-.template-stat {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--td-text-secondary);
-
-  .el-icon {
-    font-size: 14px;
-    color: var(--td-text-placeholder);
-  }
-}
-
-.template-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.more-btn {
-  padding: 6px;
-  min-width: auto;
-
-  :deep(.el-icon) {
-    margin: 0;
-  }
-}
-
-.danger-item {
-  color: var(--td-color-danger) !important;
-
-  .el-icon {
-    color: var(--td-color-danger);
-  }
-}
-
-// ============ 模板详情弹窗 ============
 .template-detail-content {
   min-height: 200px;
 }
@@ -1507,5 +993,40 @@ onMounted(async () => {
 
 .option-input {
   flex: 1;
+}
+
+/* 方案模板明细里的字段单元格 —— 这几个类模板里在用，样式是重写时删掉的 */
+.field-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.field-card-name {
+  font-size: 13px;
+  color: var(--td-text-primary);
+}
+
+.field-card-key {
+  font-size: 11.5px;
+  font-family: var(--td-font-mono);
+  color: var(--td-text-placeholder);
+}
+
+.field-type-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--td-text-secondary);
+  background: var(--td-bg-section);
+  border-radius: 5px;
+  padding: 1px 7px;
+
+  &.inline { margin: 0; }
+}
+
+.select-field-table :deep(.el-table__cell) {
+  padding: 5px 0;
 }
 </style>

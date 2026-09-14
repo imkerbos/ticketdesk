@@ -12,17 +12,16 @@ import (
 )
 
 // SwaggerAuthMiddleware 限制 /swagger/* 仅登录用户访问.
-// 接受三种凭证 (任一):
+// 接受两种凭证 (任一):
 //  1. Authorization: Bearer <jwt 或 td_pat_xxx> 头
-//  2. cookie `td_swagger_token` (前端 /api-docs 页设置后跳 swagger UI)
-//  3. query `?token=...` (cli/调试用, 不推荐)
+//  2. cookie `td_swagger_token` (前端 /api-docs 页调 /auth/swagger-session 设置后跳 swagger UI)
 //
 // 拒绝时返回 401 (JSON), 由前端拦截后引导登录.
 func SwaggerAuthMiddleware(jwtManager *jwt.Manager, tokenSvc userService.APITokenService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		raw := extractCredential(c)
 		if raw == "" {
-			response.Unauthorized(c, "请登录后访问 API 文档")
+			response.Unauthorized(c, "apidoc.login_required")
 			c.Abort()
 			return
 		}
@@ -31,7 +30,7 @@ func SwaggerAuthMiddleware(jwtManager *jwt.Manager, tokenSvc userService.APIToke
 		if userService.IsAPIToken(raw) {
 			user, _, err := tokenSvc.Authenticate(c.Request.Context(), raw)
 			if err != nil {
-				response.Unauthorized(c, "API token 无效或已过期")
+				response.Unauthorized(c, "user.api_token_bad")
 				c.Abort()
 				return
 			}
@@ -44,7 +43,7 @@ func SwaggerAuthMiddleware(jwtManager *jwt.Manager, tokenSvc userService.APIToke
 		// JWT 路径
 		claims, err := jwtManager.ParseToken(raw)
 		if err != nil {
-			response.Unauthorized(c, "登录已过期, 请重新登录")
+			response.Unauthorized(c, "apidoc.session_expired")
 			c.Abort()
 			return
 		}
@@ -54,7 +53,9 @@ func SwaggerAuthMiddleware(jwtManager *jwt.Manager, tokenSvc userService.APIToke
 	}
 }
 
-// extractCredential 按优先级从多源取 token: header > cookie > query.
+// extractCredential 按优先级从多源取 token: header > cookie.
+// 刻意不支持 ?token= : URL 里的凭证会进入访问日志、Referer 头和浏览器历史,
+// 前端 /api-docs 走的是 /auth/swagger-session 设的 HttpOnly cookie, 不依赖 query.
 func extractCredential(c *gin.Context) string {
 	// 1. Authorization header
 	if h := c.GetHeader("Authorization"); h != "" {
@@ -65,10 +66,6 @@ func extractCredential(c *gin.Context) string {
 	}
 	// 2. cookie (前端 /api-docs 页设置)
 	if v, err := c.Cookie("td_swagger_token"); err == nil && v != "" {
-		return v
-	}
-	// 3. query (调试用)
-	if v := c.Query("token"); v != "" {
 		return v
 	}
 	return ""

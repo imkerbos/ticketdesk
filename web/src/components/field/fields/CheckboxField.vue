@@ -2,15 +2,18 @@
   <el-switch
     v-model="internalValue"
     :disabled="disabled || readonly"
-    active-text="是"
-    inactive-text="否"
+    :active-text="t('component.field.yes')"
+    :inactive-text="t('component.field.no')"
     @change="handleChange"
   />
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, watch } from 'vue'
 import type { FieldDefinition, FieldSchemeItem } from '@/types/field'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   field: FieldDefinition

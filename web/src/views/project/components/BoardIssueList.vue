@@ -3,21 +3,21 @@
     <!-- 列表头部 -->
     <div class="list-header">
       <div class="header-left">
-        <span class="list-title">工单</span>
+        <span class="list-title">{{ t('project.boardList.title') }}</span>
         <span class="list-count">{{ total }}</span>
       </div>
       <el-button type="primary" size="small" class="create-btn" @click="$emit('create')">
         <el-icon><Plus /></el-icon>
-        创建
+        {{ t('common.create') }}
       </el-button>
     </div>
 
     <!-- 筛选区 -->
     <div class="list-filters">
-      <div class="search-row">
+      <div class="filter-row">
         <el-input
           v-model="keyword"
-          placeholder="搜索标题或编号..."
+          :placeholder="t('project.boardList.searchPlaceholder')"
           clearable
           size="small"
           class="search-input"
@@ -28,21 +28,9 @@
             <el-icon><Search /></el-icon>
           </template>
         </el-input>
-        <el-button
-          type="primary"
-          size="small"
-          class="search-btn"
-          title="搜索 (Enter)"
-          @click="handleSearch"
-        >
-          <el-icon><Search /></el-icon>
-          <span>搜索</span>
-        </el-button>
-      </div>
-      <div class="filter-row">
         <el-select
           v-model="statusFilter"
-          placeholder="状态"
+          :placeholder="t('issue.status')"
           size="small"
           multiple
           collapse-tags
@@ -51,26 +39,26 @@
           class="filter-select"
           @change="handleSearch"
         >
-          <el-option label="待处理" value="open" />
-          <el-option label="进行中" value="in_progress" />
-          <el-option label="待确认" value="pending_review" />
-          <el-option label="重新打开" value="reopened" />
-          <el-option label="已完成" value="resolved" />
-          <el-option label="已终止" value="closed" />
-          <el-option label="已合并" value="merged" />
+          <el-option :label="t('issue.statusMap.open')" value="open" />
+          <el-option :label="t('issue.statusMap.in_progress')" value="in_progress" />
+          <el-option :label="t('issue.statusMap.pending_review')" value="pending_review" />
+          <el-option :label="t('issue.statusMap.reopened')" value="reopened" />
+          <el-option :label="t('issue.statusMap.resolved')" value="resolved" />
+          <el-option :label="t('issue.statusMap.closed')" value="closed" />
+          <el-option :label="t('issue.statusMap.merged')" value="merged" />
         </el-select>
         <el-select
           v-model="priorityFilter"
-          placeholder="优先级"
+          :placeholder="t('issue.priority')"
           size="small"
           clearable
           class="filter-select"
           @change="handleSearch"
         >
-          <el-option label="P0 - 紧急" value="P0" />
-          <el-option label="P1 - 高" value="P1" />
-          <el-option label="P2 - 中" value="P2" />
-          <el-option label="P3 - 低" value="P3" />
+          <el-option :label="t('issue.priorityMap.P0')" value="P0" />
+          <el-option :label="t('issue.priorityMap.P1')" value="P1" />
+          <el-option :label="t('issue.priorityMap.P2')" value="P2" />
+          <el-option :label="t('issue.priorityMap.P3')" value="P3" />
         </el-select>
         <el-popover
           :visible="moreFilterVisible"
@@ -92,28 +80,28 @@
           </template>
           <div class="more-filter-panel">
             <div class="filter-item">
-              <label class="filter-label">工单类型</label>
+              <label class="filter-label">{{ t('alert.rules.issueType') }}</label>
               <el-select
                 v-model="issueTypeFilter"
-                placeholder="全部"
+                :placeholder="t('common.all')"
                 size="small"
                 clearable
                 style="width: 100%"
                 @change="handleSearch"
               >
                 <el-option
-                  v-for="t in issueTypes"
-                  :key="t.id"
-                  :label="t.display_name"
-                  :value="t.id"
+                  v-for="type in issueTypes"
+                  :key="type.id"
+                  :label="type.display_name"
+                  :value="type.id"
                 />
               </el-select>
             </div>
             <div class="filter-item">
-              <label class="filter-label">经办人</label>
+              <label class="filter-label">{{ t('project.boardList.handler') }}</label>
               <el-select
                 v-model="assigneeFilter"
-                placeholder="全部"
+                :placeholder="t('common.all')"
                 size="small"
                 clearable
                 filterable
@@ -123,27 +111,27 @@
                 <el-option
                   v-for="m in members"
                   :key="m.user_id"
-                  :label="m.user?.display_name || `用户${m.user_id}`"
+                  :label="m.user?.display_name || t('project.boardList.userFallback', { id: m.user_id })"
                   :value="m.user_id"
                 />
               </el-select>
             </div>
             <div class="filter-item">
-              <label class="filter-label">分类</label>
+              <label class="filter-label">{{ t('project.boardList.category') }}</label>
               <el-select
                 v-model="categoryFilter"
-                placeholder="全部"
+                :placeholder="t('common.all')"
                 size="small"
                 clearable
                 style="width: 100%"
                 @change="handleSearch"
               >
-                <el-option label="普通工单" value="normal" />
-                <el-option label="告警工单" value="alert" />
+                <el-option :label="t('project.boardList.categoryNormal')" value="normal" />
+                <el-option :label="t('project.boardList.categoryAlert')" value="alert" />
               </el-select>
             </div>
             <div class="filter-actions">
-              <el-button size="small" text @click="resetExtraFilters">重置</el-button>
+              <el-button size="small" text @click="resetExtraFilters">{{ t('common.reset') }}</el-button>
             </div>
           </div>
         </el-popover>
@@ -153,7 +141,7 @@
     <!-- 工单卡片列表 -->
     <div v-loading="loading" class="issue-cards">
       <div v-if="issueList.length === 0 && !loading" class="empty-state">
-        <TdEmptyState preset="no-result" title="暂无匹配的工单" />
+        <TdEmptyState preset="no-result" :title="t('project.boardList.noMatch')" />
       </div>
       <div
         v-for="item in issueList"
@@ -164,7 +152,7 @@
       >
         <div class="card-top">
           <div class="key-group">
-            <span class="priority-bar" :class="item.priority"></span>
+            <span class="priority-dot" :class="item.priority" :title="item.priority"></span>
             <a class="issue-key-link" @click.prevent.stop="router.push(`/issues/${item.issue_key}`)">{{ item.issue_key }}</a>
           </div>
           <div class="status-badge" :class="item.status">
@@ -177,7 +165,7 @@
           <div class="assignee-info">
             <div v-if="item.assignee" class="mini-avatar">{{ item.assignee.display_name?.charAt(0) || '?' }}</div>
             <div v-else class="mini-avatar unassigned">?</div>
-            <span class="assignee-name">{{ item.assignee?.display_name || '未分配' }}</span>
+            <span class="assignee-name">{{ item.assignee?.display_name || t('common.unassigned') }}</span>
           </div>
           <span v-if="item.issue_type" class="issue-type">{{ item.issue_type.display_name }}</span>
         </div>
@@ -198,6 +186,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Search, ArrowLeft, ArrowRight, Filter } from '@element-plus/icons-vue'
@@ -205,6 +194,9 @@ import { getIssueList } from '@/api/issue'
 import { getProjectIssueTypes, getProjectMembers } from '@/api/project'
 import type { Issue } from '@/types/issue'
 import type { ProjectIssueType, ProjectMember } from '@/types/project'
+
+
+const { t } = useI18n()
 
 const router = useRouter()
 
@@ -312,11 +304,9 @@ const changePage = (p: number) => {
 }
 
 const getStatusText = (status: string) => {
-  const map: Record<string, string> = {
-    open: '待处理', in_progress: '进行中', pending_review: '待确认',
-    resolved: '已完成', closed: '已终止', reopened: '重新打开', merged: '已合并',
-  }
-  return map[status] || status
+    // 状态文案统一走语言包：它同时出现在列表、详情、报表、看板，
+  // 各处各写一份必然改一处漏三处
+  return t(`issue.statusMap.${status}`)
 }
 
 watch(() => props.projectKey, () => {
@@ -375,10 +365,10 @@ defineExpose({
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 22px;
-    height: 20px;
+    min-width: 20px;
+    height: 18px;
     padding: 0 6px;
-    border-radius: 10px;
+    border-radius: 5px;
     background: var(--td-bg-section);
     font-size: 11px;
     font-weight: 600;
@@ -392,42 +382,33 @@ defineExpose({
 
 // ---- 筛选区 ----
 .list-filters {
-  padding: 0 12px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  padding: 0 12px 10px;
   flex-shrink: 0;
 
-  .search-row {
+  /* 搜索 + 两个筛选 + 更多，合并成一条（§3.6） */
+  .filter-row {
     display: flex;
     gap: 6px;
     align-items: center;
 
+    /* 搜索框吃掉更多宽度：两个筛选下拉只需要放得下「状态 / 优先级」两个词 */
     .search-input {
-      flex: 1;
+      flex: 2;
+      min-width: 0;
+
       :deep(.el-input__wrapper) {
         border-radius: 8px;
         box-shadow: 0 0 0 1px var(--td-border-color);
 
         &:focus-within {
-          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+          box-shadow: var(--td-focus-ring);
         }
       }
     }
 
-    .search-btn {
-      flex-shrink: 0;
-      border-radius: 6px;
-      gap: 4px;
-    }
-  }
-
-  .filter-row {
-    display: flex;
-    gap: 6px;
-
     .filter-select {
       flex: 1;
+      min-width: 0;
     }
 
     .more-filter-btn {
@@ -445,12 +426,12 @@ defineExpose({
         position: absolute;
         top: -4px;
         right: -4px;
-        min-width: 16px;
-        height: 16px;
+        min-width: 15px;
+        height: 15px;
         padding: 0 4px;
-        border-radius: 8px;
+        border-radius: 5px;
         background: var(--td-color-primary);
-        color: #fff;
+        color: var(--td-text-white);
         font-size: 10px;
         font-weight: 600;
         display: flex;
@@ -478,18 +459,14 @@ defineExpose({
   }
 
   &::-webkit-scrollbar-thumb {
-    background: var(--td-text-disabled);
+    background: var(--td-scrollbar-thumb);
     border-radius: 4px;
-
-    &:hover {
-      background: var(--td-text-placeholder);
-    }
   }
 }
 
 .issue-card {
-  padding: var(--td-space-3) var(--td-space-3);
-  margin-bottom: var(--td-space-2);
+  padding: 9px 10px;
+  margin-bottom: 4px;
   border-radius: var(--td-radius-md);
   cursor: pointer;
   border: 1px solid transparent;
@@ -500,13 +477,11 @@ defineExpose({
   &:hover {
     background: var(--td-bg-section);
     border-color: var(--td-border-color);
-    box-shadow: var(--td-elevation-1);
   }
 
   &.selected {
     background: var(--td-tag-primary-bg);
-    border-color: var(--td-tag-primary-border);
-    box-shadow: var(--td-elevation-2), inset 3px 0 0 var(--td-color-primary);
+    border-color: var(--td-color-primary);
 
     &:hover {
       background: var(--td-tag-primary-bg);
@@ -517,7 +492,7 @@ defineExpose({
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
   }
 
   .key-group {
@@ -526,16 +501,19 @@ defineExpose({
     gap: 6px;
   }
 
-  .priority-bar {
-    width: 3px;
-    height: 14px;
-    border-radius: 2px;
+  /* 圆点而不是左侧竖色条：竖色条属于「卡片左边挂一条彩色」那一类装饰，
+     这轮已经在角色卡、流程节点、看板选中态上都拆掉了。
+     只有 P0 用红 —— 其余用弱色，红色才留得住分量（§3.1）。 */
+  .priority-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
     flex-shrink: 0;
 
     &.P0 { background: var(--td-color-danger); }
     &.P1 { background: var(--td-color-warning); }
-    &.P2 { background: var(--td-color-primary); }
-    &.P3 { background: var(--td-color-success); }
+    &.P2 { background: var(--td-text-secondary); }
+    &.P3 { background: var(--td-text-disabled); }
   }
 
   .issue-key-link {
@@ -558,10 +536,10 @@ defineExpose({
     -webkit-box-orient: vertical;
     overflow: hidden;
     word-break: break-all;
-    font-size: 13px;
+    font-size: 12.5px;
     color: var(--td-text-primary);
-    line-height: 1.5;
-    margin-bottom: 8px;
+    line-height: 1.45;
+    margin-bottom: 6px;
   }
 
   .card-bottom {
@@ -577,11 +555,11 @@ defineExpose({
   }
 
   .mini-avatar {
-    width: 20px;
-    height: 20px;
+    width: 19px;
+    height: 19px;
     border-radius: 50%;
-    background: var(--td-color-primary);
-    color: var(--td-text-white);
+    background: var(--td-tag-primary-bg);
+    color: var(--td-tag-primary-text);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -590,8 +568,8 @@ defineExpose({
     flex-shrink: 0;
 
     &.unassigned {
-      background: var(--td-text-disabled);
-      color: var(--td-text-white);
+      background: var(--td-bg-section);
+      color: var(--td-text-placeholder);
     }
   }
 
@@ -606,10 +584,10 @@ defineExpose({
 
   .issue-type {
     font-size: 11px;
-    color: var(--td-text-placeholder);
+    color: var(--td-text-secondary);
     background: var(--td-bg-section);
     padding: 1px 6px;
-    border-radius: 4px;
+    border-radius: 5px;
   }
 }
 
@@ -620,7 +598,7 @@ defineExpose({
   gap: 4px;
   font-size: 11px;
   padding: 1px 7px;
-  border-radius: 10px;
+  border-radius: 5px;
   font-weight: 500;
   white-space: nowrap;
 
@@ -630,12 +608,12 @@ defineExpose({
     border-radius: 50%;
   }
 
-  &.open { background: var(--td-tag-warning-border); color: var(--td-tag-orange-text); .status-dot { background: var(--td-color-warning); } }
-  &.in_progress { background: var(--td-tag-primary-border); color: var(--td-tag-primary-text); .status-dot { background: var(--td-color-primary); } }
+  &.open { background: var(--td-tag-orange-bg); color: var(--td-tag-orange-text); .status-dot { background: var(--td-color-warning); } }
+  &.in_progress { background: var(--td-tag-primary-bg); color: var(--td-tag-primary-text); .status-dot { background: var(--td-color-primary); } }
   &.pending_review { background: var(--td-tag-indigo-bg); color: var(--td-tag-indigo-text); .status-dot { background: var(--td-tag-indigo-text); } }
-  &.resolved { background: var(--td-tag-success-border); color: var(--td-tag-success-text); .status-dot { background: var(--td-color-success); } }
+  &.resolved { background: var(--td-tag-success-bg); color: var(--td-tag-success-text); .status-dot { background: var(--td-color-success); } }
   &.closed { background: var(--td-bg-section); color: var(--td-text-regular); .status-dot { background: var(--td-text-secondary); } }
-  &.reopened { background: var(--td-tag-danger-border); color: var(--td-color-danger); .status-dot { background: var(--td-color-danger); } }
+  &.reopened { background: var(--td-tag-danger-bg); color: var(--td-tag-danger-text); .status-dot { background: var(--td-color-danger); } }
   &.merged { background: var(--td-tag-purple-bg); color: var(--td-tag-purple-text); .status-dot { background: var(--td-tag-purple-text); } }
 }
 

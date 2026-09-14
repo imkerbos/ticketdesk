@@ -32,8 +32,13 @@ type User struct {
 	SSOProvider          string     `gorm:"size:50;index:idx_sso_subject" json:"sso_provider,omitempty"` // SSO 提供方标识（如 "eiam"）
 	SSOSubject           string     `gorm:"size:255;index:idx_sso_subject" json:"sso_subject,omitempty"` // OIDC sub claim
 	ExtraAttributes      string     `gorm:"type:json" json:"extra_attributes,omitempty"`                 // SSO 扩展属性（JSON）
+	TokenVersion         int        `gorm:"not null;default:1" json:"-"`                                 // 令牌版本号；改密码/禁用/登出全部设备时递增，使存量 JWT 立即失效
 	LarkOpenID           string     `gorm:"size:64" json:"lark_open_id,omitempty"`                       // 飞书 open_id（用于 webhook @ 用户）
 	TelegramUserID       string     `gorm:"size:32" json:"telegram_user_id,omitempty"`                   // Telegram 数字 user ID（用于 tg://user?id=xxx 深链）
+	// Locale 用户偏好语言（zh-CN / en-US）。
+	// 空 = 跟随 app.language 配置。站内通知与邮件按这个字段渲染 ——
+	// 那两处没有请求上下文，Accept-Language 无从谈起，只能落在人身上。
+	Locale string `gorm:"size:10" json:"locale,omitempty"`
 }
 
 // TableName 指定表名
@@ -98,6 +103,23 @@ func (Project) TableName() string {
 	return "projects"
 }
 
+// BeforeSave GORM 钩子：确保 JSON 字段不写入空字符串
+//
+// daily_digest_issue_type_ids 是 mysql json 列，GORM 会把 Go 侧的零值 ""
+// 一并写进 INSERT，而 MySQL 对 json 列拒绝空串：
+//
+//	Error 3140 (22032): Invalid JSON text: "The document is empty."
+//
+// 结果是在任何全新库上「新建项目」直接 500。
+// 存量部署没暴露，只是因为老项目建于该列加入之前。
+// 与 User.BeforeSave 同一处理方式。
+func (p *Project) BeforeSave(tx *gorm.DB) error {
+	if p.DailyDigestIssueTypeIDs == "" {
+		p.DailyDigestIssueTypeIDs = "[]"
+	}
+	return nil
+}
+
 // ProjectMember 项目成员模型
 type ProjectMember struct {
 	ID        uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
@@ -132,18 +154,22 @@ func (IssueType) TableName() string {
 // Issue 工单模型
 type Issue struct {
 	BaseModel
-	IssueKey           string     `gorm:"size:30;uniqueIndex;not null" json:"issue_key"`
-	ProjectID          uint64     `gorm:"index;index:idx_issue_project_type_status,priority:1;not null" json:"project_id"`
-	IssueTypeID        uint64     `gorm:"index;index:idx_issue_project_type_status,priority:2;not null" json:"issue_type_id"`
+	IssueKey string `gorm:"size:30;uniqueIndex;not null" json:"issue_key"`
+	// 注意：project_id / assignee_id / reporter_id / epic_id / priority / resolution
+	// 的单列索引已移除——它们都是 migrate.go 中复合索引的最左前缀，
+	// 保留只会放大写入代价（issues 是最热的写表），优化器也几乎不会选中。
+	// 复合索引统一在 createCompositeIndexes 中维护。
+	ProjectID          uint64     `gorm:"not null" json:"project_id"`
+	IssueTypeID        uint64     `gorm:"index;not null" json:"issue_type_id"`
 	Title              string     `gorm:"size:200;not null" json:"title"`
 	Description        string     `gorm:"type:text" json:"description"`
-	Priority           string     `gorm:"size:10;default:P2;index" json:"priority"`
+	Priority           string     `gorm:"size:10;default:P2" json:"priority"`
 	Status             string     `gorm:"size:30;default:open;index" json:"status"`
-	Resolution         string     `gorm:"size:30;index" json:"resolution"` // 解决结果：fixed, wont_fix, duplicate, cannot_reproduce, works_as_designed, incomplete, done
-	ReporterID         uint64     `gorm:"index;not null" json:"reporter_id"`
-	AssigneeID         *uint64    `gorm:"index" json:"assignee_id"`
+	Resolution         string     `gorm:"size:30" json:"resolution"` // 解决结果：fixed, wont_fix, duplicate, cannot_reproduce, works_as_designed, incomplete, done
+	ReporterID         uint64     `gorm:"not null" json:"reporter_id"`
+	AssigneeID         *uint64    `json:"assignee_id"`
 	ParentID           *uint64    `gorm:"index" json:"parent_id"`
-	EpicID             *uint64    `gorm:"index" json:"epic_id"` // Epic 关联（从扩展字段迁移为默认字段）
+	EpicID             *uint64    `json:"epic_id"` // Epic 关联（从扩展字段迁移为默认字段）
 	WorkflowInstanceID *uint64    `gorm:"index" json:"workflow_instance_id,omitempty"`
 	MergedIntoIssueID  *uint64    `gorm:"index" json:"merged_into_issue_id,omitempty"` // 合并目标工单 ID（扁平化：所有旧工单直接指向最终合并目标）
 	DueDate            *time.Time `json:"due_date"`

@@ -22,8 +22,11 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { computed } from 'vue'
 import type { NotificationItem } from '@/types/notification'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   notification: NotificationItem
@@ -53,17 +56,17 @@ const iconName = computed(() => {
 const iconColor = computed(() => {
   switch (props.notification.type) {
     case 'issue_assigned':
-      return '#3b82f6'
+      return 'var(--td-color-primary)'
     case 'issue_status_changed':
-      return '#f59e0b'
+      return 'var(--td-color-warning)'
     case 'issue_commented':
-      return '#10b981'
+      return 'var(--td-color-success)'
     case 'mention':
-      return '#8b5cf6'
+      return 'var(--td-cat-2)'
     case 'issue_updated':
-      return '#6366f1'
+      return 'var(--td-cat-2)'
     default:
-      return '#9ca3af'
+      return 'var(--td-text-placeholder)'
   }
 })
 
@@ -76,10 +79,10 @@ const timeAgo = (dateStr: string): string => {
   const diffHour = Math.floor(diffMin / 60)
   const diffDay = Math.floor(diffHour / 24)
 
-  if (diffSec < 60) return '刚刚'
-  if (diffMin < 60) return `${diffMin}分钟前`
-  if (diffHour < 24) return `${diffHour}小时前`
-  if (diffDay < 30) return `${diffDay}天前`
+  if (diffSec < 60) return t('common.justNow')
+  if (diffMin < 60) return t('common.minutesAgo', { n: diffMin })
+  if (diffHour < 24) return t('common.hoursAgo', { n: diffHour })
+  if (diffDay < 30) return t('common.daysAgo', { n: diffDay })
   return date.toLocaleDateString()
 }
 </script>

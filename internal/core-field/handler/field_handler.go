@@ -76,7 +76,7 @@ func (h *FieldHandler) HandleUpdateField(c *gin.Context) {
 	projectKey := c.Param("key")
 	fieldID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的字段ID")
+		response.BadRequest(c, "field.invalid_id")
 		return
 	}
 
@@ -111,7 +111,7 @@ func (h *FieldHandler) HandleDeleteField(c *gin.Context) {
 	projectKey := c.Param("key")
 	fieldID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的字段ID")
+		response.BadRequest(c, "field.invalid_id")
 		return
 	}
 
@@ -162,7 +162,7 @@ func (h *FieldHandler) HandleGetFieldScheme(c *gin.Context) {
 	projectKey := c.Param("key")
 	issueTypeID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工单类型ID")
+		response.BadRequest(c, "field.invalid_issue_type_id")
 		return
 	}
 
@@ -192,7 +192,7 @@ func (h *FieldHandler) HandleUpdateFieldScheme(c *gin.Context) {
 	projectKey := c.Param("key")
 	issueTypeID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工单类型ID")
+		response.BadRequest(c, "field.invalid_issue_type_id")
 		return
 	}
 
@@ -260,7 +260,7 @@ func (h *FieldHandler) HandleUpdateVersion(c *gin.Context) {
 	projectKey := c.Param("key")
 	versionID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的版本ID")
+		response.BadRequest(c, "field.invalid_version_id")
 		return
 	}
 
@@ -294,7 +294,7 @@ func (h *FieldHandler) HandleDeleteVersion(c *gin.Context) {
 	projectKey := c.Param("key")
 	versionID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的版本ID")
+		response.BadRequest(c, "field.invalid_version_id")
 		return
 	}
 
@@ -377,7 +377,7 @@ func (h *FieldHandler) HandleUpdateComponent(c *gin.Context) {
 	projectKey := c.Param("key")
 	componentID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的组件ID")
+		response.BadRequest(c, "field.invalid_component_id")
 		return
 	}
 
@@ -411,7 +411,7 @@ func (h *FieldHandler) HandleDeleteComponent(c *gin.Context) {
 	projectKey := c.Param("key")
 	componentID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的组件ID")
+		response.BadRequest(c, "field.invalid_component_id")
 		return
 	}
 
@@ -494,7 +494,7 @@ func (h *FieldHandler) HandleUpdateLabel(c *gin.Context) {
 	projectKey := c.Param("key")
 	labelID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的标签ID")
+		response.BadRequest(c, "field.invalid_label_id")
 		return
 	}
 
@@ -528,7 +528,7 @@ func (h *FieldHandler) HandleDeleteLabel(c *gin.Context) {
 	projectKey := c.Param("key")
 	labelID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的标签ID")
+		response.BadRequest(c, "field.invalid_label_id")
 		return
 	}
 
@@ -578,7 +578,7 @@ func (h *FieldHandler) HandleListLabels(c *gin.Context) {
 func (h *FieldHandler) HandleGetIssueFieldValues(c *gin.Context) {
 	issueID, err := strconv.ParseUint(c.Param("issue_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工单ID")
+		response.BadRequest(c, "field.invalid_issue_id")
 		return
 	}
 
@@ -622,7 +622,7 @@ func (h *FieldHandler) HandleCreateGlobalField(c *gin.Context) {
 func (h *FieldHandler) HandleUpdateGlobalField(c *gin.Context) {
 	fieldID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的字段ID")
+		response.BadRequest(c, "field.invalid_id")
 		return
 	}
 	var req dto.UpdateFieldRequest
@@ -642,7 +642,7 @@ func (h *FieldHandler) HandleUpdateGlobalField(c *gin.Context) {
 func (h *FieldHandler) HandleDeleteGlobalField(c *gin.Context) {
 	fieldID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的字段ID")
+		response.BadRequest(c, "field.invalid_id")
 		return
 	}
 	if err := h.fieldService.DeleteGlobalField(c.Request.Context(), fieldID); err != nil {
@@ -656,7 +656,7 @@ func (h *FieldHandler) HandleDeleteGlobalField(c *gin.Context) {
 func (h *FieldHandler) HandleGetFieldUsage(c *gin.Context) {
 	fieldID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的字段ID")
+		response.BadRequest(c, "field.invalid_id")
 		return
 	}
 	result, err := h.fieldService.GetFieldUsage(c.Request.Context(), fieldID)
@@ -699,7 +699,7 @@ func (h *FieldHandler) HandleCreateTemplate(c *gin.Context) {
 func (h *FieldHandler) HandleGetTemplate(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的模板ID")
+		response.BadRequest(c, "field.invalid_template_id")
 		return
 	}
 	result, err := h.fieldService.GetTemplate(c.Request.Context(), templateID)
@@ -714,7 +714,7 @@ func (h *FieldHandler) HandleGetTemplate(c *gin.Context) {
 func (h *FieldHandler) HandleUpdateTemplate(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的模板ID")
+		response.BadRequest(c, "field.invalid_template_id")
 		return
 	}
 	var req dto.UpdateTemplateRequest
@@ -734,7 +734,7 @@ func (h *FieldHandler) HandleUpdateTemplate(c *gin.Context) {
 func (h *FieldHandler) HandleDeleteTemplate(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的模板ID")
+		response.BadRequest(c, "field.invalid_template_id")
 		return
 	}
 	if err := h.fieldService.DeleteTemplate(c.Request.Context(), templateID); err != nil {
@@ -748,7 +748,7 @@ func (h *FieldHandler) HandleDeleteTemplate(c *gin.Context) {
 func (h *FieldHandler) HandleUpdateTemplateItems(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的模板ID")
+		response.BadRequest(c, "field.invalid_template_id")
 		return
 	}
 	var req dto.UpdateTemplateItemsRequest
@@ -768,7 +768,7 @@ func (h *FieldHandler) HandleApplyTemplate(c *gin.Context) {
 	projectKey := c.Param("key")
 	issueTypeID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工单类型ID")
+		response.BadRequest(c, "field.invalid_issue_type_id")
 		return
 	}
 	var req dto.ApplyTemplateRequest
@@ -788,33 +788,33 @@ func (h *FieldHandler) HandleApplyTemplate(c *gin.Context) {
 func (h *FieldHandler) handleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrProjectNotFound):
-		response.NotFound(c, "项目不存在")
+		response.NotFound(c, "workflow.project_not_found")
 	case errors.Is(err, service.ErrFieldNotFound):
-		response.NotFound(c, "字段不存在")
+		response.NotFound(c, "field.not_found")
 	case errors.Is(err, service.ErrFieldKeyExists):
-		response.Error(c, http.StatusConflict, "CONFLICT", "字段Key已存在")
+		response.Error(c, http.StatusConflict, "CONFLICT", "field.key_exists")
 	case errors.Is(err, service.ErrCannotDeleteSystem):
-		response.Forbidden(c, "不能删除系统字段")
+		response.Forbidden(c, "field.system_undeletable")
 	case errors.Is(err, service.ErrCannotModifySystem):
-		response.Forbidden(c, "不能修改系统字段")
+		response.Forbidden(c, "field.system_immutable")
 	case errors.Is(err, service.ErrIssueTypeNotFound):
-		response.NotFound(c, "工单类型不存在")
+		response.NotFound(c, "project.issue_type_not_found")
 	case errors.Is(err, service.ErrVersionNotFound):
-		response.NotFound(c, "版本不存在")
+		response.NotFound(c, "field.version_not_found")
 	case errors.Is(err, service.ErrVersionNameExists):
-		response.Error(c, http.StatusConflict, "CONFLICT", "版本名称已存在")
+		response.Error(c, http.StatusConflict, "CONFLICT", "field.version_name_exists")
 	case errors.Is(err, service.ErrComponentNotFound):
-		response.NotFound(c, "组件不存在")
+		response.NotFound(c, "field.component_not_found")
 	case errors.Is(err, service.ErrComponentNameExists):
-		response.Error(c, http.StatusConflict, "CONFLICT", "组件名称已存在")
+		response.Error(c, http.StatusConflict, "CONFLICT", "field.component_name_exists")
 	case errors.Is(err, service.ErrLabelNotFound):
-		response.NotFound(c, "标签不存在")
+		response.NotFound(c, "field.label_not_found")
 	case errors.Is(err, service.ErrLabelNameExists):
-		response.Error(c, http.StatusConflict, "CONFLICT", "标签名称已存在")
+		response.Error(c, http.StatusConflict, "CONFLICT", "field.label_name_exists")
 	case errors.Is(err, service.ErrTemplateNotFound):
-		response.NotFound(c, "模板不存在")
+		response.NotFound(c, "field.template_not_found")
 	case errors.Is(err, service.ErrTemplateNameExists):
-		response.Error(c, http.StatusConflict, "CONFLICT", "模板名称已存在")
+		response.Error(c, http.StatusConflict, "CONFLICT", "field.template_name_exists")
 	default:
 		response.InternalError(c, err.Error())
 	}

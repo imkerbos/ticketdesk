@@ -1,136 +1,126 @@
 <template>
-  <div class="category-container">
-    <!-- 页面头部 -->
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><Collection /></el-icon>
-        </div>
-      </template>
-      <template #title>需求分类管理</template>
-      <template #subtitle>管理需求的分类标签，支持自定义分类</template>
-      <template #actions>
-        <el-button type="primary" @click="handleCreate">
-          <el-icon><Plus /></el-icon>
-          新增分类
-        </el-button>
-      </template>
-    </TdPageHeader>
+  <!-- 结构同其它列表页 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('requirement.categoryTitle') }}</h1>
+      <div class="grow"></div>
+      <button class="btn primary" @click="handleCreate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('requirement.categoryList.create') }}
+      </button>
+    </div>
 
-    <!-- 分类列表 -->
-    <el-card shadow="never" class="table-card">
-      <el-table
-        v-loading="loading"
-        :data="categories"
-        style="width: 100%"
-        stripe
-      >
-        <el-table-column prop="sort_order" label="排序" width="80" align="center" />
-        <el-table-column label="标识" min-width="180">
-          <template #default="{ row }">
-            <code class="name-code">{{ row.name }}</code>
-          </template>
-        </el-table-column>
-        <el-table-column prop="label" label="显示名称" min-width="180" />
-        <el-table-column label="预览" min-width="160">
-          <template #default="{ row }">
-            <el-tag :type="row.color" size="small">{{ row.label }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="默认" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_default" type="success" size="small">默认</el-tag>
-            <span v-else class="text-muted">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_system" size="small" type="info">系统</el-tag>
-            <el-tag v-else size="small" type="success">自定义</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="140" align="center" fixed="right">
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-button link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
-              <el-button
-                link
-                type="danger"
-                size="small"
-                :disabled="row.is_system"
-                @click="handleDelete(row)"
-              >
-                删除
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <section class="card">
+      <div v-loading="loading" class="table-wrap">
+        <table class="issues">
+          <colgroup><col style="width: 72px" /><col style="width: 200px" /><col /><col style="width: 96px" /><col style="width: 96px" /><col style="width: 120px" /></colgroup>
+          <thead>
+            <tr>
+              <th>{{ t('requirement.categoryList.sort') }}</th>
+              <th>{{ t('requirement.categoryList.key') }}</th>
+              <th>{{ t('requirement.categoryList.label') }}</th>
+              <th>{{ t('requirement.categoryList.isDefault') }}</th>
+              <th>{{ t('issue.type') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in categories" :key="row.id">
+              <td class="time">{{ row.sort_order }}</td>
+              <td class="key static">{{ row.name }}</td>
+              <td>{{ row.label }}</td>
+              <!-- 默认项只标"是"，不是默认的留空——一列里半数绿标等于没标 -->
+              <td>
+                <span v-if="row.is_default" class="pill green">{{ t('common.yes') }}</span>
+                <span v-else class="muted">-</span>
+              </td>
+              <td><span class="pill neutral">{{ row.is_system ? t('common.system') : t('requirement.categoryList.custom') }}</span></td>
+              <td>
+                <div class="row-actions">
+                  <button class="link-btn" @click="handleEdit(row)">{{ t('common.edit') }}</button>
+                  <el-dropdown v-if="!row.is_system" trigger="click">
+                    <button class="more" :aria-label="t('common.operation')" @click.stop>···</button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item @click="handleDelete(row)">{{ t('common.delete') }}</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="!loading && categories.length === 0" class="empty">
+          <TdEmptyState preset="no-data" :title="t('requirement.categoryList.empty')" />
+        </div>
+      </div>
+    </section>
 
     <!-- 创建/编辑对话框 -->
     <el-dialog
       v-model="showDialog"
-      :title="editing ? '编辑分类' : '新增分类'"
+      :title="editing ? t('requirement.categoryList.edit') : t('requirement.categoryList.create')"
       width="500px"
       destroy-on-close
       @closed="resetForm"
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="标识" prop="name">
+        <el-form-item :label="t('requirement.categoryList.key')" prop="name">
           <el-input
             v-model="form.name"
-            placeholder="英文标识，如 feature"
+            :placeholder="t('requirement.categoryList.keyPlaceholder')"
             :disabled="!!editing"
           />
-          <div v-if="!editing" class="form-tip">创建后不可修改，建议使用英文小写</div>
+          <div v-if="!editing" class="form-tip">{{ t('requirement.categoryList.keyTip') }}</div>
         </el-form-item>
-        <el-form-item label="显示名称" prop="label">
-          <el-input v-model="form.label" placeholder="如 功能需求" />
+        <el-form-item :label="t('requirement.categoryList.label')" prop="label">
+          <el-input v-model="form.label" :placeholder="t('requirement.categoryList.labelPlaceholder')" />
         </el-form-item>
-        <el-form-item label="标签颜色" prop="color">
-          <el-select v-model="form.color" placeholder="选择颜色" style="width: 100%">
-            <el-option label="蓝色 (primary)" value="primary">
-              <el-tag type="primary" size="small">示例</el-tag>
-              <span style="margin-left: 8px;">蓝色</span>
+        <el-form-item :label="t('requirement.categoryList.color')" prop="color">
+          <el-select v-model="form.color" :placeholder="t('requirement.categoryList.colorPlaceholder')" style="width: 100%">
+            <el-option :label="t('requirement.categoryList.colorPrimary')" value="primary">
+              <el-tag type="primary" size="small">{{ t('requirement.categoryList.sample') }}</el-tag>
+              <span style="margin-left: 8px;">{{ t('requirement.categoryList.blue') }}</span>
             </el-option>
-            <el-option label="绿色 (success)" value="success">
-              <el-tag type="success" size="small">示例</el-tag>
-              <span style="margin-left: 8px;">绿色</span>
+            <el-option :label="t('requirement.categoryList.colorSuccess')" value="success">
+              <el-tag type="success" size="small">{{ t('requirement.categoryList.sample') }}</el-tag>
+              <span style="margin-left: 8px;">{{ t('requirement.categoryList.green') }}</span>
             </el-option>
-            <el-option label="红色 (danger)" value="danger">
-              <el-tag type="danger" size="small">示例</el-tag>
-              <span style="margin-left: 8px;">红色</span>
+            <el-option :label="t('requirement.categoryList.colorDanger')" value="danger">
+              <el-tag type="danger" size="small">{{ t('requirement.categoryList.sample') }}</el-tag>
+              <span style="margin-left: 8px;">{{ t('requirement.categoryList.red') }}</span>
             </el-option>
-            <el-option label="橙色 (warning)" value="warning">
-              <el-tag type="warning" size="small">示例</el-tag>
-              <span style="margin-left: 8px;">橙色</span>
+            <el-option :label="t('requirement.categoryList.colorWarning')" value="warning">
+              <el-tag type="warning" size="small">{{ t('requirement.categoryList.sample') }}</el-tag>
+              <span style="margin-left: 8px;">{{ t('requirement.categoryList.orange') }}</span>
             </el-option>
-            <el-option label="灰色 (info)" value="info">
-              <el-tag type="info" size="small">示例</el-tag>
-              <span style="margin-left: 8px;">灰色</span>
+            <el-option :label="t('requirement.categoryList.colorInfo')" value="info">
+              <el-tag type="info" size="small">{{ t('requirement.categoryList.sample') }}</el-tag>
+              <span style="margin-left: 8px;">{{ t('requirement.categoryList.grey') }}</span>
             </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item v-if="editing" label="排序" prop="sort_order">
+        <el-form-item v-if="editing" :label="t('requirement.categoryList.sort')" prop="sort_order">
           <el-input-number v-model="form.sort_order" :min="0" :max="999" />
         </el-form-item>
-        <el-form-item v-if="editing" label="设为默认">
+        <el-form-item v-if="editing" :label="t('requirement.categoryList.setDefault')">
           <el-switch v-model="form.is_default" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showDialog = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
+        <el-button @click="showDialog = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleSubmit">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Collection } from '@element-plus/icons-vue'
 import {
   getRequirementCategories,
   createRequirementCategory,
@@ -138,6 +128,8 @@ import {
   deleteRequirementCategory,
 } from '@/api/requirement'
 import type { RequirementCategoryDef } from '@/types/requirement'
+
+const { t } = useI18n()
 
 const categories = ref<RequirementCategoryDef[]>([])
 const loading = ref(false)
@@ -156,15 +148,15 @@ const form = reactive({
 
 const rules: FormRules = {
   name: [
-    { required: true, message: '请输入标识', trigger: 'blur' },
-    { pattern: /^[a-z][a-z0-9_]*$/, message: '只允许小写字母、数字和下划线，且以字母开头', trigger: 'blur' },
-    { min: 1, max: 30, message: '长度 1-30 个字符', trigger: 'blur' },
+    { required: true, message: t('requirement.categoryList.keyRequired'), trigger: ['blur', 'change'] },
+    { pattern: /^[a-z][a-z0-9_]*$/, message: t('requirement.categoryList.keyPattern'), trigger: 'blur' },
+    { min: 1, max: 30, message: t('requirement.categoryList.keyLength'), trigger: 'blur' },
   ],
   label: [
-    { required: true, message: '请输入显示名称', trigger: 'blur' },
-    { min: 1, max: 50, message: '长度 1-50 个字符', trigger: 'blur' },
+    { required: true, message: t('requirement.categoryList.labelRequired'), trigger: ['blur', 'change'] },
+    { min: 1, max: 50, message: t('requirement.categoryList.labelLength'), trigger: 'blur' },
   ],
-  color: [{ required: true, message: '请选择颜色', trigger: 'change' }],
+  color: [{ required: true, message: t('requirement.categoryList.colorRequired'), trigger: 'change' }],
 }
 
 const loadCategories = async () => {
@@ -173,7 +165,7 @@ const loadCategories = async () => {
     const { data } = await getRequirementCategories()
     categories.value = data.data
   } catch {
-    ElMessage.error('加载分类列表失败')
+    ElMessage.error(t('requirement.categoryList.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -196,17 +188,17 @@ const handleEdit = (cat: RequirementCategoryDef) => {
 
 const handleDelete = async (cat: RequirementCategoryDef) => {
   try {
-    await ElMessageBox.confirm(`确定要删除分类"${cat.label}"吗？`, '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
+    await ElMessageBox.confirm(t('requirement.categoryList.confirmDelete', { name: cat.label }), t('issue.msg.tipTitle'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning',
     })
     await deleteRequirementCategory(cat.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     loadCategories()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.response?.data?.message || '删除失败')
+      ElMessage.error(error.response?.data?.message || t('issue.msg.deleteFailed2'))
     }
   }
 }
@@ -226,19 +218,19 @@ const handleSubmit = async () => {
           sort_order: form.sort_order,
           is_default: form.is_default,
         })
-        ElMessage.success('更新成功')
+        ElMessage.success(t('issue.msg.updateSuccess'))
       } else {
         await createRequirementCategory({
           name: form.name,
           label: form.label,
           color: form.color,
         })
-        ElMessage.success('创建成功')
+        ElMessage.success(t('common.createSuccess'))
       }
       showDialog.value = false
       loadCategories()
     } catch (error: any) {
-      ElMessage.error(error.response?.data?.message || '操作失败')
+      ElMessage.error(error.response?.data?.message || t('common.operationFailed'))
     } finally {
       submitting.value = false
     }
@@ -261,61 +253,7 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.category-container {
-  width: 100%; /* updated */
-}
-
-// 页面头部 icon (TdPageHeader leading slot)
-.page-header-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--td-tag-primary-bg);
-  border-radius: var(--td-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--td-color-primary);
-  flex-shrink: 0;
-}
-
-// 表格卡片
-.table-card {
-  border-radius: 12px;
-
-  :deep(.el-card__body) {
-    padding: 0;
-  }
-
-  :deep(.el-table) {
-    border-radius: 12px;
-
-    th.el-table__cell {
-      background: var(--td-bg-page);
-      font-weight: 600;
-      color: var(--td-text-regular);
-    }
-  }
-}
-
-.name-code {
-  font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 13px;
-  color: var(--td-color-primary);
-  background: var(--td-tag-primary-bg);
-  padding: 2px 8px;
-  border-radius: 4px;
-}
-
-.text-muted {
-  color: var(--td-text-disabled);
-  font-size: 13px;
-}
-
-.action-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-}
+// 列表样式在 _apple.scss 里。
 
 .form-tip {
   font-size: 12px;
@@ -333,4 +271,3 @@ onMounted(() => {
   }
 }
 </style>
-

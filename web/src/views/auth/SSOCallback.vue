@@ -4,7 +4,7 @@
       <!-- 加载中 -->
       <div v-if="loading" class="callback-loading">
         <el-icon class="loading-icon" :size="48"><Loading /></el-icon>
-        <p class="loading-text">SSO 登录中，请稍候...</p>
+        <p class="loading-text">{{ t('auth.ssoCallbackLoading') }}</p>
       </div>
 
       <!-- 错误 -->
@@ -12,7 +12,7 @@
         <el-icon class="error-icon" :size="48"><CircleCloseFilled /></el-icon>
         <p class="error-text">{{ error }}</p>
         <el-button type="primary" size="large" class="back-button" @click="goToLogin">
-          返回登录
+          {{ t('auth.backToLogin') }}
         </el-button>
       </div>
     </div>
@@ -20,12 +20,16 @@
 </template>
 
 <script setup lang="ts">
+import { applyAccountLocale } from '@/i18n'
+import { useI18n } from 'vue-i18n'
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading, CircleCloseFilled } from '@element-plus/icons-vue'
 import { ssoCallback } from '@/api/auth'
 import { useUserStore } from '@/stores/user'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const route = useRoute()
@@ -58,11 +62,21 @@ onMounted(async () => {
     const res = await ssoCallback({ code, state })
     const { access_token, refresh_token, user } = res.data.data
 
+    // SSO 回调不会走本地 MFA 流程（二次验证由身份提供方负责），
+    // 令牌字段理应齐备；缺失说明后端响应异常，明确报错而不是带着空值往下走
+    if (!access_token || !refresh_token || !user) {
+      error.value = t('auth.ssoRespError')
+      loading.value = false
+      return
+    }
+
     userStore.login(access_token, refresh_token, user)
-    ElMessage.success(`欢迎回来，${user.display_name || user.username}`)
+    // 账号里存的语言优先于本机选择：换设备登录要跟上账号设置
+    applyAccountLocale(user.locale)
+    ElMessage.success(t('auth.welcomeUser', { name: user.display_name || user.username }))
     router.push('/')
   } catch (err: any) {
-    const message = err?.response?.data?.message || 'SSO 登录失败，请重试'
+    const message = err?.response?.data?.message || t('auth.ssoFailed')
     error.value = message
     loading.value = false
   }

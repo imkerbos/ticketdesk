@@ -1,4 +1,8 @@
 import { ElMessage } from 'element-plus'
+import { i18n } from '@/i18n'
+
+// 工具函数在组件外调用，只能走 i18n 全局实例
+const t = i18n.global.t
 
 // 单文件大小上限 (10MB), 与后端 MaxAttachmentSize 保持一致
 export const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -40,12 +44,12 @@ export function formatSize(bytes: number): string {
  */
 export function validateFile(file: File): boolean {
   if (file.size > MAX_FILE_SIZE) {
-    ElMessage.error(`文件 "${file.name}" 超过 10MB 限制`)
+    ElMessage.error(t('common.fileTooLarge', { name: file.name }))
     return false
   }
   const ext = getExt(file.name)
   if (!(ALLOWED_EXTS as readonly string[]).includes(ext)) {
-    ElMessage.error(`文件 "${file.name}" 类型不支持`)
+    ElMessage.error(t('common.fileTypeUnsupported', { name: file.name }))
     return false
   }
   return true

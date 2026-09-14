@@ -7,9 +7,9 @@
           <img v-if="brandStore.logoUrl" :src="brandStore.logoUrl" :alt="brandStore.systemName" class="logo-custom" />
           <span class="logo-text">{{ brandStore.systemName }}</span>
         </div>
-        <h1 class="brand-title">忘记密码</h1>
+        <h1 class="brand-title">{{ t('auth.forgotTitle') }}</h1>
         <p class="brand-description">
-          请输入您的注册邮箱，我们将发送重置密码链接到您的邮箱。
+          {{ t('auth.forgotIntro') }}
         </p>
       </div>
       <div class="brand-footer">
@@ -21,8 +21,8 @@
     <div class="form-section">
       <div class="form-container">
         <div class="form-header">
-          <h2 class="form-title">重置密码</h2>
-          <p class="form-subtitle">输入您的邮箱地址</p>
+          <h2 class="form-title">{{ t('auth.resetTitle') }}</h2>
+          <p class="form-subtitle">{{ t('auth.resetSubtitle') }}</p>
         </div>
 
         <el-form
@@ -34,10 +34,10 @@
           hide-required-asterisk
           @submit.prevent="handleSubmit"
         >
-          <el-form-item prop="email" label="邮箱地址">
+          <el-form-item prop="email" :label="t('auth.emailLabel')">
             <el-input
               v-model="form.email"
-              placeholder="请输入注册邮箱"
+              :placeholder="t('auth.emailPlaceholder')"
               size="large"
               class="form-input"
             >
@@ -55,7 +55,7 @@
               :loading="loading"
               @click="handleSubmit"
             >
-              {{ loading ? '发送中...' : '发送重置链接' }}
+              {{ loading ? t('auth.sending') : t('auth.sendResetLink') }}
             </el-button>
           </el-form-item>
         </el-form>
@@ -63,7 +63,7 @@
         <div class="form-footer">
           <router-link to="/login" class="back-link">
             <el-icon><ArrowLeft /></el-icon>
-            <span>返回登录</span>
+            <span>{{ t('auth.backToLogin') }}</span>
           </router-link>
         </div>
       </div>
@@ -72,12 +72,15 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Message, ArrowLeft } from '@element-plus/icons-vue'
 import { forgotPassword } from '@/api/auth'
 import { useBrandStore } from '@/stores/brand'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const brandStore = useBrandStore()
@@ -90,8 +93,8 @@ const form = reactive({
 
 const rules: FormRules = {
   email: [
-    { required: true, message: '请输入邮箱地址', trigger: 'blur' },
-    { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' },
+    { required: true, message: t('auth.emailRequired'), trigger: ['blur', 'change'] },
+    { type: 'email', message: t('auth.emailInvalid'), trigger: 'blur' },
   ],
 }
 
@@ -104,7 +107,7 @@ const handleSubmit = async () => {
     loading.value = true
     try {
       await forgotPassword({ email: form.email })
-      ElMessage.success('如果该邮箱已注册，您将收到重置密码的邮件')
+      ElMessage.success(t('auth.resetMailSent'))
       // 3秒后跳转到登录页
       setTimeout(() => {
         router.push('/login')
@@ -132,8 +135,11 @@ const handleSubmit = async () => {
   flex-direction: column;
   justify-content: space-between;
   padding: 48px;
-  background: var(--td-sidebar-bg);
-  color: var(--td-text-white);
+  /* 侧边栏翻成浅色之后，这里再用 --td-sidebar-bg 配白字就是白底白字。
+     品牌面板改成分区底色 + 正常文字色，和应用内保持一套。 */
+  background: var(--td-bg-section);
+  color: var(--td-text-primary);
+  border-right: 1px solid var(--td-border-color);
 }
 
 .brand-content {
@@ -169,13 +175,13 @@ const handleSubmit = async () => {
 .brand-description {
   font-size: 16px;
   line-height: 1.8;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--td-text-secondary);
   margin: 0;
 }
 
 .brand-footer {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--td-text-placeholder);
 }
 
 /* 右侧表单区域 */
@@ -232,7 +238,7 @@ const handleSubmit = async () => {
 }
 
 .form-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  box-shadow: var(--td-focus-ring);
 }
 
 .input-icon {
@@ -251,7 +257,6 @@ const handleSubmit = async () => {
 }
 
 .submit-button:hover {
-  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
 }
 
 .form-footer {

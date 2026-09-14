@@ -1,147 +1,103 @@
 <template>
-  <div class="notification-container">
-    <!-- 页面头部 -->
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><Bell /></el-icon>
-        </div>
-      </template>
-      <template #title>通知中心</template>
-      <template #subtitle>查看和管理您的所有通知消息</template>
-    </TdPageHeader>
+  <!-- 通知是时间流，不是表格：保留列表形态，但把筛选换成分段控件、
+       条目换成 _apple.scss 的发丝线行，和其它页面同一套语言。 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('notification.title') }}</h1>
+      <div class="grow"></div>
+      <button v-if="notificationStore.unreadCount > 0" class="btn secondary" @click="handleMarkAllAsRead">
+        {{ t('notification.markAllRead') }}
+      </button>
+    </div>
 
-    <!-- 筛选卡片 -->
-    <el-card class="filter-card" shadow="never">
-      <div class="filter-content">
-        <div class="filter-left">
-          <el-radio-group v-model="filterStatus" @change="handleFilterChange">
-            <el-radio-button value="all">全部</el-radio-button>
-            <el-radio-button value="unread">
-              未读
-              <el-badge
-                v-if="notificationStore.unreadCount > 0"
-                :value="notificationStore.unreadCount"
-                :max="99"
-                class="filter-badge"
-              />
-            </el-radio-button>
-            <el-radio-button value="read">已读</el-radio-button>
-          </el-radio-group>
-
-          <el-select v-model="filterType" placeholder="通知类型" clearable class="filter-select" @change="handleFilterChange">
-            <el-option label="工单指派" value="issue_assigned" />
-            <el-option label="状态变更" value="issue_status_changed" />
-            <el-option label="新评论" value="issue_commented" />
-            <el-option label="@提及" value="mention" />
-            <el-option label="工单更新" value="issue_updated" />
-          </el-select>
-        </div>
-
-        <div class="filter-right">
-          <el-button
-            v-if="notificationStore.unreadCount > 0"
-            type="primary"
-            @click="handleMarkAllAsRead"
-          >
-            <el-icon><Check /></el-icon>
-            全部标记为已读
-          </el-button>
-        </div>
+    <div class="toolbar">
+      <div class="seg" role="group" :aria-label="t('notification.type')">
+        <button :aria-pressed="filterStatus === 'all'" @click="selectStatus('all')">{{ t('common.all') }}</button>
+        <button :aria-pressed="filterStatus === 'unread'" @click="selectStatus('unread')">
+          {{ t('notification.unread') }}
+          <template v-if="notificationStore.unreadCount > 0">({{ notificationStore.unreadCount > 99 ? '99+' : notificationStore.unreadCount }})</template>
+        </button>
+        <button :aria-pressed="filterStatus === 'read'" @click="selectStatus('read')">{{ t('notification.read') }}</button>
       </div>
-    </el-card>
+      <el-select v-model="filterType" :placeholder="t('notification.type')" clearable class="filter-select" @change="handleFilterChange">
+        <el-option :label="t('notification.typeAssigned')" value="issue_assigned" />
+        <el-option :label="t('notification.typeStatusChanged')" value="issue_status_changed" />
+        <el-option :label="t('notification.typeCommented')" value="issue_commented" />
+        <el-option :label="t('notification.typeMention')" value="mention" />
+        <el-option :label="t('notification.typeUpdated')" value="issue_updated" />
+      </el-select>
+    </div>
 
-    <!-- 通知列表 -->
-    <el-card class="list-card" shadow="never">
-      <div v-if="loading" class="loading-state">
+    <section class="card">
+      <div v-if="loading" class="notify-loading">
         <el-skeleton :rows="6" animated />
       </div>
 
-      <div v-else-if="notifications.length === 0" class="empty-state">
-        <TdEmptyState preset="no-data" title="暂无通知" />
+      <div v-else-if="notifications.length === 0" class="empty">
+        <!-- 说明句跟着当前筛选走：「未读」下为空是好事，和真的一条通知都没有不是一回事 -->
+        <TdEmptyState preset="no-data" :title="t('notification.empty')" :description="emptyDescription" />
       </div>
 
-      <div v-else class="notification-list">
-        <div
+      <ul v-else class="notify-list">
+        <li
           v-for="item in notifications"
           :key="item.id"
-          class="notification-item"
-          :class="{ unread: !item.is_read }"
+          class="notify-item"
+          :class="{ 'is-unread': !item.is_read }"
           @click="handleClick(item)"
         >
-          <div class="item-left">
-            <div class="item-icon" :style="{ background: getIconBg(item.type) }">
-              <el-icon :size="18" color="#fff">
-                <component :is="getIconName(item.type)" />
-              </el-icon>
+          <!-- 未读点：整行唯一的状态信号。类型在标题里写着，不需要彩色图标块 -->
+          <span class="dot" :style="{ background: item.is_read ? 'transparent' : 'var(--td-color-primary)' }"></span>
+
+          <div class="notify-main">
+            <div class="notify-title">
+              <span class="txt">{{ item.title }}</span>
+              <span v-if="item.entity_key" class="key">{{ item.entity_key }}</span>
             </div>
+            <div v-if="item.content" class="notify-body">{{ item.content }}</div>
           </div>
 
-          <div class="item-content">
-            <div class="item-header">
-              <span class="item-title">{{ item.title }}</span>
-              <el-tag v-if="item.entity_key" size="small" effect="plain" class="item-tag">
-                {{ item.entity_key }}
-              </el-tag>
-            </div>
-            <div v-if="item.content" class="item-body">{{ item.content }}</div>
-            <div class="item-footer">
-              <span v-if="item.actor_name" class="item-actor">
-                <el-icon><User /></el-icon>
-                {{ item.actor_name }}
-              </span>
-              <span class="item-time">
-                <el-icon><Clock /></el-icon>
-                {{ formatTime(item.created_at) }}
-              </span>
-              <el-tag v-if="!item.is_read" type="danger" size="small" effect="light">未读</el-tag>
-            </div>
-          </div>
+          <span v-if="item.actor_name" class="muted notify-actor">{{ item.actor_name }}</span>
+          <!-- 相对时间带中文，不走 .time 的等宽：中文跟着等宽排，数字和单位之间会豁开一格 -->
+          <span class="muted notify-time">{{ formatTime(item.created_at) }}</span>
 
-          <div class="item-actions">
-            <el-button
-              v-if="!item.is_read"
-              type="primary"
-              text
-              size="small"
-              @click.stop="handleMarkRead(item.id)"
-            >
-              标记已读
-            </el-button>
-            <el-button
-              type="danger"
-              text
-              size="small"
-              @click.stop="handleDelete(item.id)"
-            >
-              删除
-            </el-button>
+          <div class="row-actions">
+            <button v-if="!item.is_read" class="link-btn" @click.stop="handleMarkRead(item.id)">{{ t('notification.markRead') }}</button>
+            <el-dropdown trigger="click">
+              <button class="more" :aria-label="t('common.operation')" @click.stop>···</button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="handleDelete(item.id)">{{ t('common.delete') }}</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
-        </div>
-      </div>
+        </li>
+      </ul>
 
-      <!-- 分页 -->
-      <div v-if="total > pageSize" class="pagination-wrapper">
+      <div v-if="total > pageSize" class="table-foot">
         <el-pagination
           v-model:current-page="currentPage"
           :page-size="pageSize"
           :total="total"
-          layout="total, prev, pager, next"
+          layout="prev, pager, next"
           @current-change="handlePageChange"
         />
       </div>
-    </el-card>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Bell, Check, User, Clock } from '@element-plus/icons-vue'
 import { useNotificationStore } from '@/stores/notification'
 import { getNotificationList, markAsRead, deleteNotification } from '@/api/notification'
 import type { NotificationItem } from '@/types/notification'
+
+const { t } = useI18n()
 
 const router = useRouter()
 const notificationStore = useNotificationStore()
@@ -153,6 +109,13 @@ const pageSize = 15
 const total = ref(0)
 const filterStatus = ref('all')
 const filterType = ref('')
+
+const emptyDescription = computed(() => {
+  if (filterType.value) return t('notification.emptyFilteredDesc')
+  if (filterStatus.value === 'unread') return t('notification.emptyUnreadDesc')
+  if (filterStatus.value === 'read') return t('notification.emptyReadDesc')
+  return t('notification.emptyAllDesc')
+})
 
 const fetchData = async () => {
   loading.value = true
@@ -193,7 +156,7 @@ const handleMarkRead = async (id: number) => {
       notificationStore.unreadCount = Math.max(0, notificationStore.unreadCount - 1)
     }
   } catch {
-    ElMessage.error('操作失败')
+    ElMessage.error(t('common.operationFailed'))
   }
 }
 
@@ -202,7 +165,7 @@ const handleMarkAllAsRead = async () => {
   notifications.value.forEach((n) => {
     n.is_read = true
   })
-  ElMessage.success('已全部标记为已读')
+  ElMessage.success(t('notification.allMarkedRead'))
 }
 
 const handleDelete = async (id: number) => {
@@ -217,10 +180,16 @@ const handleDelete = async (id: number) => {
       notifications.value.splice(idx, 1)
       total.value--
     }
-    ElMessage.success('已删除')
+    ElMessage.success(t('notification.deleted'))
   } catch {
-    ElMessage.error('删除失败')
+    ElMessage.error(t('issue.msg.deleteFailed2'))
   }
+}
+
+// 分段控件选中即筛选（原来是 el-radio-group 的 change）
+const selectStatus = (v: 'all' | 'unread' | 'read') => {
+  filterStatus.value = v
+  handleFilterChange()
 }
 
 const handleFilterChange = () => {
@@ -232,28 +201,6 @@ const handlePageChange = () => {
   fetchData()
 }
 
-const getIconName = (type: string): string => {
-  const map: Record<string, string> = {
-    issue_assigned: 'UserFilled',
-    issue_status_changed: 'Switch',
-    issue_commented: 'ChatDotRound',
-    mention: 'ChatLineSquare',
-    issue_updated: 'Edit',
-  }
-  return map[type] || 'Bell'
-}
-
-const getIconBg = (type: string): string => {
-  const map: Record<string, string> = {
-    issue_assigned: '#3b82f6',
-    issue_status_changed: '#f59e0b',
-    issue_commented: '#10b981',
-    mention: '#8b5cf6',
-    issue_updated: '#6366f1',
-  }
-  return map[type] || '#9ca3af'
-}
-
 const formatTime = (dateStr: string): string => {
   const date = new Date(dateStr)
   const now = new Date()
@@ -262,10 +209,10 @@ const formatTime = (dateStr: string): string => {
   const diffHour = Math.floor(diffMs / (1000 * 60 * 60))
   const diffDay = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-  if (diffMin < 1) return '刚刚'
-  if (diffMin < 60) return `${diffMin}分钟前`
-  if (diffHour < 24) return `${diffHour}小时前`
-  if (diffDay < 7) return `${diffDay}天前`
+  if (diffMin < 1) return t('notification.justNow')
+  if (diffMin < 60) return t('notification.minutesAgo', { n: diffMin })
+  if (diffHour < 24) return t('notification.hoursAgo', { n: diffHour })
+  if (diffDay < 7) return t('notification.daysAgo', { n: diffDay })
 
   return date.toLocaleString('zh-CN', {
     month: '2-digit',
@@ -282,187 +229,63 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.notification-container {
-  width: 100%;
+// 通知条目：一行发丝线，左边未读点、中间标题与正文、右边人和时间。
+// 原来每行左侧有一个 42px 的实心彩色图标块按类型上色——类型在标题里
+// 已经写清楚了，色块只是把每行推高 20px。
+
+.notify-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-// 页面头部 icon (TdPageHeader leading slot)
-.page-header-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--td-tag-primary-bg);
-  border-radius: var(--td-radius-md);
+.notify-item {
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: var(--td-color-primary);
-  flex-shrink: 0;
-}
-
-// 筛选卡片
-.filter-card {
-  margin-bottom: 20px;
-  border: none;
-  box-shadow: var(--td-elevation-1);
-  transition: var(--td-transition-shadow);
-  border-radius: var(--td-radius-lg);
-
-  &:hover { box-shadow: var(--td-elevation-2); }
-
-  :deep(.el-card__body) {
-    padding: 16px 20px;
-  }
-
-  .filter-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .filter-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .filter-select {
-    width: 140px;
-  }
-
-  .filter-badge {
-    margin-left: 4px;
-  }
-}
-
-// 列表卡片
-.list-card {
-  border-radius: 12px;
-
-  :deep(.el-card__body) {
-    padding: 0;
-  }
-}
-
-.notification-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.notification-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 20px 24px;
+  gap: 10px;
+  padding: 0 18px;
+  height: 52px;
   border-bottom: 1px solid var(--td-divider-color);
   cursor: pointer;
-  transition: all 150ms ease-out;
+  transition: background-color var(--td-duration-fast) var(--td-ease-out);
 
-  &:last-child {
-    border-bottom: none;
-  }
-
-  &:hover {
-    background-color: var(--td-bg-page);
-  }
-
-  &.unread {
-    background-color: var(--td-tag-primary-bg);
-
-    &:hover {
-      background-color: var(--td-tag-primary-bg);
-    }
-  }
+  &:last-child { border-bottom: 0; }
+  &:hover { background: var(--td-bg-card-hover); }
 }
 
-.item-left {
-  flex-shrink: 0;
-}
-
-.item-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.item-content {
+.notify-main {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
-.item-header {
+.notify-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
+  gap: 7px;
+  min-width: 0;
 
-.item-title {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--td-text-primary);
-}
-
-.item-tag {
-  flex-shrink: 0;
-}
-
-.item-body {
-  font-size: 13px;
-  color: var(--td-text-secondary);
-  line-height: 1.5;
-  margin-bottom: 8px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.item-footer {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-size: 12px;
-  color: var(--td-text-placeholder);
-
-  .item-actor,
-  .item-time {
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  .txt {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
-.item-actions {
-  flex-shrink: 0;
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity 150ms ease-out;
+.is-unread .notify-title .txt { font-weight: var(--td-weight-semibold); }
+
+.notify-body {
+  font-size: 12px;
+  color: var(--td-text-placeholder);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.notification-item:hover .item-actions {
-  opacity: 1;
-}
+.notify-actor { font-size: 12px; white-space: nowrap; }
+.notify-time { font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-.loading-state {
-  padding: 24px;
-}
-
-.empty-state {
-  padding: 60px 0;
-}
-
-.pagination-wrapper {
-  display: flex;
-  justify-content: center;
-  padding: 20px;
-  border-top: 1px solid var(--td-divider-color);
-}
+.notify-loading { padding: 20px; }
 </style>

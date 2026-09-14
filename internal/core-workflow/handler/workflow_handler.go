@@ -11,12 +11,14 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"github.com/kerbos/ticketdesk/internal/activity/detail"
 	"github.com/kerbos/ticketdesk/internal/api/response"
 	issueRepo "github.com/kerbos/ticketdesk/internal/core-issue/repository"
 	projectRepo "github.com/kerbos/ticketdesk/internal/core-project/repository"
 	"github.com/kerbos/ticketdesk/internal/core-workflow/dto"
 	"github.com/kerbos/ticketdesk/internal/core-workflow/service"
 	"github.com/kerbos/ticketdesk/pkg/logger"
+	"github.com/kerbos/ticketdesk/pkg/safego"
 )
 
 // ActivityLogger 活动日志记录接口
@@ -56,6 +58,7 @@ func (h *WorkflowHandler) logActivity(userID uint64, userName, action, entityKey
 		return
 	}
 	go func() {
+		defer safego.Recover("workflow.logActivityHandler")
 		if err := h.activityLogger.LogActivity(context.Background(), userID, userName, action, "issue", entityID, entityKey, details); err != nil {
 			logger.Warn("failed to log workflow activity", zap.Error(err))
 		}
@@ -79,13 +82,13 @@ func (h *WorkflowHandler) logActivity(userID uint64, userName, action, entityKey
 func (h *WorkflowHandler) HandleCreateWorkflow(c *gin.Context) {
 	var req dto.CreateWorkflowRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	result, err := h.workflowService.CreateWorkflow(c.Request.Context(), &req)
 	if err != nil {
-		response.InternalError(c, "创建工作流失败")
+		response.InternalError(c, "workflow.create_failed")
 		return
 	}
 
@@ -107,7 +110,7 @@ func (h *WorkflowHandler) HandleCreateWorkflow(c *gin.Context) {
 func (h *WorkflowHandler) HandleGetWorkflow(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工作流 ID")
+		response.BadRequest(c, "workflow.invalid_id")
 		return
 	}
 
@@ -117,7 +120,7 @@ func (h *WorkflowHandler) HandleGetWorkflow(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取工作流失败")
+		response.InternalError(c, "workflow.get_failed")
 		return
 	}
 
@@ -141,13 +144,13 @@ func (h *WorkflowHandler) HandleGetWorkflow(c *gin.Context) {
 func (h *WorkflowHandler) HandleUpdateWorkflow(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工作流 ID")
+		response.BadRequest(c, "workflow.invalid_id")
 		return
 	}
 
 	var req dto.UpdateWorkflowRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -157,7 +160,7 @@ func (h *WorkflowHandler) HandleUpdateWorkflow(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "更新工作流失败")
+		response.InternalError(c, "workflow.update_failed")
 		return
 	}
 
@@ -179,7 +182,7 @@ func (h *WorkflowHandler) HandleUpdateWorkflow(c *gin.Context) {
 func (h *WorkflowHandler) HandleDeleteWorkflow(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工作流 ID")
+		response.BadRequest(c, "workflow.invalid_id")
 		return
 	}
 
@@ -189,11 +192,11 @@ func (h *WorkflowHandler) HandleDeleteWorkflow(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "删除工作流失败")
+		response.InternalError(c, "workflow.delete_failed")
 		return
 	}
 
-	response.Success(c, gin.H{"message": "工作流删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "workflow.deleted")})
 }
 
 // HandleListWorkflows 获取工作流列表
@@ -214,13 +217,13 @@ func (h *WorkflowHandler) HandleDeleteWorkflow(c *gin.Context) {
 func (h *WorkflowHandler) HandleListWorkflows(c *gin.Context) {
 	var req dto.ListWorkflowsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	workflows, total, err := h.workflowService.ListWorkflows(c.Request.Context(), &req)
 	if err != nil {
-		response.InternalError(c, "获取工作流列表失败")
+		response.InternalError(c, "workflow.list_failed")
 		return
 	}
 
@@ -246,13 +249,13 @@ func (h *WorkflowHandler) HandleListWorkflows(c *gin.Context) {
 func (h *WorkflowHandler) HandleCreateNode(c *gin.Context) {
 	workflowID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工作流 ID")
+		response.BadRequest(c, "workflow.invalid_id")
 		return
 	}
 
 	var req dto.CreateNodeRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -262,7 +265,7 @@ func (h *WorkflowHandler) HandleCreateNode(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "创建节点失败")
+		response.InternalError(c, "workflow.node_create_failed")
 		return
 	}
 
@@ -285,7 +288,7 @@ func (h *WorkflowHandler) HandleCreateNode(c *gin.Context) {
 func (h *WorkflowHandler) HandleGetNode(c *gin.Context) {
 	nodeID, err := strconv.ParseUint(c.Param("node_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的节点 ID")
+		response.BadRequest(c, "workflow.node_invalid_id")
 		return
 	}
 
@@ -295,7 +298,7 @@ func (h *WorkflowHandler) HandleGetNode(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取节点失败")
+		response.InternalError(c, "workflow.node_get_failed")
 		return
 	}
 
@@ -320,13 +323,13 @@ func (h *WorkflowHandler) HandleGetNode(c *gin.Context) {
 func (h *WorkflowHandler) HandleUpdateNode(c *gin.Context) {
 	nodeID, err := strconv.ParseUint(c.Param("node_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的节点 ID")
+		response.BadRequest(c, "workflow.node_invalid_id")
 		return
 	}
 
 	var req dto.UpdateNodeRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -336,7 +339,7 @@ func (h *WorkflowHandler) HandleUpdateNode(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "更新节点失败")
+		response.InternalError(c, "workflow.node_update_failed")
 		return
 	}
 
@@ -359,7 +362,7 @@ func (h *WorkflowHandler) HandleUpdateNode(c *gin.Context) {
 func (h *WorkflowHandler) HandleDeleteNode(c *gin.Context) {
 	nodeID, err := strconv.ParseUint(c.Param("node_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的节点 ID")
+		response.BadRequest(c, "workflow.node_invalid_id")
 		return
 	}
 
@@ -373,7 +376,7 @@ func (h *WorkflowHandler) HandleDeleteNode(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"message": "节点删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "workflow.node_deleted")})
 }
 
 // HandleListNodes 获取工作流的所有节点
@@ -391,7 +394,7 @@ func (h *WorkflowHandler) HandleDeleteNode(c *gin.Context) {
 func (h *WorkflowHandler) HandleListNodes(c *gin.Context) {
 	workflowID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工作流 ID")
+		response.BadRequest(c, "workflow.invalid_id")
 		return
 	}
 
@@ -401,7 +404,7 @@ func (h *WorkflowHandler) HandleListNodes(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取节点列表失败")
+		response.InternalError(c, "workflow.node_list_failed")
 		return
 	}
 
@@ -427,13 +430,13 @@ func (h *WorkflowHandler) HandleListNodes(c *gin.Context) {
 func (h *WorkflowHandler) HandleCreateEdge(c *gin.Context) {
 	workflowID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工作流 ID")
+		response.BadRequest(c, "workflow.invalid_id")
 		return
 	}
 
 	var req dto.CreateEdgeRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -466,7 +469,7 @@ func (h *WorkflowHandler) HandleCreateEdge(c *gin.Context) {
 func (h *WorkflowHandler) HandleGetEdge(c *gin.Context) {
 	edgeID, err := strconv.ParseUint(c.Param("edge_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的边 ID")
+		response.BadRequest(c, "workflow.edge_invalid_id")
 		return
 	}
 
@@ -476,7 +479,7 @@ func (h *WorkflowHandler) HandleGetEdge(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取边失败")
+		response.InternalError(c, "workflow.edge_get_failed")
 		return
 	}
 
@@ -501,13 +504,13 @@ func (h *WorkflowHandler) HandleGetEdge(c *gin.Context) {
 func (h *WorkflowHandler) HandleUpdateEdge(c *gin.Context) {
 	edgeID, err := strconv.ParseUint(c.Param("edge_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的边 ID")
+		response.BadRequest(c, "workflow.edge_invalid_id")
 		return
 	}
 
 	var req dto.UpdateEdgeRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -517,7 +520,7 @@ func (h *WorkflowHandler) HandleUpdateEdge(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "更新边失败")
+		response.InternalError(c, "workflow.edge_update_failed")
 		return
 	}
 
@@ -540,7 +543,7 @@ func (h *WorkflowHandler) HandleUpdateEdge(c *gin.Context) {
 func (h *WorkflowHandler) HandleDeleteEdge(c *gin.Context) {
 	edgeID, err := strconv.ParseUint(c.Param("edge_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的边 ID")
+		response.BadRequest(c, "workflow.edge_invalid_id")
 		return
 	}
 
@@ -550,11 +553,11 @@ func (h *WorkflowHandler) HandleDeleteEdge(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "删除边失败")
+		response.InternalError(c, "workflow.edge_delete_failed")
 		return
 	}
 
-	response.Success(c, gin.H{"message": "边删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "workflow.edge_deleted")})
 }
 
 // HandleListEdges 获取工作流的所有边
@@ -572,7 +575,7 @@ func (h *WorkflowHandler) HandleDeleteEdge(c *gin.Context) {
 func (h *WorkflowHandler) HandleListEdges(c *gin.Context) {
 	workflowID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工作流 ID")
+		response.BadRequest(c, "workflow.invalid_id")
 		return
 	}
 
@@ -582,7 +585,7 @@ func (h *WorkflowHandler) HandleListEdges(c *gin.Context) {
 			response.NotFound(c, err.Error())
 			return
 		}
-		response.InternalError(c, "获取边列表失败")
+		response.InternalError(c, "workflow.edge_list_failed")
 		return
 	}
 
@@ -604,7 +607,7 @@ func (h *WorkflowHandler) HandleListEdges(c *gin.Context) {
 func (h *WorkflowHandler) HandleGetInstanceByIssue(c *gin.Context) {
 	issueKey := c.Param("key")
 	if issueKey == "" {
-		response.BadRequest(c, "工单 Key 不能为空")
+		response.BadRequest(c, "workflow.issue_key_required")
 		return
 	}
 
@@ -612,10 +615,10 @@ func (h *WorkflowHandler) HandleGetInstanceByIssue(c *gin.Context) {
 	issue, err := h.issueRepo.GetByKey(c.Request.Context(), issueKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.NotFound(c, "工单不存在")
+			response.NotFound(c, "workflow.issue_not_found")
 			return
 		}
-		response.InternalError(c, "查询工单失败")
+		response.InternalError(c, "workflow.issue_query_failed")
 		return
 	}
 
@@ -628,7 +631,7 @@ func (h *WorkflowHandler) HandleGetInstanceByIssue(c *gin.Context) {
 				c.Request.Context(), issue.ID, issue.ProjectID, issue.IssueTypeID,
 			)
 			if createErr != nil || newInstance == nil {
-				response.NotFound(c, "该工单没有关联的工作流实例")
+				response.NotFound(c, "workflow.no_instance")
 				return
 			}
 
@@ -641,11 +644,11 @@ func (h *WorkflowHandler) HandleGetInstanceByIssue(c *gin.Context) {
 			// 重新获取完整的实例响应
 			instance, err = h.workflowEngine.GetInstanceByIssueID(c.Request.Context(), issue.ID)
 			if err != nil {
-				response.InternalError(c, "获取工作流实例失败")
+				response.InternalError(c, "workflow.instance_failed")
 				return
 			}
 		} else {
-			response.InternalError(c, "获取工作流实例失败")
+			response.InternalError(c, "workflow.instance_failed")
 			return
 		}
 	}
@@ -672,21 +675,21 @@ func (h *WorkflowHandler) HandleGetInstanceByIssue(c *gin.Context) {
 func (h *WorkflowHandler) HandleApprove(c *gin.Context) {
 	issueKey := c.Param("key")
 	if issueKey == "" {
-		response.BadRequest(c, "工单 Key 不能为空")
+		response.BadRequest(c, "workflow.issue_key_required")
 		return
 	}
 
 	// 获取当前用户 ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		response.Unauthorized(c, "未获取到用户信息")
+		response.Unauthorized(c, "user.info_missing")
 		return
 	}
 
 	// 解析请求体
 	var req dto.ApproveRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -694,10 +697,10 @@ func (h *WorkflowHandler) HandleApprove(c *gin.Context) {
 	issue, err := h.issueRepo.GetByKey(c.Request.Context(), issueKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.NotFound(c, "工单不存在")
+			response.NotFound(c, "workflow.issue_not_found")
 			return
 		}
-		response.InternalError(c, "查询工单失败")
+		response.InternalError(c, "workflow.issue_query_failed")
 		return
 	}
 
@@ -705,10 +708,10 @@ func (h *WorkflowHandler) HandleApprove(c *gin.Context) {
 	instance, err := h.workflowEngine.GetInstanceByIssueID(c.Request.Context(), issue.ID)
 	if err != nil {
 		if errors.Is(err, service.ErrWorkflowInstanceNotFound) {
-			response.NotFound(c, "该工单没有关联的工作流实例")
+			response.NotFound(c, "workflow.no_instance")
 			return
 		}
-		response.InternalError(c, "获取工作流实例失败")
+		response.InternalError(c, "workflow.instance_failed")
 		return
 	}
 
@@ -716,19 +719,19 @@ func (h *WorkflowHandler) HandleApprove(c *gin.Context) {
 	uid := userID.(uint64)
 	if err := h.workflowEngine.Approve(c.Request.Context(), instance.ID, uid, req.Comment); err != nil {
 		if errors.Is(err, service.ErrNotApprover) {
-			response.Forbidden(c, "当前用户不是审批人")
+			response.Forbidden(c, "workflow.not_approver")
 			return
 		}
 		if errors.Is(err, service.ErrAlreadyApproved) {
-			response.BadRequest(c, "已经审批过了")
+			response.BadRequest(c, "workflow.already_approved")
 			return
 		}
 		if errors.Is(err, service.ErrNotApprovalNode) {
-			response.BadRequest(c, "当前节点不是审批节点，无法执行审批操作")
+			response.BadRequest(c, "workflow.approve_wrong_node")
 			return
 		}
 		logger.Error("approve operation failed", zap.Error(err))
-		response.InternalError(c, "审批操作失败: "+err.Error())
+		response.InternalError(c, response.T(c, "workflow.approve_failed")+err.Error())
 		return
 	}
 
@@ -738,13 +741,20 @@ func (h *WorkflowHandler) HandleApprove(c *gin.Context) {
 	if instance.CurrentNode != nil {
 		nodeName = instance.CurrentNode.Name
 	}
-	details := "节点: " + nodeName
-	if req.Comment != "" {
-		details += " - " + req.Comment
-	}
-	h.logActivity(uid, fmt.Sprint(userName), "审批通过", issueKey, details, issue.ID)
+	details := detail.New(commentedKey("activity.detail.workflowNode", req.Comment),
+		"node", nodeName, "comment", req.Comment)
+	h.logActivity(uid, fmt.Sprint(userName), "approval_approved", issueKey, details, issue.ID)
 
-	response.Success(c, gin.H{"message": "审批通过"})
+	response.Success(c, gin.H{"message": response.T(c, "workflow.approved")})
+}
+
+// commentedKey 在「带评论」和「不带评论」两条文案之间选一条。
+// 没有评论时不能沿用同一条文案 —— 末尾会留一个孤零零的破折号。
+func commentedKey(base, comment string) string {
+	if comment == "" {
+		return base
+	}
+	return base + "WithComment"
 }
 
 // HandleReject 审批拒绝
@@ -763,21 +773,21 @@ func (h *WorkflowHandler) HandleApprove(c *gin.Context) {
 func (h *WorkflowHandler) HandleReject(c *gin.Context) {
 	issueKey := c.Param("key")
 	if issueKey == "" {
-		response.BadRequest(c, "工单 Key 不能为空")
+		response.BadRequest(c, "workflow.issue_key_required")
 		return
 	}
 
 	// 获取当前用户 ID
 	userID, exists := c.Get("user_id")
 	if !exists {
-		response.Unauthorized(c, "未获取到用户信息")
+		response.Unauthorized(c, "user.info_missing")
 		return
 	}
 
 	// 解析请求体
 	var req dto.RejectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
@@ -785,10 +795,10 @@ func (h *WorkflowHandler) HandleReject(c *gin.Context) {
 	issue, err := h.issueRepo.GetByKey(c.Request.Context(), issueKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.NotFound(c, "工单不存在")
+			response.NotFound(c, "workflow.issue_not_found")
 			return
 		}
-		response.InternalError(c, "查询工单失败")
+		response.InternalError(c, "workflow.issue_query_failed")
 		return
 	}
 
@@ -796,10 +806,10 @@ func (h *WorkflowHandler) HandleReject(c *gin.Context) {
 	instance, err := h.workflowEngine.GetInstanceByIssueID(c.Request.Context(), issue.ID)
 	if err != nil {
 		if errors.Is(err, service.ErrWorkflowInstanceNotFound) {
-			response.NotFound(c, "该工单没有关联的工作流实例")
+			response.NotFound(c, "workflow.no_instance")
 			return
 		}
-		response.InternalError(c, "获取工作流实例失败")
+		response.InternalError(c, "workflow.instance_failed")
 		return
 	}
 
@@ -807,19 +817,19 @@ func (h *WorkflowHandler) HandleReject(c *gin.Context) {
 	uid := userID.(uint64)
 	if err := h.workflowEngine.Reject(c.Request.Context(), instance.ID, uid, req.Comment); err != nil {
 		if errors.Is(err, service.ErrNotApprover) {
-			response.Forbidden(c, "当前用户不是审批人")
+			response.Forbidden(c, "workflow.not_approver")
 			return
 		}
 		if errors.Is(err, service.ErrAlreadyApproved) {
-			response.BadRequest(c, "已经审批过了")
+			response.BadRequest(c, "workflow.already_approved")
 			return
 		}
 		if errors.Is(err, service.ErrNotApprovalNode) {
-			response.BadRequest(c, "当前节点不是审批节点，无法执行拒绝操作")
+			response.BadRequest(c, "workflow.reject_wrong_node")
 			return
 		}
 		logger.Error("reject operation failed", zap.Error(err))
-		response.InternalError(c, "拒绝操作失败: "+err.Error())
+		response.InternalError(c, response.T(c, "workflow.reject_failed")+err.Error())
 		return
 	}
 
@@ -829,13 +839,11 @@ func (h *WorkflowHandler) HandleReject(c *gin.Context) {
 	if instance.CurrentNode != nil {
 		nodeName = instance.CurrentNode.Name
 	}
-	details := "节点: " + nodeName
-	if req.Comment != "" {
-		details += " - " + req.Comment
-	}
-	h.logActivity(uid, fmt.Sprint(userName), "审批拒绝", issueKey, details, issue.ID)
+	details := detail.New(commentedKey("activity.detail.workflowNode", req.Comment),
+		"node", nodeName, "comment", req.Comment)
+	h.logActivity(uid, fmt.Sprint(userName), "approval_rejected", issueKey, details, issue.ID)
 
-	response.Success(c, gin.H{"message": "审批已拒绝"})
+	response.Success(c, gin.H{"message": response.T(c, "workflow.rejected")})
 }
 
 // HandleComplete 完成工作节点
@@ -855,45 +863,45 @@ func (h *WorkflowHandler) HandleReject(c *gin.Context) {
 func (h *WorkflowHandler) HandleComplete(c *gin.Context) {
 	issueKey := c.Param("key")
 	if issueKey == "" {
-		response.BadRequest(c, "工单 Key 不能为空")
+		response.BadRequest(c, "workflow.issue_key_required")
 		return
 	}
 
 	userID, exists := c.Get("user_id")
 	if !exists {
-		response.Unauthorized(c, "未获取到用户信息")
+		response.Unauthorized(c, "user.info_missing")
 		return
 	}
 
 	var req dto.CompleteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "请求参数错误: "+err.Error())
+		response.BadRequestValidation(c, err)
 		return
 	}
 
 	issue, err := h.issueRepo.GetByKey(c.Request.Context(), issueKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.NotFound(c, "工单不存在")
+			response.NotFound(c, "workflow.issue_not_found")
 			return
 		}
-		response.InternalError(c, "查询工单失败")
+		response.InternalError(c, "workflow.issue_query_failed")
 		return
 	}
 
 	instance, err := h.workflowEngine.GetInstanceByIssueID(c.Request.Context(), issue.ID)
 	if err != nil {
 		if errors.Is(err, service.ErrWorkflowInstanceNotFound) {
-			response.NotFound(c, "该工单没有关联的工作流实例")
+			response.NotFound(c, "workflow.no_instance")
 			return
 		}
-		response.InternalError(c, "获取工作流实例失败")
+		response.InternalError(c, "workflow.instance_failed")
 		return
 	}
 
 	uid := userID.(uint64)
 	if err := h.workflowEngine.Complete(c.Request.Context(), instance.ID, uid, req.Comment, req.Result); err != nil {
-		response.InternalError(c, "完成操作失败: "+err.Error())
+		response.InternalError(c, response.T(c, "workflow.complete_failed")+err.Error())
 		return
 	}
 
@@ -903,26 +911,29 @@ func (h *WorkflowHandler) HandleComplete(c *gin.Context) {
 	if instance.CurrentNode != nil {
 		nodeName = instance.CurrentNode.Name
 	}
-	// 将条件值转为友好文本
-	resultText := "完成"
-	if req.Result != "" {
-		presetLabels := map[string]string{
-			"approved": "通过",
-			"rejected": "退回",
-		}
-		if label, ok := presetLabels[req.Result]; ok {
-			resultText = label
-		} else {
-			resultText = req.Result
-		}
+	// 预置条件值走语言包，自定义分支名是用户自己填的，原样带过去
+	resultKey := "activity.detail.result.done"
+	resultText := ""
+	switch req.Result {
+	case "":
+		// 保持 done
+	case "approved":
+		resultKey = "activity.detail.result.approved"
+	case "rejected":
+		resultKey = "activity.detail.result.rejected"
+	default:
+		resultKey = ""
+		resultText = req.Result
 	}
-	details := "节点: " + nodeName + " (" + resultText + ")"
-	if req.Comment != "" {
-		details += " - " + req.Comment
+	resultKeys := map[string]string{}
+	if resultKey != "" {
+		resultKeys["result"] = resultKey
 	}
-	h.logActivity(uid, fmt.Sprint(userName), "完成工作节点", issueKey, details, issue.ID)
+	details := detail.NewWithKeys(commentedKey("activity.detail.workflowNodeResult", req.Comment),
+		resultKeys, "node", nodeName, "result", resultText, "comment", req.Comment)
+	h.logActivity(uid, fmt.Sprint(userName), "node_completed", issueKey, details, issue.ID)
 
-	response.Success(c, gin.H{"message": "工作节点已完成"})
+	response.Success(c, gin.H{"message": response.T(c, "workflow.work_node_done")})
 }
 
 // HandleGetHistory 获取流转历史
@@ -938,7 +949,7 @@ func (h *WorkflowHandler) HandleComplete(c *gin.Context) {
 func (h *WorkflowHandler) HandleGetHistory(c *gin.Context) {
 	issueKey := c.Param("key")
 	if issueKey == "" {
-		response.BadRequest(c, "工单 Key 不能为空")
+		response.BadRequest(c, "workflow.issue_key_required")
 		return
 	}
 
@@ -946,10 +957,10 @@ func (h *WorkflowHandler) HandleGetHistory(c *gin.Context) {
 	issue, err := h.issueRepo.GetByKey(c.Request.Context(), issueKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.NotFound(c, "工单不存在")
+			response.NotFound(c, "workflow.issue_not_found")
 			return
 		}
-		response.InternalError(c, "查询工单失败")
+		response.InternalError(c, "workflow.issue_query_failed")
 		return
 	}
 
@@ -957,17 +968,17 @@ func (h *WorkflowHandler) HandleGetHistory(c *gin.Context) {
 	instance, err := h.workflowEngine.GetInstanceByIssueID(c.Request.Context(), issue.ID)
 	if err != nil {
 		if errors.Is(err, service.ErrWorkflowInstanceNotFound) {
-			response.NotFound(c, "该工单没有关联的工作流实例")
+			response.NotFound(c, "workflow.no_instance")
 			return
 		}
-		response.InternalError(c, "获取工作流实例失败")
+		response.InternalError(c, "workflow.instance_failed")
 		return
 	}
 
 	// 获取流转历史
 	history, err := h.workflowEngine.GetHistory(c.Request.Context(), instance.ID)
 	if err != nil {
-		response.InternalError(c, "获取流转历史失败")
+		response.InternalError(c, "workflow.history_failed")
 		return
 	}
 
@@ -992,7 +1003,7 @@ func (h *WorkflowHandler) HandleGetHistory(c *gin.Context) {
 func (h *WorkflowHandler) HandleCreateScheme(c *gin.Context) {
 	projectKey := c.Param("key")
 	if projectKey == "" {
-		response.BadRequest(c, "项目 Key 不能为空")
+		response.BadRequest(c, "workflow.project_key_required")
 		return
 	}
 
@@ -1000,17 +1011,17 @@ func (h *WorkflowHandler) HandleCreateScheme(c *gin.Context) {
 	project, err := h.projectRepo.GetByKey(c.Request.Context(), projectKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.NotFound(c, "项目不存在")
+			response.NotFound(c, "workflow.project_not_found")
 			return
 		}
-		response.InternalError(c, "查询项目失败")
+		response.InternalError(c, "workflow.project_query_failed")
 		return
 	}
 
 	// 解析请求体
 	var req dto.CreateWorkflowSchemeRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
-		response.BadRequest(c, "请求参数错误: "+bindErr.Error())
+		response.BadRequestValidation(c, bindErr)
 		return
 	}
 
@@ -1018,14 +1029,14 @@ func (h *WorkflowHandler) HandleCreateScheme(c *gin.Context) {
 	result, err := h.workflowService.CreateScheme(c.Request.Context(), project.ID, &req)
 	if err != nil {
 		if errors.Is(err, service.ErrSchemeExists) {
-			response.BadRequest(c, "该工单类型已配置工作流方案")
+			response.BadRequest(c, "workflow.scheme_type_taken")
 			return
 		}
 		if errors.Is(err, service.ErrWorkflowNotFound) {
-			response.NotFound(c, "工作流不存在")
+			response.NotFound(c, "workflow.not_found")
 			return
 		}
-		response.InternalError(c, "创建工作流方案失败")
+		response.InternalError(c, "workflow.scheme_create_failed")
 		return
 	}
 
@@ -1045,7 +1056,7 @@ func (h *WorkflowHandler) HandleCreateScheme(c *gin.Context) {
 func (h *WorkflowHandler) HandleListSchemes(c *gin.Context) {
 	projectKey := c.Param("key")
 	if projectKey == "" {
-		response.BadRequest(c, "项目 Key 不能为空")
+		response.BadRequest(c, "workflow.project_key_required")
 		return
 	}
 
@@ -1053,17 +1064,17 @@ func (h *WorkflowHandler) HandleListSchemes(c *gin.Context) {
 	project, err := h.projectRepo.GetByKey(c.Request.Context(), projectKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.NotFound(c, "项目不存在")
+			response.NotFound(c, "workflow.project_not_found")
 			return
 		}
-		response.InternalError(c, "查询项目失败")
+		response.InternalError(c, "workflow.project_query_failed")
 		return
 	}
 
 	// 获取方案列表
 	schemes, err := h.workflowService.ListSchemes(c.Request.Context(), project.ID)
 	if err != nil {
-		response.InternalError(c, "获取工作流方案列表失败")
+		response.InternalError(c, "workflow.scheme_list_failed")
 		return
 	}
 
@@ -1084,13 +1095,13 @@ func (h *WorkflowHandler) HandleListSchemes(c *gin.Context) {
 func (h *WorkflowHandler) HandleDeleteScheme(c *gin.Context) {
 	projectKey := c.Param("key")
 	if projectKey == "" {
-		response.BadRequest(c, "项目 Key 不能为空")
+		response.BadRequest(c, "workflow.project_key_required")
 		return
 	}
 
 	typeID, err := strconv.ParseUint(c.Param("type_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的工单类型 ID")
+		response.BadRequest(c, "project.issue_type_invalid_id")
 		return
 	}
 
@@ -1098,22 +1109,22 @@ func (h *WorkflowHandler) HandleDeleteScheme(c *gin.Context) {
 	project, err := h.projectRepo.GetByKey(c.Request.Context(), projectKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			response.NotFound(c, "项目不存在")
+			response.NotFound(c, "workflow.project_not_found")
 			return
 		}
-		response.InternalError(c, "查询项目失败")
+		response.InternalError(c, "workflow.project_query_failed")
 		return
 	}
 
 	// 删除方案
 	if err := h.workflowService.DeleteScheme(c.Request.Context(), project.ID, typeID); err != nil {
 		if errors.Is(err, service.ErrSchemeNotFound) {
-			response.NotFound(c, "工作流方案不存在")
+			response.NotFound(c, "workflow.scheme_not_found")
 			return
 		}
-		response.InternalError(c, "删除工作流方案失败")
+		response.InternalError(c, "workflow.scheme_delete_failed")
 		return
 	}
 
-	response.Success(c, gin.H{"message": "工作流方案删除成功"})
+	response.Success(c, gin.H{"message": response.T(c, "workflow.scheme_deleted")})
 }

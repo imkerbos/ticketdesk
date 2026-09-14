@@ -1,234 +1,142 @@
 <template>
-  <div class="user-list-container">
-    <!-- 页面头部 -->
-    <TdPageHeader>
-      <template #leading>
-        <div class="page-header-icon">
-          <el-icon :size="20"><UserFilled /></el-icon>
-        </div>
-      </template>
-      <template #title>用户管理</template>
-      <template #subtitle>管理系统用户账号、角色权限和访问控制</template>
-      <template #actions>
-        <el-button type="primary" @click="handleCreate">
-          <el-icon><Plus /></el-icon>
-          创建用户
-        </el-button>
-      </template>
-    </TdPageHeader>
+  <!-- 与工单列表同一套结构：.page-head / .toolbar / .card / table.issues
+       样式都在 src/styles/_apple.scss 里，这一页只写自己的单元格。 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('user.listTitle') }}</h1>
+      <div class="grow"></div>
+      <button class="btn primary" @click="handleCreate">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        {{ t('user.create') }}
+      </button>
+    </div>
 
-    <!-- 统计卡片 -->
-    <el-row :gutter="16" class="stats-row">
-      <el-col :xs="12" :sm="6">
-        <TdStatTile label="总用户数" :value="stats.total" tone="info" :icon-component="User" />
-      </el-col>
-      <el-col :xs="12" :sm="6">
-        <TdStatTile label="活跃用户" :value="stats.active" tone="success" :icon-component="CircleCheck" />
-      </el-col>
-      <el-col :xs="12" :sm="6">
-        <TdStatTile label="管理员" :value="stats.admin" tone="primary" :icon-component="Avatar" />
-      </el-col>
-      <el-col :xs="12" :sm="6">
-        <TdStatTile label="已禁用" :value="stats.disabled" tone="danger" :icon-component="CircleClose" />
-      </el-col>
-    </el-row>
+    <div class="toolbar">
+      <label class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        <input v-model="queryParams.keyword" type="search" :placeholder="t('user.searchPlaceholder')" @keyup.enter="handleSearch" @search="handleSearch" />
+      </label>
+      <el-select v-model="queryParams.role" :placeholder="t('user.role')" clearable class="filter-select" @change="handleSearch">
+        <el-option :label="t('user.roleAdmin')" value="admin" />
+        <el-option :label="t('user.roleUser')" value="user" />
+      </el-select>
+      <el-select v-model="queryParams.status" :placeholder="t('issue.status')" clearable class="filter-select" @change="handleSearch">
+        <el-option :label="t('common.enabled')" :value="1" />
+        <el-option :label="t('common.disabled')" :value="0" />
+      </el-select>
+      <button class="btn secondary" @click="handleReset">
+        <el-icon><Refresh /></el-icon>{{ t('common.reset') }}
+      </button>
+    </div>
 
-    <!-- 搜索和筛选 -->
-    <el-card shadow="never" class="filter-card">
-      <div class="filter-content">
-        <div class="filter-left">
-          <el-input
-            v-model="queryParams.keyword"
-            placeholder="搜索用户名、显示名称或邮箱"
-            clearable
-            class="search-input"
-            @clear="handleSearch"
-            @keyup.enter="handleSearch"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-          <el-select
-            v-model="queryParams.role"
-            placeholder="角色"
-            clearable
-            class="filter-select"
-            @change="handleSearch"
-          >
-            <el-option label="管理员" value="admin">
-              <div class="option-content">
-                <el-icon class="option-icon admin"><Avatar /></el-icon>
-                <span>管理员</span>
-              </div>
-            </el-option>
-            <el-option label="普通用户" value="user">
-              <div class="option-content">
-                <el-icon class="option-icon user"><User /></el-icon>
-                <span>普通用户</span>
-              </div>
-            </el-option>
-          </el-select>
-          <el-select
-            v-model="queryParams.status"
-            placeholder="状态"
-            clearable
-            class="filter-select"
-            @change="handleSearch"
-          >
-            <el-option label="启用" :value="1">
-              <div class="option-content">
-                <span class="status-dot active"></span>
-                <span>启用</span>
-              </div>
-            </el-option>
-            <el-option label="禁用" :value="0">
-              <div class="option-content">
-                <span class="status-dot disabled"></span>
-                <span>禁用</span>
-              </div>
-            </el-option>
-          </el-select>
+    <section class="card">
+      <div class="kpis">
+        <div class="kpi"><div class="k">{{ t('user.statTotal') }}</div><div class="v">{{ stats.total }}</div></div>
+        <div class="kpi"><div class="k">{{ t('user.statActive') }}</div><div class="v">{{ stats.active }}</div></div>
+        <div class="kpi"><div class="k">{{ t('user.statAdmin') }}</div><div class="v">{{ stats.admin }}</div></div>
+        <div class="kpi"><div class="k">{{ t('user.statDisabled') }}</div><div class="v">{{ stats.disabled }}</div></div>
+        <div class="grow"></div>
+        <div class="count">{{ t('common.total', { n: total }) }}</div>
+      </div>
+
+      <div v-loading="loading" class="table-wrap">
+        <table class="issues">
+          <colgroup>
+            <col /><col style="width: 96px" /><col style="width: 128px" /><col style="width: 64px" />
+            <col style="width: 150px" /><col style="width: 150px" /><col style="width: 128px" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{{ t('user.userInfo') }}</th>
+              <th>{{ t('issue.status') }}</th>
+              <th>{{ t('user.authSource') }}</th>
+              <th>MFA</th>
+              <th>{{ t('user.lastLogin') }}</th>
+              <th>{{ t('common.createdAt') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in userList" :key="row.id">
+              <td>
+                <div class="person">
+                  <!-- 头像不再用底色区分管理员：名字后面那颗「管理员」标签已经说了，
+                       一屏八行里再多一个饱和实心蓝纯属重复 -->
+                  <span class="ava tinted">
+                    {{ (row.display_name || row.username).charAt(0) }}
+                  </span>
+                  <span class="user-cell">
+                    <span class="user-name">
+                      {{ row.display_name || row.username }}
+                      <span v-if="isAdmin(row)" class="pill neutral">{{ t('user.roleAdmin') }}</span>
+                    </span>
+                    <span class="user-meta">@{{ row.username }} · {{ row.email }}</span>
+                  </span>
+                </div>
+              </td>
+              <td>
+                <span class="pill" :class="row.status === 1 ? 'green' : 'neutral'">
+                  {{ row.status === 1 ? t('common.enabled') : t('common.disabled') }}
+                </span>
+              </td>
+              <td>
+                <span class="pill neutral">
+                  {{ row.auth_source === 'sso' ? `SSO (${row.sso_provider || 'SSO'})` : t('user.authLocal') }}
+                </span>
+              </td>
+              <!-- 同一列里「启用」原来是裸的黑字，比隔壁状态列的淡底徽章还抢眼；
+                   开了 MFA 的是少数，用绿色徽章标出来，没开的留一个弱色破折号 -->
+              <td>
+                <span v-if="row.mfa_enabled" class="pill green">{{ t('common.enabled') }}</span>
+                <span v-else class="muted">—</span>
+              </td>
+              <td class="time">{{ row.last_login_at ? formatTime(row.last_login_at) : t('user.neverLogin') }}</td>
+              <td class="time">{{ formatTime(row.created_at) }}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="link-btn" @click="handleEdit(row)">{{ t('common.edit') }}</button>
+                  <el-dropdown trigger="click">
+                    <button class="more" :aria-label="t('common.operation')" @click.stop>···</button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item :disabled="row.auth_source === 'sso'" @click="handleResetPassword(row)">
+                          {{ t('user.resetPassword') }}
+                        </el-dropdown-item>
+                        <el-dropdown-item @click="handleToggleStatus(row)">
+                          {{ row.status === 1 ? t('user.disable') : t('user.enable') }}
+                        </el-dropdown-item>
+                        <el-dropdown-item divided @click="handleDeleteUser(row)">{{ t('common.delete') }}</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div v-if="!loading && userList.length === 0" class="empty">
+          <TdEmptyState preset="no-data" :title="t('user.empty')" />
         </div>
-        <div class="filter-right">
-          <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
-          <el-button :icon="Refresh" @click="handleReset">重置</el-button>
+
+        <div v-if="total > queryParams.page_size" class="table-foot">
+          <el-pagination
+            v-model:current-page="queryParams.page"
+            v-model:page-size="queryParams.page_size"
+            :total="total"
+            :page-sizes="[10, 20, 50]"
+            layout="sizes, prev, pager, next"
+            @size-change="loadUsers"
+            @current-change="loadUsers"
+          />
         </div>
       </div>
-    </el-card>
-
-    <!-- 用户列表 -->
-    <el-card shadow="never" class="table-card">
-      <el-table
-        v-loading="loading"
-        :data="userList"
-        style="width: 100%"
-        :row-class-name="tableRowClassName"
-      >
-        <el-table-column prop="username" label="用户信息" min-width="240">
-          <template #default="{ row }">
-            <div class="user-info-cell">
-              <div class="user-avatar" :class="row.role">
-                {{ row.display_name?.charAt(0) || row.username.charAt(0) }}
-              </div>
-              <div class="user-details">
-                <div class="user-name">
-                  {{ row.display_name || row.username }}
-                  <el-tag
-                    v-if="row.role === 'admin'"
-                    type="danger"
-                    size="small"
-                    effect="dark"
-                    class="role-tag"
-                  >
-                    管理员
-                  </el-tag>
-                </div>
-                <div class="user-meta">
-                  <span class="username">@{{ row.username }}</span>
-                  <span class="divider">·</span>
-                  <span class="email">{{ row.email }}</span>
-                </div>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100" align="center">
-          <template #default="{ row }">
-            <div class="status-badge" :class="row.status === 1 ? 'active' : 'disabled'">
-              <span class="status-dot"></span>
-              <span class="status-text">{{ row.status === 1 ? '启用' : '禁用' }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="auth_source" label="认证方式" width="130" align="center">
-          <template #default="{ row }">
-            <el-tag
-              :type="row.auth_source === 'sso' ? 'warning' : 'info'"
-              size="small"
-              effect="plain"
-            >
-              {{ row.auth_source === 'sso' ? `SSO (${row.sso_provider || 'SSO'})` : '本地' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="mfa_enabled" label="MFA" width="80" align="center">
-          <template #default="{ row }">
-            <el-tooltip :content="row.mfa_enabled ? 'MFA 已启用' : 'MFA 未启用'" placement="top">
-              <el-icon :class="['mfa-icon', row.mfa_enabled ? 'enabled' : 'disabled']">
-                <component :is="row.mfa_enabled ? CircleCheck : CircleClose" />
-              </el-icon>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column prop="last_login_at" label="最后登录" width="180">
-          <template #default="{ row }">
-            <div v-if="row.last_login_at" class="time-cell">
-              <el-icon><Clock /></el-icon>
-              <span>{{ formatTime(row.last_login_at) }}</span>
-            </div>
-            <span v-else class="text-muted">从未登录</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180">
-          <template #default="{ row }">
-            <div class="time-cell">
-              <el-icon><Calendar /></el-icon>
-              <span>{{ formatTime(row.created_at) }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right" align="center">
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-tooltip content="编辑" placement="top">
-                <el-button link type="primary" @click="handleEdit(row)">
-                  <el-icon><Edit /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip :content="row.auth_source === 'sso' ? 'SSO 用户无法重置密码' : '重置密码'" placement="top">
-                <el-button link type="warning" :disabled="row.auth_source === 'sso'" @click="handleResetPassword(row)">
-                  <el-icon><Key /></el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip :content="row.status === 1 ? '禁用' : '启用'" placement="top">
-                <el-button
-                  link
-                  :type="row.status === 1 ? 'danger' : 'success'"
-                  @click="handleToggleStatus(row)"
-                >
-                  <el-icon>
-                    <component :is="row.status === 1 ? Lock : Unlock" />
-                  </el-icon>
-                </el-button>
-              </el-tooltip>
-              <el-tooltip content="删除" placement="top">
-                <el-button link type="danger" @click="handleDeleteUser(row)">
-                  <el-icon><Delete /></el-icon>
-                </el-button>
-              </el-tooltip>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <div class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="queryParams.page"
-          v-model:page-size="queryParams.page_size"
-          :total="total"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="loadUsers"
-          @current-change="loadUsers"
-        />
-      </div>
-    </el-card>
+    </section>
 
     <!-- 创建/编辑用户对话框 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="isEdit ? '编辑用户' : '创建用户'"
+      :title="isEdit ? t('user.edit') : t('user.create')"
       width="520px"
       destroy-on-close
       class="user-dialog"
@@ -236,10 +144,10 @@
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="用户名" prop="username">
+            <el-form-item :label="t('auth.username')" prop="username">
               <el-input
                 v-model="form.username"
-                placeholder="请输入用户名"
+                :placeholder="t('user.usernamePlaceholder')"
                 :disabled="isEdit"
               >
                 <template #prefix>
@@ -249,8 +157,8 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="显示名称" prop="display_name">
-              <el-input v-model="form.display_name" placeholder="请输入显示名称">
+            <el-form-item :label="t('user.displayName')" prop="display_name">
+              <el-input v-model="form.display_name" :placeholder="t('user.displayNamePlaceholder')">
                 <template #prefix>
                   <el-icon><Postcard /></el-icon>
                 </template>
@@ -258,28 +166,28 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="邮箱" prop="email">
-          <el-input v-model="form.email" placeholder="请输入邮箱">
+        <el-form-item :label="t('user.profile.email')" prop="email">
+          <el-input v-model="form.email" :placeholder="t('user.emailPlaceholder')">
             <template #prefix>
               <el-icon><Message /></el-icon>
             </template>
           </el-input>
         </el-form-item>
-        <el-form-item v-if="!isEdit" label="密码" prop="password">
-          <el-input v-model="form.password" type="password" placeholder="请输入密码" show-password>
+        <el-form-item v-if="!isEdit" :label="t('auth.password')" prop="password">
+          <el-input v-model="form.password" type="password" :placeholder="t('user.passwordPlaceholder')" show-password>
             <template #prefix>
               <el-icon><Lock /></el-icon>
             </template>
           </el-input>
         </el-form-item>
-        <el-form-item label="角色" prop="roles">
+        <el-form-item :label="t('user.role')" prop="roles">
           <el-radio-group v-model="selectedRole" class="role-radio-group">
             <el-radio value="user" border>
               <div class="role-option">
                 <el-icon class="role-icon user"><User /></el-icon>
                 <div class="role-text">
-                  <span class="role-name">普通用户</span>
-                  <span class="role-desc">可以使用基本功能</span>
+                  <span class="role-name">{{ t('user.roleUser') }}</span>
+                  <span class="role-desc">{{ t('user.roleUserDesc') }}</span>
                 </div>
               </div>
             </el-radio>
@@ -287,8 +195,8 @@
               <div class="role-option">
                 <el-icon class="role-icon admin"><Avatar /></el-icon>
                 <div class="role-text">
-                  <span class="role-name">管理员</span>
-                  <span class="role-desc">拥有全部权限</span>
+                  <span class="role-name">{{ t('user.roleAdmin') }}</span>
+                  <span class="role-desc">{{ t('user.roleAdminDesc') }}</span>
                 </div>
               </div>
             </el-radio>
@@ -296,10 +204,10 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="submitLoading" @click="submitForm">
           <el-icon><Check /></el-icon>
-          {{ isEdit ? '保存修改' : '创建用户' }}
+          {{ isEdit ? t('user.saveChanges') : t('user.create') }}
         </el-button>
       </template>
     </el-dialog>
@@ -307,7 +215,7 @@
     <!-- 重置密码对话框 -->
     <el-dialog
       v-model="resetPasswordVisible"
-      title="重置密码"
+      :title="t('user.resetPassword')"
       width="400px"
       destroy-on-close
       class="password-dialog"
@@ -316,14 +224,14 @@
         <div class="password-icon">
           <el-icon><Key /></el-icon>
         </div>
-        <p class="password-tip">请为用户设置新的登录密码</p>
+        <p class="password-tip">{{ t('user.resetPasswordTip') }}</p>
       </div>
       <el-form ref="resetFormRef" :model="resetForm" :rules="resetRules" label-position="top">
-        <el-form-item label="新密码" prop="password">
+        <el-form-item :label="t('user.newPassword')" prop="password">
           <el-input
             v-model="resetForm.password"
             type="password"
-            placeholder="请输入新密码"
+            :placeholder="t('user.newPasswordPlaceholder')"
             show-password
           >
             <template #prefix>
@@ -331,11 +239,11 @@
             </template>
           </el-input>
         </el-form-item>
-        <el-form-item label="确认密码" prop="confirmPassword">
+        <el-form-item :label="t('user.confirmPassword')" prop="confirmPassword">
           <el-input
             v-model="resetForm.confirmPassword"
             type="password"
-            placeholder="请再次输入密码"
+            :placeholder="t('user.confirmPasswordPlaceholder')"
             show-password
           >
             <template #prefix>
@@ -345,10 +253,10 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="resetPasswordVisible = false">取消</el-button>
+        <el-button @click="resetPasswordVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="resetLoading" @click="submitResetPassword">
           <el-icon><Check /></el-icon>
-          确认重置
+          {{ t('user.confirmReset') }}
         </el-button>
       </template>
     </el-dialog>
@@ -356,15 +264,15 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import {
-  Search, Refresh, Plus, User, UserFilled, Avatar, Edit, Key, Lock, Unlock, Delete,
-  CircleCheck, CircleClose, Clock, Calendar, Check, Postcard, Message
-} from '@element-plus/icons-vue'
+import { Avatar, Check, Key, Lock, Message, Postcard, Refresh, User } from '@element-plus/icons-vue'
 import { getUserList, createUser, updateUser, enableUser, disableUser, resetUserPassword, deleteUser } from '@/api/user'
 import type { User as UserType, CreateUserRequest } from '@/types/user'
 import dayjs from 'dayjs'
+
+const { t } = useI18n()
 
 // 数据
 const loading = ref(false)
@@ -378,8 +286,7 @@ const stats = computed(() => {
     total: total.value,
     active: users.filter(u => u.status === 1).length,
     admin: users.filter(u => u.roles?.includes('admin')).length,
-    disabled: users.filter(u => u.status === 0).length,
-  }
+    disabled: users.filter(u => u.status === 0).length }
 })
 
 // 查询参数
@@ -388,8 +295,7 @@ const queryParams = reactive({
   page_size: 20,
   keyword: '',
   role: undefined as string | undefined,
-  status: undefined as number | undefined,
-})
+  status: undefined as number | undefined })
 
 // 创建/编辑对话框
 const dialogVisible = ref(false)
@@ -403,30 +309,28 @@ const form = reactive<CreateUserRequest>({
   email: '',
   password: '',
   display_name: '',
-  roles: ['user'],
-})
+  roles: ['user'] })
 const selectedRole = ref('user')
 
 const rules: FormRules = {
   username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 20, message: '长度为 3-20 个字符', trigger: 'blur' },
+    { required: true, message: t('user.usernameRequired'), trigger: ['blur', 'change'] },
+    { min: 3, max: 20, message: t('user.usernameLength'), trigger: 'blur' },
   ],
   email: [
-    { required: true, message: '请输入邮箱', trigger: 'blur' },
-    { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' },
+    { required: true, message: t('user.emailRequired'), trigger: ['blur', 'change'] },
+    { type: 'email', message: t('user.emailInvalid'), trigger: 'blur' },
   ],
   password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码至少 6 个字符', trigger: 'blur' },
+    { required: true, message: t('user.passwordRequired'), trigger: ['blur', 'change'] },
+    { min: 6, message: t('user.passwordMin'), trigger: 'blur' },
   ],
   display_name: [
-    { required: true, message: '请输入显示名称', trigger: 'blur' },
+    { required: true, message: t('user.displayNameRequired'), trigger: ['blur', 'change'] },
   ],
   role: [
-    { required: true, message: '请选择角色', trigger: 'change' },
-  ],
-}
+    { required: true, message: t('user.roleRequired'), trigger: 'change' },
+  ] }
 
 // 重置密码对话框
 const resetPasswordVisible = ref(false)
@@ -436,38 +340,31 @@ const resetUserId = ref<number>(0)
 
 const resetForm = reactive({
   password: '',
-  confirmPassword: '',
-})
+  confirmPassword: '' })
 
 const resetRules: FormRules = {
   password: [
-    { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, message: '密码至少 6 个字符', trigger: 'blur' },
+    { required: true, message: t('user.newPasswordRequired'), trigger: ['blur', 'change'] },
+    { min: 6, message: t('user.passwordMin'), trigger: 'blur' },
   ],
   confirmPassword: [
-    { required: true, message: '请确认密码', trigger: 'blur' },
+    { required: true, message: t('user.confirmRequired'), trigger: ['blur', 'change'] },
     {
       validator: (_rule, value, callback) => {
         if (value !== resetForm.password) {
-          callback(new Error('两次输入的密码不一致'))
+          callback(new Error(t('user.passwordMismatch')))
         } else {
           callback()
         }
       },
-      trigger: 'blur',
-    },
-  ],
-}
+      trigger: 'blur' },
+  ] }
 
 // 表格行样式
-const tableRowClassName = ({ row }: { row: UserType }) => {
-  if (row.status === 0) {
-    return 'disabled-row'
-  }
-  return ''
-}
-
 // 加载用户列表
+// 角色存在 roles 数组里，不是单个 role 字段
+const isAdmin = (user: UserType) => user.roles?.includes('admin') ?? false
+
 const loadUsers = async () => {
   loading.value = true
   try {
@@ -505,8 +402,7 @@ const handleCreate = () => {
     email: '',
     password: '',
     display_name: '',
-    role: 'user',
-  })
+    role: 'user' })
   dialogVisible.value = true
 }
 
@@ -519,8 +415,7 @@ const handleEdit = (user: UserType) => {
     email: user.email,
     password: '',
     display_name: user.display_name,
-    roles: user.roles || ['user'],
-  })
+    roles: user.roles || ['user'] })
   selectedRole.value = user.roles?.includes('admin') ? 'admin' : 'user'
   dialogVisible.value = true
 }
@@ -538,13 +433,12 @@ const submitForm = async () => {
         await updateUser(editingUser.value.id, {
           email: form.email,
           display_name: form.display_name,
-          roles: [selectedRole.value],
-        })
-        ElMessage.success('更新成功')
+          roles: [selectedRole.value] })
+        ElMessage.success(t('issue.msg.updateSuccess'))
       } else {
         form.roles = [selectedRole.value]
         await createUser(form)
-        ElMessage.success('创建成功')
+        ElMessage.success(t('common.createSuccess'))
       }
       dialogVisible.value = false
       loadUsers()
@@ -574,7 +468,7 @@ const submitResetPassword = async () => {
     resetLoading.value = true
     try {
       await resetUserPassword(resetUserId.value, resetForm.password)
-      ElMessage.success('密码重置成功')
+      ElMessage.success(t('user.resetSuccess'))
       resetPasswordVisible.value = false
     } catch {
       // ignored
@@ -586,11 +480,11 @@ const submitResetPassword = async () => {
 
 // 切换状态
 const handleToggleStatus = async (user: UserType) => {
-  const action = user.status === 1 ? '禁用' : '启用'
+  const action = user.status === 1 ? t('user.disable') : t('user.enable')
   try {
     await ElMessageBox.confirm(
-      `确定要${action}用户 "${user.display_name}" 吗？`,
-      '提示',
+      t('user.confirmToggle', { action, name: user.display_name }),
+      t('issue.msg.tipTitle'),
       { type: 'warning' }
     )
 
@@ -599,7 +493,7 @@ const handleToggleStatus = async (user: UserType) => {
     } else {
       await enableUser(user.id)
     }
-    ElMessage.success(`${action}成功`)
+    ElMessage.success(t('user.toggleSuccess', { action }))
     loadUsers()
   } catch (error) {
     if (error !== 'cancel') {
@@ -611,12 +505,12 @@ const handleToggleStatus = async (user: UserType) => {
 const handleDeleteUser = async (user: UserType) => {
   try {
     await ElMessageBox.confirm(
-      `确定要删除用户 "${user.display_name || user.username}" 吗？删除后将清理其角色、项目成员和站内通知关联。`,
-      '删除确认',
+      t('user.confirmDelete', { name: user.display_name || user.username }),
+      t('issue.list.deleteTitle'),
       { type: 'warning' }
     )
     await deleteUser(user.id)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     loadUsers()
   } catch (error) {
     if (error !== 'cancel') {
@@ -637,286 +531,8 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.user-list-container {
-  width: 100%;
-}
+// 列表本身的样式都在 _apple.scss 里，这一页只留对话框。
 
-// 页面头部 icon (TdPageHeader leading slot)
-.page-header-icon {
-  width: 40px;
-  height: 40px;
-  background: var(--td-tag-primary-bg);
-  border-radius: var(--td-radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--td-color-primary);
-  flex-shrink: 0;
-}
-
-// 统计卡片
-.stats-row {
-  margin-bottom: var(--td-space-5);
-}
-
-// 筛选卡片
-.filter-card {
-  margin-bottom: 20px;
-  border: none;
-  box-shadow: var(--td-elevation-1);
-  transition: var(--td-transition-shadow);
-  border-radius: var(--td-radius-lg);
-
-  &:hover { box-shadow: var(--td-elevation-2); }
-
-  :deep(.el-card__body) {
-    padding: 16px 20px;
-  }
-
-  .filter-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .filter-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-
-  .search-input {
-    width: 280px;
-  }
-
-  .filter-select {
-    width: 130px;
-  }
-}
-
-.option-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  .option-icon {
-    font-size: 16px;
-
-    &.admin {
-      color: var(--td-color-danger);
-    }
-
-    &.user {
-      color: var(--td-color-primary);
-    }
-  }
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-
-  &.active {
-    background: var(--td-color-success);
-  }
-
-  &.disabled {
-    background: var(--td-color-info);
-  }
-}
-
-// 表格卡片
-.table-card {
-  border-radius: 12px;
-
-  :deep(.el-card__body) {
-    padding: 0;
-  }
-
-  :deep(.el-table) {
-    border-radius: 12px;
-
-    th.el-table__cell {
-      background: var(--td-bg-page);
-      font-weight: 600;
-      color: var(--td-text-regular);
-    }
-
-    .disabled-row {
-      background: var(--td-bg-section);
-
-      td {
-        color: var(--td-text-placeholder);
-      }
-    }
-  }
-}
-
-// 用户信息单元格
-.user-info-cell {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-
-  .user-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--td-text-white);
-    flex-shrink: 0;
-
-    &.admin {
-      background: var(--td-color-danger);
-    }
-
-    &.user {
-      background: var(--td-color-primary);
-    }
-  }
-
-  .user-details {
-    min-width: 0;
-
-    .user-name {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--td-text-primary);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-
-      .role-tag {
-        font-size: 10px;
-        padding: 0 6px;
-        height: 18px;
-        line-height: 18px;
-      }
-    }
-
-    .user-meta {
-      font-size: 12px;
-      color: var(--td-text-placeholder);
-      margin-top: 2px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-
-      .divider {
-        color: var(--td-text-disabled);
-      }
-
-      .email {
-        max-width: 180px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-    }
-  }
-}
-
-// 状态徽章
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
-
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-  }
-
-  &.active {
-    background: var(--td-tag-success-bg);
-    color: var(--td-color-success);
-
-    .status-dot {
-      background: var(--td-color-success);
-    }
-  }
-
-  &.disabled {
-    background: var(--td-bg-section);
-    color: var(--td-text-secondary);
-
-    .status-dot {
-      background: var(--td-text-placeholder);
-    }
-  }
-}
-
-// MFA 图标
-.mfa-icon {
-  font-size: 18px;
-
-  &.enabled {
-    color: var(--td-color-success);
-  }
-
-  &.disabled {
-    color: var(--td-text-disabled);
-  }
-}
-
-// 时间单元格
-.time-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--td-text-secondary);
-
-  .el-icon {
-    font-size: 14px;
-    color: var(--td-text-placeholder);
-  }
-}
-
-.text-muted {
-  color: var(--td-text-disabled);
-  font-size: 13px;
-}
-
-// 操作按钮
-.action-buttons {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-
-  .el-button {
-    font-size: 16px;
-    padding: 4px;
-
-    &:hover {
-      background: var(--td-bg-section);
-      border-radius: 6px;
-    }
-  }
-}
-
-// 分页
-.pagination-wrapper {
-  padding: 20px;
-  display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid var(--td-divider-color);
-}
-
-// 用户对话框
 .user-dialog {
   :deep(.el-dialog__body) {
     padding: 20px 24px;
@@ -968,14 +584,15 @@ onMounted(() => {
     justify-content: center;
     font-size: 20px;
 
+    // 淡底 + 同色图标，不用实心色块 + 白图标（§3.1）
     &.user {
-      background: var(--td-color-primary);
-      color: var(--td-text-white);
+      background: var(--td-tag-primary-bg);
+      color: var(--td-tag-primary-text);
     }
 
     &.admin {
-      background: var(--td-color-danger);
-      color: var(--td-text-white);
+      background: var(--td-tag-orange-bg);
+      color: var(--td-tag-orange-text);
     }
   }
 
@@ -1004,16 +621,16 @@ onMounted(() => {
     margin-bottom: 24px;
 
     .password-icon {
-      width: 64px;
-      height: 64px;
-      margin: 0 auto 16px;
-      background: var(--td-color-warning);
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 14px;
+      background: var(--td-tag-orange-bg);
+      color: var(--td-tag-orange-text);
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 28px;
-      color: var(--td-text-white);
+      font-size: 22px;
     }
 
     .password-tip {
@@ -1026,22 +643,6 @@ onMounted(() => {
 
 // 响应式
 @media (max-width: 768px) {
-  .filter-card {
-    .filter-content {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .filter-left {
-      flex-direction: column;
-    }
-
-    .search-input,
-    .filter-select {
-      width: 100%;
-    }
-  }
-
   .role-radio-group {
     flex-direction: column;
   }

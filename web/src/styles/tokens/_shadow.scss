@@ -1,21 +1,24 @@
 // 阴影标度 — elevation 0-4 + 聚焦环
 :root {
   --td-elevation-0: none;
-  --td-elevation-1: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 1px rgba(15, 23, 42, 0.03);
-  --td-elevation-2: 0 2px 4px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.04);
+  // 方向 A：层级由发丝线和留白表达，不靠浮起。
+  // elevation-1/2 归零，避免每个区块都"浮"一层导致层级失效；
+  // 3/4 保留给真正脱离页面的浮层（下拉、弹窗、抽屉）。
+  --td-elevation-1: none;
+  --td-elevation-2: none;
   --td-elevation-3: 0 4px 12px rgba(15, 23, 42, 0.07), 0 2px 4px rgba(15, 23, 42, 0.04);
   --td-elevation-4: 0 12px 24px rgba(15, 23, 42, 0.09), 0 4px 8px rgba(15, 23, 42, 0.05);
 
-  // 聚焦环
-  --td-ring-primary: 0 0 0 3px rgba(59, 130, 246, 0.18);
+  // 聚焦环（主色跟着 Apple 蓝走，不留旧的 Tailwind blue-500）
+  --td-ring-primary: 0 0 0 3px rgba(0, 113, 227, 0.22);
   --td-ring-danger: 0 0 0 3px rgba(239, 68, 68, 0.18);
   --td-ring-success: 0 0 0 3px rgba(16, 185, 129, 0.18);
 }
 
 // 暗色主题加深阴影
 html.dark {
-  --td-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.30), 0 1px 1px rgba(0, 0, 0, 0.20);
-  --td-elevation-2: 0 2px 4px rgba(0, 0, 0, 0.36), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --td-elevation-1: none;
+  --td-elevation-2: none;
   --td-elevation-3: 0 4px 12px rgba(0, 0, 0, 0.42), 0 2px 4px rgba(0, 0, 0, 0.26);
   --td-elevation-4: 0 12px 24px rgba(0, 0, 0, 0.50), 0 4px 8px rgba(0, 0, 0, 0.30);
 }

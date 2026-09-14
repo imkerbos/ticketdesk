@@ -3,7 +3,7 @@
     <!-- 顶部操作栏 -->
     <div class="config-header">
       <div class="header-left">
-        <el-select v-model="selectedIssueTypeId" placeholder="请选择工单类型" style="width: 240px" @change="loadFieldScheme">
+        <el-select v-model="selectedIssueTypeId" :placeholder="t('project.fieldConfig.selectIssueType')" style="width: 240px" @change="loadFieldScheme">
           <el-option
             v-for="type in issueTypes"
             :key="type.id"
@@ -11,7 +11,7 @@
             :value="type.id"
           >
             <div class="type-option">
-              <div class="type-color" :style="{ background: type.color || '#3b82f6' }"></div>
+              <div class="type-color" :style="{ background: type.color || 'var(--td-color-primary)' }"></div>
               <span>{{ type.display_name }}</span>
             </div>
           </el-option>
@@ -20,11 +20,11 @@
       <div class="header-right">
         <el-button @click="openApplyTemplateDialog">
           <el-icon><DocumentCopy /></el-icon>
-          从模板套用
+          {{ t('project.fieldConfig.applyTemplate') }}
         </el-button>
         <el-button type="primary" @click="openSchemeFieldDialog">
           <el-icon><Plus /></el-icon>
-          添加字段
+          {{ t('project.fieldConfig.addField') }}
         </el-button>
       </div>
     </div>
@@ -34,18 +34,20 @@
       <div v-if="selectedIssueTypeId" class="scheme-config">
         <div class="scheme-header">
           <div class="scheme-title">
-            <span>{{ getSelectedIssueTypeName() }} 字段配置</span>
-            <el-tag size="small" type="info">{{ currentScheme.length }} 个字段</el-tag>
+            <span>{{ t('project.fieldConfig.schemeTitle', { name: getSelectedIssueTypeName() }) }}</span>
+            <el-tag size="small" type="info">{{ t('project.fieldConfig.fieldCount', { n: currentScheme.length }) }}</el-tag>
           </div>
         </div>
 
-        <el-table ref="schemeTableRef" :data="currentScheme" stripe row-key="field_id" class="scheme-table">
+        <!-- 空的时候整张表不渲染：el-table 自带的「暂无数据」会占掉 260px，
+             下面还有一个完整的 TdEmptyState，同一张卡里两个空态叠着 -->
+        <el-table v-if="currentScheme.length > 0" ref="schemeTableRef" :data="currentScheme" stripe row-key="field_id" class="scheme-table">
           <el-table-column width="44" align="center" class-name="drag-handle-col">
             <template #default>
-              <el-icon class="drag-handle" title="拖拽排序"><Rank /></el-icon>
+              <el-icon class="drag-handle" :title="t('project.fieldConfig.dragSort')"><Rank /></el-icon>
             </template>
           </el-table-column>
-          <el-table-column label="字段" min-width="200">
+          <el-table-column :label="t('project.fieldConfig.field')" min-width="200">
             <template #default="{ row }">
               <div class="field-cell">
                 <div class="field-icon small" :class="getFieldTypeClass(row.field?.field_type || '')">
@@ -58,14 +60,14 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="类型" width="120">
+          <el-table-column :label="t('issue.type')" width="120">
             <template #default="{ row }">
               <el-tag size="small" :type="row.field?.is_system ? 'info' : 'success'">
-                {{ row.field?.is_system ? '系统' : '自定义' }}
+                {{ row.field?.is_system ? t('common.system') : t('project.fieldConfig.custom') }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="必填" width="80" align="center">
+          <el-table-column :label="t('project.fieldConfig.required')" width="80" align="center">
             <template #default="{ row }">
               <el-switch
                 v-model="row.is_required"
@@ -74,7 +76,7 @@
               />
             </template>
           </el-table-column>
-          <el-table-column label="创建时显示" width="100" align="center">
+          <el-table-column :label="t('project.fieldConfig.showOnCreate')" width="100" align="center">
             <template #default="{ row }">
               <el-switch
                 v-model="row.is_visible_create"
@@ -83,7 +85,7 @@
               />
             </template>
           </el-table-column>
-          <el-table-column label="编辑时显示" width="100" align="center">
+          <el-table-column :label="t('project.fieldConfig.showOnEdit')" width="100" align="center">
             <template #default="{ row }">
               <el-switch
                 v-model="row.is_visible_edit"
@@ -92,7 +94,7 @@
               />
             </template>
           </el-table-column>
-          <el-table-column label="详情显示" width="100" align="center">
+          <el-table-column :label="t('project.fieldConfig.showOnDetail')" width="100" align="center">
             <template #default="{ row }">
               <el-switch
                 v-model="row.is_visible_detail"
@@ -101,7 +103,7 @@
               />
             </template>
           </el-table-column>
-          <el-table-column label="排序" width="100" align="center">
+          <el-table-column :label="t('project.fieldConfig.sort')" width="100" align="center">
             <template #default="{ row }">
               <el-input-number
                 v-model="row.sort_order"
@@ -113,7 +115,7 @@
               />
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="80" align="center">
+          <el-table-column :label="t('common.operation')" width="80" align="center">
             <template #default="{ row }">
               <el-button
                 size="small"
@@ -121,27 +123,27 @@
                 text
                 @click="handleRemoveSchemeField(row)"
               >
-                移除
+                {{ t('common.remove') }}
               </el-button>
             </template>
           </el-table-column>
         </el-table>
 
-        <TdEmptyState v-if="currentScheme.length === 0" preset="first-time" title="暂未配置字段" description="为此工单类型添加字段以收集更多信息">
+        <TdEmptyState v-if="currentScheme.length === 0" preset="first-time" :title="t('project.fieldConfig.emptyTitle')" :description="t('project.fieldConfig.emptyDesc')">
           <el-button type="primary" @click="openSchemeFieldDialog">
             <el-icon><Plus /></el-icon>
-            添加字段
+            {{ t('project.fieldConfig.addField') }}
           </el-button>
         </TdEmptyState>
       </div>
 
-      <TdEmptyState v-else preset="no-data" title="请选择一个工单类型以配置字段" />
+      <TdEmptyState v-else preset="no-data" :title="t('project.fieldConfig.pickIssueType')" />
     </div>
 
     <!-- 添加字段到方案对话框 -->
     <el-dialog
       v-model="schemeFieldDialogVisible"
-      title="添加字段到方案"
+      :title="t('project.fieldConfig.addFieldTitle')"
       width="500px"
       destroy-on-close
       class="custom-dialog"
@@ -163,15 +165,15 @@
             <div class="field-meta">
               <span class="field-key">{{ field.field_key }}</span>
               <el-tag size="small" :type="field.is_system ? 'info' : 'success'">
-                {{ field.is_system ? '系统' : '自定义' }}
+                {{ field.is_system ? t('common.system') : t('project.fieldConfig.custom') }}
               </el-tag>
             </div>
           </div>
         </div>
-        <TdEmptyState v-if="availableFieldsForScheme.length === 0" preset="no-data" title="所有字段已添加" />
+        <TdEmptyState v-if="availableFieldsForScheme.length === 0" preset="no-data" :title="t('project.fieldConfig.allAdded')" />
       </div>
       <template #footer>
-        <el-button @click="schemeFieldDialogVisible = false">取消</el-button>
+        <el-button @click="schemeFieldDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button
           type="primary"
           :loading="addToSchemeLoading"
@@ -179,7 +181,7 @@
           @click="addFieldsToScheme"
         >
           <el-icon><Check /></el-icon>
-          添加 ({{ selectedFieldIds.length }})
+          {{ t('project.fieldConfig.addN', { n: selectedFieldIds.length }) }}
         </el-button>
       </template>
     </el-dialog>
@@ -187,14 +189,14 @@
     <!-- 套用模板对话框 -->
     <el-dialog
       v-model="applyTemplateDialogVisible"
-      title="从模板套用字段方案"
+      :title="t('project.fieldConfig.applyTemplateTitle')"
       width="520px"
       destroy-on-close
     >
       <div class="apply-form">
         <div class="apply-field">
-          <label class="apply-label">选择模板</label>
-          <el-select v-model="selectedTemplateId" placeholder="请选择模板" style="width: 100%">
+          <label class="apply-label">{{ t('project.fieldConfig.selectTemplate') }}</label>
+          <el-select v-model="selectedTemplateId" :placeholder="t('project.fieldConfig.templatePlaceholder')" style="width: 100%">
             <el-option
               v-for="tpl in templates"
               :key="tpl.id"
@@ -203,13 +205,13 @@
             >
               <div class="template-option">
                 <span>{{ tpl.name }}</span>
-                <el-tag size="small" type="info">{{ tpl.item_count }} 个字段</el-tag>
+                <el-tag size="small" type="info">{{ t('project.fieldConfig.fieldCount', { n: tpl.item_count }) }}</el-tag>
               </div>
             </el-option>
           </el-select>
         </div>
         <div class="apply-field">
-          <label class="apply-label">套用模式</label>
+          <label class="apply-label">{{ t('project.fieldConfig.applyMode') }}</label>
           <div class="mode-cards">
             <div
               class="mode-card"
@@ -220,8 +222,8 @@
                 <div class="radio-dot" :class="{ checked: applyMode === 'merge' }"></div>
               </div>
               <div class="mode-card-content">
-                <div class="mode-card-title">合并</div>
-                <div class="mode-card-desc">保留现有字段，添加模板中新字段</div>
+                <div class="mode-card-title">{{ t('project.fieldConfig.modeMerge') }}</div>
+                <div class="mode-card-desc">{{ t('project.fieldConfig.modeMergeDesc') }}</div>
               </div>
             </div>
             <div
@@ -233,22 +235,22 @@
                 <div class="radio-dot" :class="{ checked: applyMode === 'replace' }"></div>
               </div>
               <div class="mode-card-content">
-                <div class="mode-card-title">替换</div>
-                <div class="mode-card-desc">删除现有字段，使用模板字段</div>
+                <div class="mode-card-title">{{ t('project.fieldConfig.modeReplace') }}</div>
+                <div class="mode-card-desc">{{ t('project.fieldConfig.modeReplaceDesc') }}</div>
               </div>
             </div>
           </div>
         </div>
       </div>
       <template #footer>
-        <el-button @click="applyTemplateDialogVisible = false">取消</el-button>
+        <el-button @click="applyTemplateDialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button
           type="primary"
           :loading="applyTemplateLoading"
           :disabled="!selectedTemplateId"
           @click="handleApplyTemplate"
         >
-          套用
+          {{ t('project.fieldConfig.apply') }}
         </el-button>
       </template>
     </el-dialog>
@@ -256,6 +258,7 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -289,6 +292,8 @@ import type {
   FieldSchemeTemplate,
 } from '@/types/field'
 import type { ProjectIssueType } from '@/types/project'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   projectKey: string
@@ -424,9 +429,9 @@ const handleDragEnd = async (evt: Sortable.SortableEvent) => {
       default_value: s.default_value,
     }))
     await updateFieldScheme(props.projectKey, selectedIssueTypeId.value, { items: allItems })
-    ElMessage.success('排序已保存')
+    ElMessage.success(t('project.fieldConfig.sortSaved'))
   } catch {
-    ElMessage.error('排序保存失败')
+    ElMessage.error(t('project.fieldConfig.sortSaveFailed'))
     await loadFieldScheme()
   }
 }
@@ -519,11 +524,11 @@ const addFieldsToScheme = async () => {
     ]
 
     await updateFieldScheme(props.projectKey, selectedIssueTypeId.value, { items: allItems })
-    ElMessage.success('添加成功')
+    ElMessage.success(t('project.fieldConfig.addSuccess'))
     schemeFieldDialogVisible.value = false
     await loadFieldScheme()
   } catch {
-    ElMessage.error('添加失败')
+    ElMessage.error(t('project.fieldConfig.addFailed'))
   } finally {
     addToSchemeLoading.value = false
   }
@@ -543,9 +548,9 @@ const handleSchemeChange = async (_item: FieldSchemeItem) => {
       default_value: s.default_value,
     }))
     await updateFieldScheme(props.projectKey, selectedIssueTypeId.value, { items: allItems })
-    ElMessage.success('已保存')
+    ElMessage.success(t('project.fieldConfig.saved'))
   } catch {
-    ElMessage.error('保存失败')
+    ElMessage.error(t('project.fieldConfig.saveFailed'))
     // 回滚：重新加载后端数据
     await loadFieldScheme()
   }
@@ -555,7 +560,7 @@ const handleSchemeChange = async (_item: FieldSchemeItem) => {
 const handleRemoveSchemeField = async (item: FieldSchemeItem) => {
   if (!selectedIssueTypeId.value) return
   try {
-    await ElMessageBox.confirm(`确定要从方案中移除字段 "${item.field?.field_name}" 吗？`, '移除确认', {
+    await ElMessageBox.confirm(t('project.fieldConfig.confirmRemove', { name: item.field?.field_name }), t('project.fieldConfig.removeTitle'), {
       type: 'warning',
     })
     const remainingItems = currentScheme.value
@@ -570,11 +575,11 @@ const handleRemoveSchemeField = async (item: FieldSchemeItem) => {
         default_value: s.default_value,
       }))
     await updateFieldScheme(props.projectKey, selectedIssueTypeId.value, { items: remainingItems })
-    ElMessage.success('移除成功')
+    ElMessage.success(t('issue.msg.removeSuccess'))
     await loadFieldScheme()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error('移除失败')
+      ElMessage.error(t('project.fieldConfig.removeFailed'))
     }
   }
 }
@@ -582,7 +587,7 @@ const handleRemoveSchemeField = async (item: FieldSchemeItem) => {
 // 打开套用模板对话框
 const openApplyTemplateDialog = async () => {
   if (!selectedIssueTypeId.value) {
-    ElMessage.warning('请先选择工单类型')
+    ElMessage.warning(t('project.fieldConfig.pickTypeFirst'))
     return
   }
   try {
@@ -599,11 +604,11 @@ const openApplyTemplateDialog = async () => {
 // 套用模板
 const handleApplyTemplate = async () => {
   if (!selectedIssueTypeId.value || !selectedTemplateId.value) return
-  const modeName = applyMode.value === 'replace' ? '替换' : '合并'
+  const modeName = applyMode.value === 'replace' ? t('project.fieldConfig.modeReplace') : t('project.fieldConfig.modeMerge')
   try {
     await ElMessageBox.confirm(
-      `确定要以「${modeName}」模式套用此模板吗？${applyMode.value === 'replace' ? '这将删除当前所有字段配置。' : ''}`,
-      '套用确认',
+      t('project.fieldConfig.confirmApply', { mode: modeName, extra: applyMode.value === 'replace' ? t('project.fieldConfig.confirmApplyExtra') : '' }),
+      t('project.fieldConfig.applyTitle'),
       { type: 'warning' }
     )
   } catch {
@@ -616,11 +621,11 @@ const handleApplyTemplate = async () => {
       template_id: selectedTemplateId.value,
       mode: applyMode.value,
     })
-    ElMessage.success('模板套用成功')
+    ElMessage.success(t('project.fieldConfig.applySuccess'))
     applyTemplateDialogVisible.value = false
     await loadFieldScheme()
   } catch {
-    ElMessage.error('套用失败')
+    ElMessage.error(t('project.fieldConfig.applyFailed'))
   } finally {
     applyTemplateLoading.value = false
   }
@@ -658,18 +663,20 @@ onBeforeUnmount(() => {
 
 <style scoped lang="scss">
 .field-config-container {
-  min-height: 400px;
+  min-height: 360px;
 }
 
+/* 卡片靠一条发丝线立住，不用阴影（§3.5：elevation 1/2 恒为 none） */
 .config-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
-  padding: 16px 20px;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
   background: var(--td-bg-card);
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--td-border-color);
+  border-radius: 10px;
 }
 
 .header-right {
@@ -680,21 +687,22 @@ onBeforeUnmount(() => {
 .type-option {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 
   .type-color {
-    width: 16px;
-    height: 16px;
-    border-radius: 4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 }
 
-// 方案视图
+/* ── 方案视图 ─────────────────────────────────── */
 .schemes-view {
   background: var(--td-bg-card);
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--td-border-color);
+  border-radius: 10px;
+  padding: 14px 16px;
 }
 
 .scheme-config {
@@ -702,15 +710,17 @@ onBeforeUnmount(() => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    gap: 12px;
+    margin-bottom: 12px;
   }
 
   .scheme-title {
     display: flex;
     align-items: center;
-    gap: 12px;
-    font-size: 15px;
-    font-weight: 600;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 590;
+    letter-spacing: -0.01em;
     color: var(--td-text-primary);
   }
 }
@@ -719,23 +729,21 @@ onBeforeUnmount(() => {
   border-radius: 8px;
   overflow: hidden;
 
-  :deep(.el-table__header) {
-    th {
-      background: var(--td-bg-page) !important;
-      font-weight: 600;
-      color: var(--td-text-regular);
-    }
+  :deep(.el-table__header th) {
+    background: var(--td-bg-card);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--td-text-secondary);
   }
 
-  // 拖拽手柄列
   :deep(.drag-handle-col) {
     .drag-handle {
       cursor: grab;
-      color: var(--td-text-placeholder, #9ca3af);
+      color: var(--td-text-placeholder);
       transition: color 150ms ease-out;
 
       &:hover {
-        color: var(--td-color-primary, #3b82f6);
+        color: var(--td-text-regular);
       }
 
       &:active {
@@ -744,14 +752,14 @@ onBeforeUnmount(() => {
     }
   }
 
-  // 拖拽中行样式 (SortableJS 类)
+  /* 拖拽中的行（SortableJS 加的类） */
   :deep(.drag-ghost-row) {
     opacity: 0.4;
-    background: var(--td-bg-page) !important;
+    background: var(--td-bg-section);
   }
 
   :deep(.drag-chosen-row) {
-    background: var(--el-fill-color-light, #f5f7fa) !important;
+    background: var(--td-bg-section);
   }
 }
 
@@ -761,40 +769,40 @@ onBeforeUnmount(() => {
   }
 }
 
+/* ── 字段单元格 ───────────────────────────────── */
 .field-cell {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 9px;
 }
 
+/* 字段类型原先是 44px 的实心色块（十种类型十个颜色），
+   一张表里每行挂一个，是这一屏最重的东西。类型本身是数据，保留 ——
+   但只给图标上色，不再套实心方块。 */
 .field-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
-  color: var(--td-text-white);
+  font-size: 15px;
   flex-shrink: 0;
-  background: var(--td-color-primary);
+  color: var(--td-color-primary);
 
   &.small {
-    width: 32px;
-    height: 32px;
     font-size: 14px;
-    border-radius: 8px;
   }
 
-  &.text, &.textarea { background: var(--td-color-primary); }
-  &.number { background: var(--td-color-success); }
-  &.date { background: var(--td-color-warning); }
-  &.select, &.multiselect { background: #8b5cf6; }
-  &.user { background: #ec4899; }
-  &.version, &.label { background: #06b6d4; }
-  &.component { background: var(--td-text-secondary); }
-  &.epic { background: #f97316; }
-  &.time { background: #14b8a6; }
+  &.text,
+  &.textarea { color: var(--td-color-primary); }
+  &.number { color: var(--td-color-success); }
+  &.date { color: var(--td-color-warning); }
+  &.select,
+  &.multiselect { color: var(--td-cat-2); }
+  &.user { color: var(--td-cat-5); }
+  &.version,
+  &.label { color: var(--td-cat-6); }
+  &.component { color: var(--td-text-secondary); }
+  &.epic { color: var(--td-cat-4); }
+  &.time { color: var(--td-cat-3); }
 }
 
 .field-info {
@@ -802,92 +810,90 @@ onBeforeUnmount(() => {
   min-width: 0;
 
   .field-name {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 500;
     color: var(--td-text-primary);
-    margin-bottom: 4px;
   }
 
   .field-meta {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 4px;
+    gap: 7px;
+    margin-top: 2px;
   }
 
   .field-key {
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--td-text-placeholder);
-    font-family: monospace;
+    font-family: var(--td-font-mono);
   }
 
   .field-desc {
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--td-text-secondary);
-    line-height: 1.4;
+    line-height: 1.45;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 }
 
-// 对话框样式
+/* ── 弹窗 ─────────────────────────────────────── */
 .custom-dialog {
   :deep(.el-dialog__header) {
-    padding: 20px 24px;
-    border-bottom: 1px solid var(--td-border-color);
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--td-divider-color);
   }
 
   :deep(.el-dialog__body) {
-    padding: 24px;
+    padding: 18px;
   }
 }
 
-// 方案字段选择对话框
 .scheme-field-list {
-  max-height: 400px;
+  max-height: 380px;
   overflow-y: auto;
 }
 
 .scheme-field-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 9px 10px;
   border: 1px solid var(--td-border-color);
   border-radius: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   cursor: pointer;
-  transition: all 150ms ease-out;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out;
 
   &:hover {
-    background: var(--td-bg-page);
-    border-color: var(--td-text-disabled);
+    background: var(--td-bg-section);
+    border-color: var(--td-border-color-dark);
   }
 
   &.selected {
-    background: var(--td-color-primary-light);
     border-color: var(--td-color-primary);
+    box-shadow: var(--td-focus-ring);
   }
 }
 
-// 套用模板对话框
+/* ── 套用模板弹窗 ─────────────────────────────── */
 .apply-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .apply-field {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .apply-label {
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 500;
-  color: var(--td-text-regular);
+  color: var(--td-text-secondary);
 }
 
 .template-option {
@@ -900,41 +906,41 @@ onBeforeUnmount(() => {
 .mode-cards {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .mode-card {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 2px solid var(--td-border-color);
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--td-border-color);
   border-radius: 10px;
   cursor: pointer;
-  transition: all 150ms ease-out;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out;
 
   &:hover {
-    border-color: var(--td-tag-primary-border);
+    border-color: var(--td-border-color-dark);
     background: var(--td-bg-section);
   }
 
   &.active {
     border-color: var(--td-color-primary);
-    background: var(--td-tag-primary-bg);
+    box-shadow: var(--td-focus-ring);
   }
 }
 
 .mode-card-radio {
-  padding-top: 2px;
+  padding-top: 1px;
   flex-shrink: 0;
 }
 
 .radio-dot {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  border: 2px solid #d1d5db;
-  transition: all 150ms ease-out;
+  border: 1.5px solid var(--td-border-color-dark);
+  transition: border-color 150ms ease-out;
   position: relative;
 
   &.checked {
@@ -943,8 +949,8 @@ onBeforeUnmount(() => {
     &::after {
       content: '';
       position: absolute;
-      top: 3px;
-      left: 3px;
+      top: 2.5px;
+      left: 2.5px;
       width: 8px;
       height: 8px;
       border-radius: 50%;
@@ -955,19 +961,21 @@ onBeforeUnmount(() => {
 
 .mode-card-content {
   flex: 1;
+  min-width: 0;
 }
 
 .mode-card-title {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 590;
+  letter-spacing: -0.01em;
   color: var(--td-text-primary);
   line-height: 1.3;
 }
 
 .mode-card-desc {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--td-text-secondary);
-  margin-top: 3px;
-  line-height: 1.4;
+  margin-top: 2px;
+  line-height: 1.45;
 }
 </style>

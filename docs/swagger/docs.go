@@ -1793,7 +1793,7 @@ const docTemplate = `{
         },
         "/api/v1/auth/mfa/verify": {
             "post": {
-                "description": "登录流程中验证 MFA 码",
+                "description": "登录第二步：提交登录第一步下发的挑战令牌与 TOTP 码，换取正式令牌对",
                 "consumes": [
                     "application/json"
                 ],
@@ -1836,6 +1836,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "挑战令牌无效或已过期",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -5070,6 +5076,52 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/projects/{key}/daily-digest/run": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "不依赖 cron，立即生成并推送一次未完结工单日报；空 issues 不发送",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ProjectDailyDigest"
+                ],
+                "summary": "立即触发项目日报",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "项目 Key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "项目不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -10656,6 +10708,67 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "当前登录用户更新自己的基本资料（display_name / email / avatar / lark_open_id / telegram_user_id）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "更新当前用户资料",
+                "parameters": [
+                    {
+                        "description": "更新当前用户资料请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.UserResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/api/v1/users/me/mfa": {
@@ -12358,6 +12471,70 @@ const docTemplate = `{
                 }
             }
         },
+        "/setup": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Setup"
+                ],
+                "summary": "执行首次初始化",
+                "parameters": [
+                    {
+                        "description": "初始化信息",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SetupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/setup/status": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Setup"
+                ],
+                "summary": "查询初始化状态",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.StatusResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        },
         "/ws": {
             "get": {
                 "description": "通过 token 查询参数进行认证后升级为 WebSocket 连接，用于接收实时站内通知",
@@ -13616,6 +13793,9 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "mention_all": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 100
@@ -14783,8 +14963,16 @@ const docTemplate = `{
                 "expires_in": {
                     "type": "integer"
                 },
+                "mfa_token": {
+                    "description": "MFAToken 短期挑战令牌（5 分钟），仅能用于 /auth/mfa/verify",
+                    "type": "string"
+                },
                 "refresh_token": {
                     "type": "string"
+                },
+                "requires_mfa": {
+                    "description": "RequiresMFA 为 true 表示登录未完成，需要二次验证",
+                    "type": "boolean"
                 },
                 "user": {
                     "$ref": "#/definitions/dto.UserResponse"
@@ -14795,14 +14983,14 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "code",
-                "user_id"
+                "mfa_token"
             ],
             "properties": {
                 "code": {
                     "type": "string"
                 },
-                "user_id": {
-                    "type": "integer"
+                "mfa_token": {
+                    "type": "string"
                 }
             }
         },
@@ -15037,6 +15225,9 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "mention_all": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -15158,6 +15349,24 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "created_at": {
+                    "type": "string"
+                },
+                "daily_digest_cron": {
+                    "type": "string"
+                },
+                "daily_digest_enabled": {
+                    "type": "boolean"
+                },
+                "daily_digest_issue_type_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "daily_digest_scope": {
+                    "type": "string"
+                },
+                "daily_digest_tz": {
                     "type": "string"
                 },
                 "description": {
@@ -15845,6 +16054,68 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SetupRequest": {
+            "type": "object",
+            "required": [
+                "display_name",
+                "email",
+                "language",
+                "password",
+                "site_url",
+                "system_name",
+                "token",
+                "username"
+            ],
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "email": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "language": {
+                    "type": "string",
+                    "enum": [
+                        "zh-CN",
+                        "en-US"
+                    ]
+                },
+                "password": {
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 6
+                },
+                "site_url": {
+                    "type": "string",
+                    "maxLength": 255
+                },
+                "system_name": {
+                    "description": "站点配置",
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "token": {
+                    "description": "Token 首次部署时下发的一次性令牌",
+                    "type": "string"
+                },
+                "username": {
+                    "description": "管理员账号",
+                    "type": "string",
+                    "maxLength": 50,
+                    "minLength": 3
+                }
+            }
+        },
+        "dto.StatusResponse": {
+            "type": "object",
+            "properties": {
+                "initialized": {
+                    "type": "boolean"
+                }
+            }
+        },
         "dto.StatusSummary": {
             "type": "object",
             "properties": {
@@ -16451,6 +16722,9 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "mention_all": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 100
@@ -16479,6 +16753,30 @@ const docTemplate = `{
         "dto.UpdateProjectRequest": {
             "type": "object",
             "properties": {
+                "daily_digest_cron": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "daily_digest_enabled": {
+                    "type": "boolean"
+                },
+                "daily_digest_issue_type_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "daily_digest_scope": {
+                    "type": "string",
+                    "enum": [
+                        "all_open",
+                        "assigned_only"
+                    ]
+                },
+                "daily_digest_tz": {
+                    "type": "string",
+                    "maxLength": 64
+                },
                 "description": {
                     "type": "string",
                     "maxLength": 1000
@@ -16733,6 +17031,22 @@ const docTemplate = `{
                 "email": {
                     "type": "string",
                     "maxLength": 100
+                },
+                "lark_open_id": {
+                    "type": "string",
+                    "maxLength": 64
+                },
+                "locale": {
+                    "description": "Locale 偏好语言。空串是有意义的值 —— 表示\"跟随站点设置\"，\n所以用指针区分\"没传\"和\"清空\"。",
+                    "type": "string",
+                    "enum": [
+                        "zh-CN",
+                        "en-US"
+                    ]
+                },
+                "telegram_user_id": {
+                    "type": "string",
+                    "maxLength": 32
                 }
             }
         },
@@ -16889,7 +17203,13 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
+                "lark_open_id": {
+                    "type": "string"
+                },
                 "last_login_at": {
+                    "type": "string"
+                },
+                "locale": {
                     "type": "string"
                 },
                 "mfa_enabled": {
@@ -16907,6 +17227,9 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "integer"
+                },
+                "telegram_user_id": {
+                    "type": "string"
                 },
                 "updated_at": {
                     "type": "string"
@@ -17702,7 +18025,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:10010",
+	Host:             "",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "TicketDesk API",

@@ -1,7 +1,7 @@
 <template>
   <el-dialog
     :model-value="modelValue"
-    :title="title || '创建工单'"
+    :title="title || t('issue.createIssue')"
     width="640px"
     destroy-on-close
     class="create-issue-dialog"
@@ -18,7 +18,7 @@
     >
       <el-row :gutter="20">
         <el-col :span="12">
-          <el-form-item label="项目" prop="project_key">
+          <el-form-item :label="t('issue.project')" prop="project_key">
             <el-input
               v-if="fixedProjectKey"
               :model-value="fixedProjectKey"
@@ -27,7 +27,7 @@
             <el-select
               v-else
               v-model="createForm.project_key"
-              placeholder="请选择项目"
+              :placeholder="t('component.createIssue.selectProject')"
               style="width: 100%"
               @change="handleProjectChange"
             >
@@ -41,29 +41,29 @@
           </el-form-item>
         </el-col>
         <el-col :span="12">
-          <el-form-item label="类型" prop="issue_type_id">
+          <el-form-item :label="t('issue.type')" prop="issue_type_id">
             <el-select
               v-model="createForm.issue_type_id"
-              placeholder="请选择类型"
+              :placeholder="t('component.createIssue.selectType')"
               style="width: 100%"
               :disabled="!effectiveProjectKey"
               @change="handleIssueTypeChange"
             >
               <el-option
-                v-for="t in issueTypes"
-                :key="t.id"
-                :label="t.display_name"
-                :value="t.id"
+                v-for="type in issueTypes"
+                :key="type.id"
+                :label="type.display_name"
+                :value="type.id"
               />
             </el-select>
           </el-form-item>
         </el-col>
       </el-row>
 
-      <el-form-item label="标题" prop="title">
+      <el-form-item :label="t('issue.title')" prop="title">
         <el-input
           v-model="createForm.title"
-          :placeholder="parentId ? '请输入子任务标题' : '请输入工单标题'"
+          :placeholder="parentId ? t('component.createIssue.subtaskTitlePlaceholder') : t('component.createIssue.titlePlaceholder')"
           maxlength="200"
           show-word-limit
         />
@@ -96,7 +96,7 @@
         </el-row>
       </div>
 
-      <el-form-item label="附件">
+      <el-form-item :label="t('component.createIssue.attachments')">
         <PendingAttachmentList
           ref="pendingListRef"
           v-model="pendingFiles"
@@ -105,16 +105,17 @@
     </el-form>
 
     <template #footer>
-      <el-button @click="$emit('update:modelValue', false)">取消</el-button>
+      <el-button @click="$emit('update:modelValue', false)">{{ t('common.cancel') }}</el-button>
       <el-button type="primary" :loading="createLoading" @click="submitCreate">
         <el-icon><Check /></el-icon>
-        {{ title || '创建工单' }}
+        {{ title || t('issue.createIssue') }}
       </el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, computed, nextTick } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Check, QuestionFilled } from '@element-plus/icons-vue'
@@ -127,6 +128,8 @@ import type { FieldSchemeItem } from '@/types/field'
 import { FieldRenderer } from '@/components/field'
 import { extractBuiltinFields } from '@/utils/builtin-fields'
 import PendingAttachmentList from '@/components/attachment/PendingAttachmentList.vue'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -167,11 +170,11 @@ const createForm = reactive({
 
 const createRules = computed<FormRules>(() => {
   const rules: FormRules = {
-    issue_type_id: [{ required: true, message: '请选择类型', trigger: 'change' }],
-    title: [{ required: true, message: '请输入标题', trigger: 'blur' }],
+    issue_type_id: [{ required: true, message: t('component.createIssue.typeRequired'), trigger: 'change' }],
+    title: [{ required: true, message: t('component.createIssue.titleRequired'), trigger: ['blur', 'change'] }],
   }
   if (!props.fixedProjectKey) {
-    rules.project_key = [{ required: true, message: '请选择项目', trigger: 'change' }]
+    rules.project_key = [{ required: true, message: t('component.createIssue.projectRequired'), trigger: 'change' }]
   }
   return rules
 })
@@ -324,7 +327,7 @@ const submitCreate = async () => {
     createLoading.value = true
     try {
       if (!createForm.issue_type_id) {
-        ElMessage.error('请选择工单类型')
+        ElMessage.error(t('component.createIssue.typeNotSelected'))
         createLoading.value = false
         return
       }
@@ -335,7 +338,7 @@ const submitCreate = async () => {
           const val = customFieldValues.value[item.field_id]
           const isEmpty = val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0)
           if (isEmpty) {
-            ElMessage.error(`请填写 ${item.field?.field_name}`)
+            ElMessage.error(t('component.createIssue.fieldRequired', { field: item.field?.field_name }))
             createLoading.value = false
             return
           }
@@ -359,7 +362,7 @@ const submitCreate = async () => {
         custom_fields: customFields.length > 0 ? customFields : undefined,
       }
       const { data } = await createIssue(buildPayload(requestData, pendingFiles.value))
-      ElMessage.success(props.parentId ? '子任务创建成功' : '创建成功')
+      ElMessage.success(props.parentId ? t('component.createIssue.subtaskCreated') : t('common.createSuccess'))
       emit('update:modelValue', false)
       emit('created', data.data.issue_key)
     } catch {
@@ -439,7 +442,7 @@ const submitCreate = async () => {
   .el-input__inner, .el-textarea__inner {
     &:focus {
       border-color: var(--td-color-primary);
-      box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+      box-shadow: var(--td-focus-ring);
     }
   }
 }

@@ -40,17 +40,17 @@ func (h *DigestHandler) HandleRunDailyDigest(c *gin.Context) {
 	project, err := h.projectService.GetProject(c.Request.Context(), key)
 	if err != nil {
 		if errors.Is(err, service.ErrProjectNotFound) {
-			response.NotFound(c, "项目不存在")
+			response.NotFound(c, "workflow.project_not_found")
 			return
 		}
-		response.InternalError(c, "获取项目失败")
+		response.InternalError(c, "project.get_failed")
 		return
 	}
 
 	if err := h.digestService.RunForProject(c.Request.Context(), project.ID); err != nil {
-		response.InternalError(c, "触发日报失败: "+err.Error())
+		response.InternalError(c, response.T(c, "project.digest_failed")+err.Error())
 		return
 	}
 
-	response.Success(c, gin.H{"message": "日报已触发"})
+	response.Success(c, gin.H{"message": response.T(c, "project.digest_triggered")})
 }

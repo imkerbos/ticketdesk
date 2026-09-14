@@ -1,19 +1,20 @@
 <template>
-  <div class="system-settings">
+  <!-- 系统设置：原来没有页标题，直接就是 tab 栏。补上 26px 标题这一层。
+       tab 仍用 el-tabs（七个 pane 嵌套很深，拆成 v-if 的收益只有 tab 栏
+       那一条线，风险却是整页的），外观由 _components.scss 统一。 -->
+  <div class="page">
+    <div class="page-head">
+      <h1>{{ t('nav.settings') }}</h1>
+    </div>
+
     <el-tabs v-model="activeTab" class="settings-tabs">
       <!-- 品牌设置 -->
-      <el-tab-pane label="品牌设置" name="brand">
+      <el-tab-pane :label="t('system.tabBrand')" name="brand">
         <el-card shadow="never" class="settings-card">
           <template #header>
             <div class="card-header">
               <div class="card-title">
-                <div class="title-icon general-icon">
-                  <el-icon><Picture /></el-icon>
-                </div>
-                <div class="title-text">
-                  <span class="title">品牌设置</span>
-                  <span class="subtitle">自定义系统名称、Logo、版权信息和登录页文案</span>
-                </div>
+                <span class="title">{{ t('system.brandTitle') }}</span>
               </div>
             </div>
           </template>
@@ -28,34 +29,32 @@
                 class="settings-form"
               >
                 <div class="form-section">
-                  <div class="section-title">基本信息</div>
-                  <el-form-item label="系统名称" prop="system_name">
+                  <div class="section-title">{{ t('system.basic') }}</div>
+                  <el-form-item :label="t('system.systemName')" prop="system_name">
                     <el-input
                       v-model="brandForm.system_name"
-                      placeholder="例如: TicketDesk"
+                      :placeholder="t('system.systemNamePlaceholder')"
                       maxlength="50"
                       show-word-limit
                     />
-                    <template #extra>
-                      <div class="form-item-tip">
-                        显示在侧边栏、浏览器标签页和登录页
-                      </div>
-                    </template>
+                    <div class="form-item-tip">
+                      {{ t('system.systemNameTip') }}
+                    </div>
                   </el-form-item>
 
-                  <el-form-item label="系统描述" prop="system_description">
+                  <el-form-item :label="t('system.systemDesc')" prop="system_description">
                     <el-input
                       v-model="brandForm.system_description"
-                      placeholder="例如: 项目化工单与告警联动系统"
+                      :placeholder="t('system.systemDescPlaceholder')"
                       maxlength="200"
                       show-word-limit
                     />
                   </el-form-item>
 
-                  <el-form-item label="版权信息" prop="copyright_text">
+                  <el-form-item :label="t('system.copyright')" prop="copyright_text">
                     <el-input
                       v-model="brandForm.copyright_text"
-                      placeholder="例如: © 2026 TicketDesk. All rights reserved."
+                      :placeholder="t('system.copyrightPlaceholder')"
                       maxlength="200"
                       show-word-limit
                     />
@@ -63,22 +62,22 @@
                 </div>
 
                 <div class="form-section">
-                  <div class="section-title">登录页文案</div>
-                  <el-form-item label="登录页标题" prop="login_title">
+                  <div class="section-title">{{ t('system.loginCopy') }}</div>
+                  <el-form-item :label="t('system.loginTitle')" prop="login_title">
                     <el-input
                       v-model="brandForm.login_title"
-                      placeholder="例如: 工单与告警联动系统"
+                      :placeholder="t('system.loginTitlePlaceholder')"
                       maxlength="100"
                       show-word-limit
                     />
                   </el-form-item>
 
-                  <el-form-item label="登录页描述" prop="login_description">
+                  <el-form-item :label="t('system.loginDesc')" prop="login_description">
                     <el-input
                       v-model="brandForm.login_description"
                       type="textarea"
                       :rows="3"
-                      placeholder="登录页左侧的描述文案，支持换行"
+                      :placeholder="t('system.loginDescPlaceholder')"
                       maxlength="500"
                       show-word-limit
                     />
@@ -86,7 +85,7 @@
                 </div>
 
                 <div class="form-section">
-                  <div class="section-title">品牌资源</div>
+                  <div class="section-title">{{ t('system.brandAssets') }}</div>
                   <el-form-item label="Logo">
                     <div class="upload-area">
                       <el-upload
@@ -96,19 +95,17 @@
                         accept=".svg,.png,.ico,.jpg,.jpeg,.webp"
                       >
                         <el-button :loading="logoUploading">
-                          {{ brandForm.logo_url ? '更换 Logo' : '上传 Logo' }}
+                          {{ brandForm.logo_url ? t('system.changeLogo') : t('system.uploadLogo') }}
                         </el-button>
                       </el-upload>
                       <div v-if="brandForm.logo_url" class="upload-preview">
                         <img :src="brandForm.logo_url" alt="Logo" class="preview-image" />
-                        <el-button text type="danger" size="small" @click="removeBrandAsset('logo')">移除</el-button>
+                        <el-button text type="danger" size="small" @click="removeBrandAsset('logo')">{{ t('common.remove') }}</el-button>
                       </div>
                     </div>
-                    <template #extra>
-                      <div class="form-item-tip">
-                        建议尺寸 48x48，支持 SVG、PNG、ICO、JPG、WEBP，最大 2MB。留空使用默认 Logo。
-                      </div>
-                    </template>
+                    <div class="form-item-tip">
+                      {{ t('system.logoTip') }}
+                    </div>
                   </el-form-item>
 
                   <el-form-item label="Favicon">
@@ -120,19 +117,17 @@
                         accept=".svg,.png,.ico"
                       >
                         <el-button :loading="faviconUploading">
-                          {{ brandForm.favicon_url ? '更换 Favicon' : '上传 Favicon' }}
+                          {{ brandForm.favicon_url ? t('system.changeFavicon') : t('system.uploadFavicon') }}
                         </el-button>
                       </el-upload>
                       <div v-if="brandForm.favicon_url" class="upload-preview">
                         <img :src="brandForm.favicon_url" alt="Favicon" class="preview-image preview-favicon" />
-                        <el-button text type="danger" size="small" @click="removeBrandAsset('favicon')">移除</el-button>
+                        <el-button text type="danger" size="small" @click="removeBrandAsset('favicon')">{{ t('common.remove') }}</el-button>
                       </div>
                     </div>
-                    <template #extra>
-                      <div class="form-item-tip">
-                        浏览器标签页图标，建议尺寸 32x32，支持 SVG、PNG、ICO，最大 2MB。
-                      </div>
-                    </template>
+                    <div class="form-item-tip">
+                      {{ t('system.faviconTip') }}
+                    </div>
                   </el-form-item>
                 </div>
 
@@ -143,7 +138,7 @@
                     @click="handleSaveBrandConfig"
                   >
                     <el-icon><Check /></el-icon>
-                    保存品牌设置
+                    {{ t('system.saveBrand') }}
                   </el-button>
                 </el-form-item>
               </el-form>
@@ -151,7 +146,7 @@
 
             <el-col :xs="24" :lg="10">
               <div class="brand-preview-section">
-                <div class="section-title">预览</div>
+                <div class="section-title">{{ t('system.preview') }}</div>
                 <div class="brand-preview-card">
                   <div class="preview-sidebar">
                     <div class="preview-logo-area">
@@ -164,15 +159,15 @@
                       <span v-else class="preview-logo-placeholder">{{ (brandForm.system_name || 'TicketDesk').charAt(0) }}</span>
                       <span class="preview-logo-text">{{ brandForm.system_name || 'TicketDesk' }}</span>
                     </div>
-                    <div class="preview-menu-item active">首页</div>
-                    <div class="preview-menu-item">工单管理</div>
-                    <div class="preview-menu-item">项目管理</div>
+                    <div class="preview-menu-item active">{{ t('system.previewHome') }}</div>
+                    <div class="preview-menu-item">{{ t('system.previewIssues') }}</div>
+                    <div class="preview-menu-item">{{ t('system.previewProjects') }}</div>
                     <div class="preview-copyright">{{ brandForm.copyright_text || '© 2026 TicketDesk' }}</div>
                   </div>
                 </div>
                 <el-alert type="info" :closable="false" class="brand-tips">
-                  <p>修改品牌设置后，所有用户刷新页面即可看到更新。</p>
-                  <p>Logo 和 Favicon 需要先上传再保存。</p>
+                  <p>{{ t('system.previewTip1') }}</p>
+                  <p>{{ t('system.previewTip2') }}</p>
                 </el-alert>
               </div>
             </el-col>
@@ -181,102 +176,82 @@
       </el-tab-pane>
 
       <!-- 通用配置 -->
-      <el-tab-pane label="通用配置" name="general">
+      <el-tab-pane :label="t('system.tabGeneral')" name="general">
         <el-card shadow="never" class="settings-card">
           <template #header>
             <div class="card-header">
               <div class="card-title">
-                <div class="title-icon general-icon">
-                  <el-icon><Setting /></el-icon>
-                </div>
-                <div class="title-text">
-                  <span class="title">通用系统配置</span>
-                  <span class="subtitle">配置系统的基本信息和全局设置</span>
-                </div>
+                <span class="title">{{ t('system.generalTitle') }}</span>
               </div>
             </div>
           </template>
 
-          <el-row :gutter="40">
-            <el-col :xs="24" :lg="12">
-              <el-form
-                ref="generalFormRef"
-                :model="generalForm"
-                :rules="generalRules"
-                label-position="top"
-                class="settings-form"
-              >
-                <div class="form-section">
-                  <div class="section-title">站点信息</div>
-                  <el-form-item label="站点域名" prop="site_url">
-                    <el-input
-                      v-model="generalForm.site_url"
-                      placeholder="例如: https://ticketdesk.example.com"
-                    >
-                      <template #prefix>
-                        <el-icon><Link /></el-icon>
-                      </template>
-                    </el-input>
-                    <template #extra>
-                      <div class="form-item-tip">
-                        用于生成邮件中的链接，请填写完整的域名（包含协议）
-                      </div>
+          <!-- 右侧「配置说明」已删（内容与字段提示重复），表单不再占半屏而是限宽单列 -->
+          <div class="settings-single-col">
+            <el-form
+              ref="generalFormRef"
+              :model="generalForm"
+              :rules="generalRules"
+              label-position="top"
+              class="settings-form"
+            >
+              <div class="form-section">
+                <div class="section-title">{{ t('system.siteSection') }}</div>
+                <el-form-item :label="t('system.siteUrl')" prop="site_url">
+                  <el-input
+                    v-model="generalForm.site_url"
+                    :placeholder="t('system.siteUrlPlaceholder')"
+                  >
+                    <template #prefix>
+                      <el-icon><Link /></el-icon>
                     </template>
-                  </el-form-item>
-                </div>
-
-                <el-form-item>
-                  <el-button type="primary" :loading="generalLoading" @click="saveGeneralConfig">
-                    保存配置
-                  </el-button>
-                </el-form-item>
-              </el-form>
-            </el-col>
-
-            <el-col :xs="24" :lg="12">
-              <div class="config-tips">
-                <div class="tip-title">
-                  <el-icon><InfoFilled /></el-icon>
-                  <span>配置说明</span>
-                </div>
-                <div class="tip-content">
-                  <div class="tip-item">
-                    <div class="tip-label">站点域名</div>
-                    <div class="tip-desc">
-                      系统会使用此域名生成邮件中的链接（如重置密码链接）。请确保填写正确的域名，包含协议（http:// 或 https://），不要以斜杠结尾。
-                    </div>
-                    <div class="tip-example">
-                      示例：https://ticketdesk.example.com
-                    </div>
+                  </el-input>
+                  <!-- 原来右侧还有半屏的「配置说明」在讲同一个字段，
+                         内容和这里重复；示例并进来，那一整列删掉 -->
+                  <div class="form-item-tip">
+                    {{ t('system.siteUrlTip') }}
+                    <span class="form-item-example">{{ t('system.siteUrlExample') }}</span>
                   </div>
-                </div>
+                </el-form-item>
               </div>
-            </el-col>
-          </el-row>
+
+              <div class="form-section">
+                <div class="section-title">{{ t('system.languageSection') }}</div>
+                <el-form-item :label="t('system.language')" prop="language">
+                  <el-select v-model="generalForm.language" style="width: 100%">
+                    <el-option :label="t('lang.zh-CN')" value="zh-CN" />
+                    <el-option :label="t('lang.en-US')" value="en-US" />
+                  </el-select>
+                  <div class="form-item-tip">
+                    {{ t('system.languageTip') }}
+                  </div>
+                </el-form-item>
+              </div>
+
+              <el-form-item>
+                <el-button type="primary" :loading="generalLoading" @click="saveGeneralConfig">
+                  {{ t('system.saveConfig') }}
+                </el-button>
+              </el-form-item>
+            </el-form>
+          </div>
         </el-card>
       </el-tab-pane>
 
       <!-- 邮件配置 -->
-      <el-tab-pane label="邮件配置" name="email">
+      <el-tab-pane :label="t('system.tabEmail')" name="email">
         <el-card shadow="never" class="settings-card">
           <template #header>
             <div class="card-header">
               <div class="card-title">
-                <div class="title-icon email-icon">
-                  <el-icon><Message /></el-icon>
-                </div>
-                <div class="title-text">
-                  <span class="title">SMTP 邮件服务配置</span>
-                  <span class="subtitle">配置系统邮件发送服务，用于发送通知和告警</span>
-                </div>
+                <span class="title">{{ t('system.emailTitle') }}</span>
               </div>
-              <el-switch
-                v-model="emailForm.enabled"
-                active-text="启用"
-                inactive-text="禁用"
-                inline-prompt
-                style="--el-switch-on-color: var(--td-color-success)"
-              />
+              <div class="header-switch">
+                <el-switch v-model="emailForm.enabled" />
+                <span class="header-switch-label" :class="{ active: emailForm.enabled }">
+                  {{ emailForm.enabled ? t('common.enabled') : t('common.disabled') }}
+                </span>
+              </div>
             </div>
           </template>
 
@@ -290,11 +265,11 @@
                 class="settings-form"
               >
                 <div class="form-section">
-                  <div class="section-title">服务器设置</div>
+                  <div class="section-title">{{ t('system.serverSection') }}</div>
                   <el-row :gutter="16">
                     <el-col :span="16">
-                      <el-form-item label="SMTP 服务器" prop="smtp_host">
-                        <el-input v-model="emailForm.smtp_host" placeholder="例如: smtp.gmail.com">
+                      <el-form-item :label="t('system.smtpHost')" prop="smtp_host">
+                        <el-input v-model="emailForm.smtp_host" :placeholder="t('system.smtpHostPlaceholder')">
                           <template #prefix>
                             <el-icon><Monitor /></el-icon>
                           </template>
@@ -302,16 +277,18 @@
                       </el-form-item>
                     </el-col>
                     <el-col :span="8">
-                      <el-form-item label="端口" prop="smtp_port">
-                        <el-input-number v-model="emailForm.smtp_port" :min="1" :max="65535" style="width: 100%" />
+                      <el-form-item :label="t('system.port')" prop="smtp_port">
+                        <!-- 步进器形态跟安全设置那几个数字框保持一致：右侧竖排，
+                             不用左右分开的 −/+，否则同一页两种数字输入长相 -->
+                        <el-input-number v-model="emailForm.smtp_port" :min="1" :max="65535" controls-position="right" style="width: 100%" />
                       </el-form-item>
                     </el-col>
                   </el-row>
 
                   <el-row :gutter="16">
                     <el-col :span="12">
-                      <el-form-item label="用户名" prop="smtp_username">
-                        <el-input v-model="emailForm.smtp_username" placeholder="认证用户名">
+                      <el-form-item :label="t('system.smtpUsername')" prop="smtp_username">
+                        <el-input v-model="emailForm.smtp_username" :placeholder="t('system.smtpUsernamePlaceholder')">
                           <template #prefix>
                             <el-icon><User /></el-icon>
                           </template>
@@ -319,11 +296,11 @@
                       </el-form-item>
                     </el-col>
                     <el-col :span="12">
-                      <el-form-item label="密码" prop="smtp_password">
+                      <el-form-item :label="t('system.smtpPassword')" prop="smtp_password">
                         <el-input
                           v-model="emailForm.smtp_password"
                           type="password"
-                          placeholder="留空表示不修改"
+                          :placeholder="t('system.unchangedPlaceholder')"
                           show-password
                         >
                           <template #prefix>
@@ -336,10 +313,10 @@
                 </div>
 
                 <div class="form-section">
-                  <div class="section-title">发件人信息</div>
+                  <div class="section-title">{{ t('system.senderSection') }}</div>
                   <el-row :gutter="16">
                     <el-col :span="14">
-                      <el-form-item label="发件人地址" prop="from_address">
+                      <el-form-item :label="t('system.fromAddress')" prop="from_address">
                         <el-input v-model="emailForm.from_address" placeholder="noreply@example.com">
                           <template #prefix>
                             <el-icon><Message /></el-icon>
@@ -348,7 +325,7 @@
                       </el-form-item>
                     </el-col>
                     <el-col :span="10">
-                      <el-form-item label="发件人名称" prop="from_name">
+                      <el-form-item :label="t('system.fromName')" prop="from_name">
                         <el-input v-model="emailForm.from_name" placeholder="TicketDesk" />
                       </el-form-item>
                     </el-col>
@@ -356,12 +333,12 @@
                 </div>
 
                 <div class="form-section">
-                  <div class="section-title">安全设置</div>
+                  <div class="section-title">{{ t('system.securitySection') }}</div>
                   <el-form-item>
                     <div class="setting-row">
                       <div class="setting-info">
-                        <span class="setting-label">使用 TLS 加密</span>
-                        <span class="setting-desc">推荐启用以保护邮件传输安全</span>
+                        <span class="setting-label">{{ t('system.useTls') }}</span>
+                        <span class="setting-desc">{{ t('system.useTlsDesc') }}</span>
                       </div>
                       <el-switch v-model="emailForm.use_tls" />
                     </div>
@@ -371,11 +348,11 @@
                 <el-form-item>
                   <el-button type="primary" :loading="emailSaving" @click="saveEmailConfig">
                     <el-icon><Check /></el-icon>
-                    保存配置
+                    {{ t('system.saveConfig') }}
                   </el-button>
                   <el-button @click="testEmailDialog = true">
                     <el-icon><Promotion /></el-icon>
-                    发送测试邮件
+                    {{ t('system.sendTestEmail') }}
                   </el-button>
                 </el-form-item>
               </el-form>
@@ -384,13 +361,13 @@
               <div class="info-card">
                 <div class="info-title">
                   <el-icon><InfoFilled /></el-icon>
-                  配置说明
+                  {{ t('system.configHelp') }}
                 </div>
                 <ul class="info-list">
-                  <li>SMTP 服务器用于发送系统邮件通知</li>
-                  <li>常用端口：25 (不加密)、465 (SSL)、587 (TLS)</li>
-                  <li>建议使用 TLS 加密以保护邮件内容</li>
-                  <li>配置完成后可发送测试邮件验证</li>
+                  <li>{{ t('system.emailHelp1') }}</li>
+                  <li>{{ t('system.emailHelp2') }}</li>
+                  <li>{{ t('system.emailHelp3') }}</li>
+                  <li>{{ t('system.emailHelp4') }}</li>
                 </ul>
               </div>
             </el-col>
@@ -399,32 +376,29 @@
       </el-tab-pane>
 
       <!-- 安全配置 -->
-      <el-tab-pane label="安全设置" name="security">
+      <el-tab-pane :label="t('system.tabSecurity')" name="security">
         <el-row :gutter="20">
           <!-- MFA 设置 -->
           <el-col :xs="24" :lg="8">
             <el-card shadow="never" class="setting-block">
               <div class="block-header">
-                <div class="block-icon mfa-icon">
-                  <el-icon><Key /></el-icon>
-                </div>
                 <div class="block-title">
-                  <span class="title">多因素认证 (MFA)</span>
-                  <span class="desc">增强账户安全性</span>
+                  <span class="title">{{ t('system.mfaTitle') }}</span>
+                  <span class="desc">{{ t('system.mfaDesc') }}</span>
                 </div>
               </div>
               <div class="block-content">
                 <div class="setting-item">
                   <div class="setting-info">
-                    <span class="setting-label">启用 MFA</span>
-                    <span class="setting-desc">允许用户开启双因素认证</span>
+                    <span class="setting-label">{{ t('system.mfaEnable') }}</span>
+                    <span class="setting-desc">{{ t('system.mfaEnableDesc') }}</span>
                   </div>
                   <el-switch v-model="securityForm.mfa_enabled" />
                 </div>
                 <div class="setting-item">
                   <div class="setting-info">
-                    <span class="setting-label">强制要求 MFA</span>
-                    <span class="setting-desc">所有用户必须开启 MFA</span>
+                    <span class="setting-label">{{ t('system.mfaForce') }}</span>
+                    <span class="setting-desc">{{ t('system.mfaForceDesc') }}</span>
                   </div>
                   <el-switch
                     v-model="securityForm.mfa_required"
@@ -439,19 +413,16 @@
           <el-col :xs="24" :lg="8">
             <el-card shadow="never" class="setting-block">
               <div class="block-header">
-                <div class="block-icon password-icon">
-                  <el-icon><Lock /></el-icon>
-                </div>
                 <div class="block-title">
-                  <span class="title">密码策略</span>
-                  <span class="desc">设置密码复杂度要求</span>
+                  <span class="title">{{ t('system.passwordPolicy') }}</span>
+                  <span class="desc">{{ t('system.passwordPolicyDesc') }}</span>
                 </div>
               </div>
               <div class="block-content">
                 <div class="setting-item">
                   <div class="setting-info">
-                    <span class="setting-label">最小长度</span>
-                    <span class="setting-desc">密码最少字符数</span>
+                    <span class="setting-label">{{ t('system.minLength') }}</span>
+                    <span class="setting-desc">{{ t('system.minLengthDesc') }}</span>
                   </div>
                   <el-input-number
                     v-model="securityForm.password_min_length"
@@ -463,15 +434,15 @@
                 </div>
                 <div class="setting-item">
                   <div class="setting-info">
-                    <span class="setting-label">要求大写字母</span>
-                    <span class="setting-desc">必须包含 A-Z</span>
+                    <span class="setting-label">{{ t('system.requireUpper') }}</span>
+                    <span class="setting-desc">{{ t('system.requireUpperDesc') }}</span>
                   </div>
                   <el-switch v-model="securityForm.password_require_upper" />
                 </div>
                 <div class="setting-item">
                   <div class="setting-info">
-                    <span class="setting-label">要求数字</span>
-                    <span class="setting-desc">必须包含 0-9</span>
+                    <span class="setting-label">{{ t('system.requireDigit') }}</span>
+                    <span class="setting-desc">{{ t('system.requireDigitDesc') }}</span>
                   </div>
                   <el-switch v-model="securityForm.password_require_number" />
                 </div>
@@ -483,19 +454,16 @@
           <el-col :xs="24" :lg="8">
             <el-card shadow="never" class="setting-block">
               <div class="block-header">
-                <div class="block-icon session-icon">
-                  <el-icon><Timer /></el-icon>
-                </div>
                 <div class="block-title">
-                  <span class="title">会话设置</span>
-                  <span class="desc">控制用户登录会话</span>
+                  <span class="title">{{ t('system.sessionTitle') }}</span>
+                  <span class="desc">{{ t('system.sessionDesc') }}</span>
                 </div>
               </div>
               <div class="block-content">
                 <div class="setting-item">
                   <div class="setting-info">
-                    <span class="setting-label">会话超时</span>
-                    <span class="setting-desc">无操作自动退出时间（分钟）</span>
+                    <span class="setting-label">{{ t('system.sessionTimeout') }}</span>
+                    <span class="setting-desc">{{ t('system.sessionTimeoutDesc') }}</span>
                   </div>
                   <el-input-number
                     v-model="securityForm.session_timeout"
@@ -513,31 +481,28 @@
         <div class="action-bar">
           <el-button type="primary" :loading="securitySaving" @click="saveSecurityConfig">
             <el-icon><Check /></el-icon>
-            保存安全配置
+            {{ t('system.saveSecurity') }}
           </el-button>
         </div>
       </el-tab-pane>
 
       <!-- 限流配置 -->
-      <el-tab-pane label="限流配置" name="ratelimit">
+      <el-tab-pane :label="t('system.tabRateLimit')" name="ratelimit">
         <el-row :gutter="20">
           <!-- Webhook 限流 -->
           <el-col :xs="24" :lg="8">
             <el-card shadow="never" class="setting-block">
               <div class="block-header">
-                <div class="block-icon webhook-rl-icon">
-                  <el-icon><Connection /></el-icon>
-                </div>
                 <div class="block-title">
-                  <span class="title">Webhook 限流</span>
-                  <span class="desc">告警 Webhook 接口限流</span>
+                  <span class="title">{{ t('system.webhookLimit') }}</span>
+                  <span class="desc">{{ t('system.webhookLimitDesc') }}</span>
                 </div>
               </div>
               <div class="block-content">
                 <div class="setting-item">
                   <div class="setting-info">
-                    <span class="setting-label">每 IP 每分钟最大请求数</span>
-                    <span class="setting-desc">范围：10 - 10,000</span>
+                    <span class="setting-label">{{ t('system.perIpPerMinute') }}</span>
+                    <span class="setting-desc">{{ t('system.range', { min: '10', max: '10,000' }) }}</span>
                   </div>
                   <el-input-number
                     v-model="rateLimitForm.webhook_limit"
@@ -555,19 +520,16 @@
           <el-col :xs="24" :lg="8">
             <el-card shadow="never" class="setting-block">
               <div class="block-header">
-                <div class="block-icon auth-rl-icon">
-                  <el-icon><UserFilled /></el-icon>
-                </div>
                 <div class="block-title">
-                  <span class="title">认证限流</span>
-                  <span class="desc">登录/注册接口限流</span>
+                  <span class="title">{{ t('system.authLimit') }}</span>
+                  <span class="desc">{{ t('system.authLimitDesc') }}</span>
                 </div>
               </div>
               <div class="block-content">
                 <div class="setting-item">
                   <div class="setting-info">
-                    <span class="setting-label">每 IP 每分钟最大请求数</span>
-                    <span class="setting-desc">范围：5 - 1,000</span>
+                    <span class="setting-label">{{ t('system.perIpPerMinute') }}</span>
+                    <span class="setting-desc">{{ t('system.range', { min: '5', max: '1,000' }) }}</span>
                   </div>
                   <el-input-number
                     v-model="rateLimitForm.auth_limit"
@@ -585,19 +547,16 @@
           <el-col :xs="24" :lg="8">
             <el-card shadow="never" class="setting-block">
               <div class="block-header">
-                <div class="block-icon api-rl-icon">
-                  <el-icon><DataLine /></el-icon>
-                </div>
                 <div class="block-title">
-                  <span class="title">API 全局限流</span>
-                  <span class="desc">所有认证接口限流</span>
+                  <span class="title">{{ t('system.apiLimit') }}</span>
+                  <span class="desc">{{ t('system.apiLimitDesc') }}</span>
                 </div>
               </div>
               <div class="block-content">
                 <div class="setting-item">
                   <div class="setting-info">
-                    <span class="setting-label">每 IP 每分钟最大请求数</span>
-                    <span class="setting-desc">范围：50 - 50,000</span>
+                    <span class="setting-label">{{ t('system.perIpPerMinute') }}</span>
+                    <span class="setting-desc">{{ t('system.range', { min: '50', max: '50,000' }) }}</span>
                   </div>
                   <el-input-number
                     v-model="rateLimitForm.api_limit"
@@ -615,23 +574,17 @@
         <div class="action-bar">
           <el-button type="primary" :loading="rateLimitSaving" @click="saveRateLimitConfig">
             <el-icon><Check /></el-icon>
-            保存限流配置
+            {{ t('system.saveRateLimit') }}
           </el-button>
         </div>
       </el-tab-pane>
       <!-- 工时配置 -->
-      <el-tab-pane label="工时配置" name="worklog">
+      <el-tab-pane :label="t('system.tabWorklog')" name="worklog">
         <el-card shadow="never" class="settings-card">
           <template #header>
             <div class="card-header">
               <div class="card-title">
-                <div class="title-icon worklog-icon">
-                  <el-icon><Clock /></el-icon>
-                </div>
-                <div class="title-text">
-                  <span class="title">工作类型管理</span>
-                  <span class="subtitle">配置工时记录中可选的工作类型</span>
-                </div>
+                <span class="title">{{ t('system.workTypeTitle') }}</span>
               </div>
             </div>
           </template>
@@ -646,7 +599,7 @@
                 >
                   <el-input
                     v-model="item.label"
-                    placeholder="工作类型名称"
+                    :placeholder="t('system.workTypePlaceholder')"
                     style="flex: 1"
                     @input="item.value = item.label"
                   />
@@ -660,14 +613,14 @@
                   </el-button>
                 </div>
                 <el-button type="primary" link style="margin-top: 8px" @click="addWorkType">
-                  + 添加工作类型
+                  {{ t('system.addWorkType') }}
                 </el-button>
               </div>
 
               <el-form-item style="margin-top: 24px">
                 <el-button type="primary" :loading="worklogSaving" @click="saveWorkTypeConfig">
                   <el-icon><Check /></el-icon>
-                  保存配置
+                  {{ t('system.saveConfig') }}
                 </el-button>
               </el-form-item>
             </el-col>
@@ -676,13 +629,13 @@
               <div class="config-tips">
                 <div class="tip-title">
                   <el-icon><InfoFilled /></el-icon>
-                  <span>配置说明</span>
+                  <span>{{ t('system.configHelp') }}</span>
                 </div>
                 <div class="tip-content">
                   <div class="tip-item">
-                    <div class="tip-label">工作类型</div>
+                    <div class="tip-label">{{ t('system.workTypeHelpLabel') }}</div>
                     <div class="tip-desc">
-                      工作类型用于工时记录中分类工作内容。修改后前端刷新即生效，已有工时记录不受影响。
+                      {{ t('system.workTypeHelp') }}
                     </div>
                   </div>
                 </div>
@@ -693,26 +646,19 @@
       </el-tab-pane>
 
       <!-- SSO 配置 -->
-      <el-tab-pane label="SSO 认证" name="sso">
+      <el-tab-pane :label="t('system.tabSso')" name="sso">
         <el-card shadow="never" class="settings-card">
           <template #header>
             <div class="card-header">
               <div class="card-title">
-                <div class="title-icon sso-icon">
-                  <el-icon><Link /></el-icon>
-                </div>
-                <div class="title-text">
-                  <span class="title">SSO 单点登录配置</span>
-                  <span class="subtitle">配置 OIDC 单点登录，支持企业统一认证（EIAM）</span>
-                </div>
+                <span class="title">{{ t('system.ssoTitle') }}</span>
               </div>
-              <el-switch
-                v-model="ssoForm.enabled"
-                active-text="启用"
-                inactive-text="禁用"
-                inline-prompt
-                style="--el-switch-on-color: var(--td-color-success)"
-              />
+              <div class="header-switch">
+                <el-switch v-model="ssoForm.enabled" />
+                <span class="header-switch-label" :class="{ active: ssoForm.enabled }">
+                  {{ ssoForm.enabled ? t('common.enabled') : t('common.disabled') }}
+                </span>
+              </div>
             </div>
           </template>
 
@@ -725,27 +671,23 @@
                 class="settings-form"
               >
                 <div class="form-section">
-                  <div class="section-title">基本配置</div>
-                  <el-form-item label="提供方名称" prop="provider_name">
-                    <el-input v-model="ssoForm.provider_name" placeholder="例如: 企业统一认证">
+                  <div class="section-title">{{ t('system.ssoBasic') }}</div>
+                  <el-form-item :label="t('system.providerName')" prop="provider_name">
+                    <el-input v-model="ssoForm.provider_name" :placeholder="t('system.providerNamePlaceholder')">
                       <template #prefix>
                         <el-icon><User /></el-icon>
                       </template>
                     </el-input>
-                    <template #extra>
-                      <div class="form-item-tip">登录页面 SSO 按钮上显示的名称</div>
-                    </template>
+                    <div class="form-item-tip">{{ t('system.providerNameTip') }}</div>
                   </el-form-item>
 
                   <el-form-item label="Issuer URL" prop="issuer_url">
-                    <el-input v-model="ssoForm.issuer_url" placeholder="例如: https://eiam.example.com/realms/master">
+                    <el-input v-model="ssoForm.issuer_url" :placeholder="t('system.issuerPlaceholder')">
                       <template #prefix>
                         <el-icon><Link /></el-icon>
                       </template>
                     </el-input>
-                    <template #extra>
-                      <div class="form-item-tip">OIDC 提供方的 Issuer URL，用于自动发现配置</div>
-                    </template>
+                    <div class="form-item-tip">{{ t('system.issuerTip') }}</div>
                   </el-form-item>
 
                   <el-row :gutter="16">
@@ -759,7 +701,7 @@
                         <el-input
                           v-model="ssoForm.client_secret"
                           type="password"
-                          placeholder="留空表示不修改"
+                          :placeholder="t('system.unchangedPlaceholder')"
                           show-password
                         >
                           <template #prefix>
@@ -772,8 +714,8 @@
 
                   <el-row :gutter="16">
                     <el-col :span="12">
-                      <el-form-item label="回调地址" prop="redirect_uri">
-                        <el-input v-model="ssoForm.redirect_uri" placeholder="例如: https://your-domain/auth/sso/callback" />
+                      <el-form-item :label="t('system.redirectUri')" prop="redirect_uri">
+                        <el-input v-model="ssoForm.redirect_uri" :placeholder="t('system.redirectUriPlaceholder')" />
                       </el-form-item>
                     </el-col>
                     <el-col :span="12">
@@ -785,33 +727,31 @@
                 </div>
 
                 <div class="form-section">
-                  <div class="section-title">用户管理</div>
+                  <div class="section-title">{{ t('system.ssoUserSection') }}</div>
                   <el-form-item>
                     <div class="setting-row">
                       <div class="setting-info">
-                        <span class="setting-label">自动创建用户</span>
-                        <span class="setting-desc">首次 SSO 登录时自动创建本地用户</span>
+                        <span class="setting-label">{{ t('system.autoCreate') }}</span>
+                        <span class="setting-desc">{{ t('system.autoCreateDesc') }}</span>
                       </div>
                       <el-switch v-model="ssoForm.auto_create_user" />
                     </div>
                   </el-form-item>
-                  <el-form-item label="默认角色" prop="default_role">
+                  <el-form-item :label="t('system.defaultRole')" prop="default_role">
                     <el-select v-model="ssoForm.default_role" style="width: 200px">
-                      <el-option label="普通用户 (user)" value="user" />
-                      <el-option label="项目管理员 (project_admin)" value="project_admin" />
-                      <el-option label="系统管理员 (admin)" value="admin" />
+                      <el-option :label="t('system.roleUser')" value="user" />
+                      <el-option :label="t('system.roleProjectAdmin')" value="project_admin" />
+                      <el-option :label="t('system.roleAdmin')" value="admin" />
                     </el-select>
-                    <template #extra>
-                      <div class="form-item-tip">自动创建用户时分配的默认角色</div>
-                    </template>
+                    <div class="form-item-tip">{{ t('system.defaultRoleTip') }}</div>
                   </el-form-item>
                 </div>
 
                 <div class="form-section">
                   <div class="section-title">
-                    Claims 映射
+                    {{ t('system.claimMappings') }}
                     <el-button type="primary" link size="small" style="margin-left: 8px" @click="addClaimMapping">
-                      + 添加映射
+                      {{ t('system.addMapping') }}
                     </el-button>
                   </div>
                   <div class="claim-mappings">
@@ -824,7 +764,7 @@
                         <el-col :span="10">
                           <el-input
                             v-model="mapping.local_field"
-                            placeholder="本地字段名 (如 username)"
+                            :placeholder="t('system.localFieldPlaceholder')"
                             size="default"
                           />
                         </el-col>
@@ -834,7 +774,7 @@
                         <el-col :span="10">
                           <el-input
                             v-model="mapping.claim_name"
-                            placeholder="OIDC Claim (如 preferred_username)"
+                            :placeholder="t('system.claimNamePlaceholder')"
                             size="default"
                           />
                         </el-col>
@@ -845,13 +785,13 @@
                             :disabled="ssoForm.claim_mappings.length <= 1"
                             @click="removeClaimMapping(index)"
                           >
-                            删除
+                            {{ t('common.delete') }}
                           </el-button>
                         </el-col>
                       </el-row>
                     </div>
                     <div class="claim-mapping-hint">
-                      内置字段：username、email、display_name、avatar。其他字段名将存入用户扩展属性。
+                      {{ t('system.claimHint') }}
                     </div>
                   </div>
                 </div>
@@ -859,7 +799,7 @@
                 <el-form-item>
                   <el-button type="primary" :loading="ssoSaving" @click="saveSSOConfig">
                     <el-icon><Check /></el-icon>
-                    保存配置
+                    {{ t('system.saveConfig') }}
                   </el-button>
                 </el-form-item>
               </el-form>
@@ -869,31 +809,31 @@
               <div class="config-tips">
                 <div class="tip-title">
                   <el-icon><InfoFilled /></el-icon>
-                  <span>配置说明</span>
+                  <span>{{ t('system.configHelp') }}</span>
                 </div>
                 <div class="tip-content">
                   <div class="tip-item">
-                    <div class="tip-label">OIDC 对接步骤</div>
+                    <div class="tip-label">{{ t('system.ssoStepsLabel') }}</div>
                     <div class="tip-desc">
-                      1. 在 EIAM 中创建 OIDC 应用，获取 Client ID 和 Secret<br />
-                      2. 填写 Issuer URL（通常为 EIAM 的 realm 地址）<br />
-                      3. 在 EIAM 中配置回调地址为本系统的回调 URL<br />
-                      4. 启用 SSO 后，登录页将出现 SSO 登录按钮
+                      {{ t('system.ssoStep1') }}<br />
+                      {{ t('system.ssoStep2') }}<br />
+                      {{ t('system.ssoStep3') }}<br />
+                      {{ t('system.ssoStep4') }}
                     </div>
                   </div>
                   <div class="tip-item">
-                    <div class="tip-label">IdP-initiated 登录</div>
+                    <div class="tip-label">{{ t('system.idpInitLabel') }}</div>
                     <div class="tip-desc">
-                      在 EIAM 门户中将应用入口 URL 配置为：<br />
+                      {{ t('system.idpInitDesc') }}<br />
                       <code>{{ ssoForm.redirect_uri?.replace('/auth/sso/callback', '/auth/sso/login') || 'https://your-domain/auth/sso/login' }}</code>
                     </div>
                   </div>
                   <div class="tip-item">
-                    <div class="tip-label">Claims 映射</div>
+                    <div class="tip-label">{{ t('system.claimsLabel') }}</div>
                     <div class="tip-desc">
-                      根据 EIAM 返回的 ID Token 中的 claim 名称进行映射。<br />
-                      内置字段：username、email、display_name、avatar 会映射到用户基本信息。<br />
-                      自定义字段名（如 department、employee_id）会存入用户扩展属性。
+                      {{ t('system.claimsDesc1') }}<br />
+                      {{ t('system.claimsDesc2') }}<br />
+                      {{ t('system.claimsDesc3') }}
                     </div>
                   </div>
                 </div>
@@ -905,16 +845,16 @@
     </el-tabs>
 
     <!-- 测试邮件对话框 -->
-    <el-dialog v-model="testEmailDialog" title="发送测试邮件" width="400px">
+    <el-dialog v-model="testEmailDialog" :title="t('system.testEmailTitle')" width="400px">
       <el-form ref="testEmailFormRef" :model="testEmailForm" :rules="testEmailRules" label-position="top">
-        <el-form-item label="收件人邮箱" prop="to_address">
-          <el-input v-model="testEmailForm.to_address" placeholder="请输入收件人邮箱" />
+        <el-form-item :label="t('system.testRecipient')" prop="to_address">
+          <el-input v-model="testEmailForm.to_address" :placeholder="t('system.testRecipientPlaceholder')" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="testEmailDialog = false">取消</el-button>
+        <el-button @click="testEmailDialog = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" :loading="testEmailSending" @click="sendTestEmail">
-          发送测试
+          {{ t('system.sendTest') }}
         </el-button>
       </template>
     </el-dialog>
@@ -922,14 +862,14 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, reactive, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
   Message, Lock, Check, Promotion, InfoFilled,
-  Key, Timer, Monitor, User, Setting, Link,
-  Connection, UserFilled, DataLine, Clock, Delete, Picture,
-} from '@element-plus/icons-vue'
+  Monitor, User, Link,
+  Delete } from '@element-plus/icons-vue'
 import {
   getEmailConfig,
   updateEmailConfig,
@@ -943,21 +883,24 @@ import {
   updateSSOConfig,
   getBrandConfig,
   updateBrandConfig,
-  uploadBrandAsset,
-} from '@/api/system'
+  uploadBrandAsset } from '@/api/system'
 import { useBrandStore } from '@/stores/brand'
+
+const { t } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
 
-// 从 URL 查询参数中获取 tab，如果没有则默认为 'general'
-const activeTab = ref((route.query.tab as string) || 'general')
+// 从 URL 查询参数中获取 tab，认不出来就退回默认的 —— 不校验的话，
+// URL 里写错一个 tab 名就渲染出一张空白页，连 tab 都不高亮。
+const SYSTEM_TABS = ['brand', 'general', 'email', 'security', 'ratelimit', 'worklog', 'sso']
+const initTab = route.query.tab as string
+const activeTab = ref(SYSTEM_TABS.includes(initTab) ? initTab : 'general')
 
 // 监听 tab 变化，更新 URL
 watch(activeTab, (newTab) => {
   router.replace({
-    query: { ...route.query, tab: newTab },
-  })
+    query: { ...route.query, tab: newTab } })
 })
 
 const brandStore = useBrandStore()
@@ -974,15 +917,13 @@ const brandForm = reactive({
   login_title: '',
   login_description: '',
   logo_url: '',
-  favicon_url: '',
-})
+  favicon_url: '' })
 
 const brandRules: FormRules = {
   system_name: [
-    { required: true, message: '请输入系统名称', trigger: 'blur' },
-    { max: 50, message: '系统名称最长 50 个字符', trigger: 'blur' },
-  ],
-}
+    { required: true, message: t('system.systemNameRequired'), trigger: ['blur', 'change'] },
+    { max: 50, message: t('system.systemNameMax'), trigger: 'blur' },
+  ] }
 
 const loadBrandConfig = async () => {
   try {
@@ -1003,7 +944,7 @@ const loadBrandConfig = async () => {
 const beforeBrandUpload = (file: File) => {
   const maxSize = 2 * 1024 * 1024
   if (file.size > maxSize) {
-    ElMessage.error('文件大小不能超过 2MB')
+    ElMessage.error(t('system.fileTooLarge'))
     return false
   }
   return true
@@ -1020,9 +961,9 @@ const handleBrandUpload = async (options: { file: File }, type: 'logo' | 'favico
     } else {
       brandForm.favicon_url = url
     }
-    ElMessage.success(`${type === 'logo' ? 'Logo' : 'Favicon'} 上传成功`)
+    ElMessage.success(t('system.uploadSuccess', { name: type === 'logo' ? 'Logo' : 'Favicon' }))
   } catch {
-    ElMessage.error('上传失败')
+    ElMessage.error(t('system.uploadFailed'))
   } finally {
     loadingRef.value = false
   }
@@ -1049,8 +990,7 @@ const handleSaveBrandConfig = async () => {
         system_description: brandForm.system_description,
         copyright_text: brandForm.copyright_text,
         login_title: brandForm.login_title,
-        login_description: brandForm.login_description,
-      })
+        login_description: brandForm.login_description })
 
       // 如果 logo_url 或 favicon_url 被清除，也需要更新配置
       if (!brandForm.logo_url) {
@@ -1063,9 +1003,9 @@ const handleSaveBrandConfig = async () => {
       // 刷新 brand store
       await brandStore.loadBrandConfig()
 
-      ElMessage.success('品牌设置保存成功')
+      ElMessage.success(t('system.brandSaved'))
     } catch {
-      ElMessage.error('保存失败')
+      ElMessage.error(t('system.saveFailed'))
     } finally {
       brandLoading.value = false
     }
@@ -1077,14 +1017,13 @@ const generalFormRef = ref<FormInstance>()
 const generalLoading = ref(false)
 const generalForm = reactive({
   site_url: '',
-})
+  language: '' })
 
 const generalRules: FormRules = {
   site_url: [
-    { required: true, message: '请输入站点域名', trigger: 'blur' },
-    { type: 'url', message: '请输入有效的 URL', trigger: 'blur' },
-  ],
-}
+    { required: true, message: t('system.siteUrlRequired'), trigger: ['blur', 'change'] },
+    { type: 'url', message: t('system.urlInvalid'), trigger: 'blur' },
+  ] }
 
 // 加载通用配置
 const loadGeneralConfig = async () => {
@@ -1093,6 +1032,10 @@ const loadGeneralConfig = async () => {
     const res = await getConfig('general.site_url')
     if (res.data.data) {
       generalForm.site_url = res.data.data.config_value || ''
+    }
+    const langRes = await getConfig('general.language')
+    if (langRes.data.data) {
+      generalForm.language = langRes.data.data.config_value || 'zh-CN'
     }
   } catch (error: any) {
     // 如果配置不存在（404），不报错，使用默认空值
@@ -1112,7 +1055,8 @@ const saveGeneralConfig = async () => {
     generalLoading.value = true
     try {
       await updateConfig('general.site_url', generalForm.site_url)
-      ElMessage.success('通用配置保存成功')
+      await updateConfig('general.language', generalForm.language)
+      ElMessage.success(t('system.generalSaved'))
     } catch {
       // 错误已在拦截器中处理
     } finally {
@@ -1132,22 +1076,24 @@ const emailForm = reactive({
   from_address: '',
   from_name: 'TicketDesk',
   use_tls: true,
-  enabled: false,
-})
+  enabled: false })
 
 const emailRules: FormRules = {
-  smtp_host: [{ required: true, message: '请输入 SMTP 服务器地址', trigger: 'blur' }],
-  smtp_port: [{ required: true, message: '请输入 SMTP 端口', trigger: 'blur' }],
+  smtp_host: [{ required: true, message: t('system.smtpHostRequired'), trigger: ['blur', 'change'] }],
+  smtp_port: [{ required: true, message: t('system.portRequired'), trigger: ['blur', 'change'] }],
   from_address: [
-    { required: true, message: '请输入发件人地址', trigger: 'blur' },
-    { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' },
-  ],
-}
+    { required: true, message: t('system.fromAddressRequired'), trigger: ['blur', 'change'] },
+    { type: 'email', message: t('system.emailInvalid'), trigger: 'blur' },
+  ] }
 
 const loadEmailConfig = async () => {
   try {
     const { data } = await getEmailConfig()
     Object.assign(emailForm, data.data)
+    // 后端没配过 SMTP 时端口返回 0，而输入框的 min 是 1，会被夹成一个
+    // 谁都不会用的「1」—— 旁边说明里写的常用端口是 25 / 465 / 587。
+    // 没配过就回到默认的 587。
+    if (!emailForm.smtp_port) emailForm.smtp_port = 587
   } catch {
     // ignored
   }
@@ -1161,7 +1107,7 @@ const saveEmailConfig = async () => {
     emailSaving.value = true
     try {
       await updateEmailConfig(emailForm)
-      ElMessage.success('邮件配置保存成功')
+      ElMessage.success(t('system.emailSaved'))
     } catch {
       // ignored
     } finally {
@@ -1175,14 +1121,12 @@ const testEmailDialog = ref(false)
 const testEmailFormRef = ref<FormInstance>()
 const testEmailSending = ref(false)
 const testEmailForm = reactive({
-  to_address: '',
-})
+  to_address: '' })
 const testEmailRules: FormRules = {
   to_address: [
-    { required: true, message: '请输入收件人邮箱', trigger: 'blur' },
-    { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' },
-  ],
-}
+    { required: true, message: t('system.testRecipientRequired'), trigger: ['blur', 'change'] },
+    { type: 'email', message: t('system.emailInvalid'), trigger: 'blur' },
+  ] }
 
 const sendTestEmail = async () => {
   if (!testEmailFormRef.value) return
@@ -1192,7 +1136,7 @@ const sendTestEmail = async () => {
     testEmailSending.value = true
     try {
       // await testEmail(testEmailForm.to_address)
-      ElMessage.success('测试邮件已发送')
+      ElMessage.success(t('system.testEmailSent'))
       testEmailDialog.value = false
     } catch {
       // ignored
@@ -1210,8 +1154,7 @@ const securityForm = reactive({
   password_min_length: 6,
   password_require_upper: false,
   password_require_number: false,
-  session_timeout: 120,
-})
+  session_timeout: 120 })
 
 const loadSecurityConfig = async () => {
   try {
@@ -1226,7 +1169,7 @@ const saveSecurityConfig = async () => {
   securitySaving.value = true
   try {
     await updateSecurityConfig(securityForm)
-    ElMessage.success('安全配置保存成功')
+    ElMessage.success(t('system.securitySaved'))
   } catch {
     // ignored
   } finally {
@@ -1239,8 +1182,7 @@ const rateLimitSaving = ref(false)
 const rateLimitForm = reactive({
   webhook_limit: 100,
   auth_limit: 20,
-  api_limit: 300,
-})
+  api_limit: 300 })
 
 const loadRateLimitConfig = async () => {
   try {
@@ -1255,7 +1197,7 @@ const saveRateLimitConfig = async () => {
   rateLimitSaving.value = true
   try {
     await updateRateLimitConfig(rateLimitForm)
-    ElMessage.success('限流配置保存成功')
+    ElMessage.success(t('system.rateLimitSaved'))
   } catch {
     // ignored
   } finally {
@@ -1295,7 +1237,7 @@ const saveWorkTypeConfig = async () => {
   // 过滤掉空项
   const filtered = workTypeList.value.filter(item => item.label.trim())
   if (filtered.length === 0) {
-    ElMessage.warning('至少需要一个工作类型')
+    ElMessage.warning(t('system.workTypeMinOne'))
     return
   }
 
@@ -1303,7 +1245,7 @@ const saveWorkTypeConfig = async () => {
   try {
     await updateConfig('worklog.work_types', JSON.stringify(filtered))
     workTypeList.value = filtered
-    ElMessage.success('工时配置保存成功')
+    ElMessage.success(t('system.worklogSaved'))
   } catch {
     // ignored
   } finally {
@@ -1316,11 +1258,12 @@ const ssoFormRef = ref<FormInstance>()
 const ssoSaving = ref(false)
 const ssoForm = reactive({
   enabled: false,
-  provider_name: '企业统一认证',
+  provider_name: t('system.providerNameDefault'),
   client_id: '',
   client_secret: '',
   issuer_url: '',
-  redirect_uri: 'http://localhost:5173/auth/sso/callback',
+  // 按当前站点地址生成，不要写死端口 —— 原来是 vite 的 5173，装到真实域名下就是错的
+  redirect_uri: `${window.location.origin}/auth/sso/callback`,
   scopes: 'openid,profile,email',
   auto_create_user: true,
   default_role: 'user',
@@ -1329,8 +1272,7 @@ const ssoForm = reactive({
     { local_field: 'email', claim_name: 'email' },
     { local_field: 'display_name', claim_name: 'name' },
     { local_field: 'avatar', claim_name: 'picture' },
-  ] as Array<{ local_field: string; claim_name: string }>,
-})
+  ] as Array<{ local_field: string; claim_name: string }> })
 
 const addClaimMapping = () => {
   ssoForm.claim_mappings.push({ local_field: '', claim_name: '' })
@@ -1366,7 +1308,7 @@ const saveSSOConfig = async () => {
   ssoSaving.value = true
   try {
     await updateSSOConfig(ssoForm)
-    ElMessage.success('SSO 配置保存成功')
+    ElMessage.success(t('system.ssoSaved'))
   } catch {
     // ignored
   } finally {
@@ -1391,23 +1333,63 @@ onMounted(() => {
   width: 100%;
 }
 
+/* 单列表单限宽：输入框跟着容器铺到 1400px 宽，光标落点和内容长度完全对不上 */
+.settings-single-col {
+  max-width: 560px;
+}
+
+.form-item-example {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--td-text-placeholder);
+  font-family: var(--td-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── tabs ─────────────────────────────────────── */
 .settings-tabs {
+  :deep(.el-tabs__nav-wrap)::after {
+    height: 1px;
+    background-color: var(--td-border-color);
+  }
+
+  :deep(.el-tabs__item) {
+    padding: 0 14px;
+    height: 42px;
+    line-height: 42px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--td-text-secondary);
+
+    &.is-active {
+      color: var(--td-text-primary);
+      font-weight: 590;
+    }
+  }
+
+  :deep(.el-tabs__active-bar) {
+    background-color: var(--td-text-primary);
+    height: 2px;
+  }
+
   :deep(.el-tabs__content) {
-    padding-top: 16px;
+    padding-top: 14px;
   }
 }
 
-// 卡片样式
+/* ── 卡片 ─────────────────────────────────────── */
 .settings-card {
-  border-radius: 8px;
+  border-radius: 12px;
 
   :deep(.el-card__header) {
-    padding: 20px 24px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--td-divider-color);
   }
 
   :deep(.el-card__body) {
-    padding: 24px;
+    padding: 16px;
   }
 }
 
@@ -1416,87 +1398,62 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
 
-  .card-title {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .title-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-
-    &.email-icon {
-      background: var(--td-color-primary);
-      color: var(--td-text-white);
-    }
-
-    &.general-icon {
-      background: var(--td-color-success);
-      color: var(--td-text-white);
-    }
-
-    &.sso-icon {
-      background: var(--td-color-warning);
-      color: var(--td-text-white);
-    }
-
-    &.worklog-icon {
-      background: var(--td-color-primary);
-      color: var(--td-text-white);
-    }
-  }
-
-  .title-text {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-
-    .title {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--td-text-primary);
-    }
-
-    .subtitle {
-      font-size: 13px;
-      color: var(--td-color-info);
-    }
+  /* 卡片头只剩一行标题：tab 已经标明了这是哪一块配置，
+     再来一遍图标色块 + 一句"配置系统的基本信息"的副标题，是 90px 的零信息 */
+  .card-title .title {
+    font-size: 15px;
+    font-weight: 590;
+    letter-spacing: -0.015em;
+    color: var(--td-text-primary);
   }
 }
 
-// 表单样式
+/* ── 表单 ─────────────────────────────────────── */
 .settings-form {
+  :deep(.el-form-item) {
+    margin-bottom: 16px;
+  }
+
+  :deep(.el-form-item__label) {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--td-text-secondary);
+  }
+
   .form-section {
-    margin-bottom: 24px;
+    margin-bottom: 20px;
 
     .section-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--td-text-regular);
-      margin-bottom: 16px;
-      padding-bottom: 8px;
+      font-size: 12.5px;
+      font-weight: 590;
+      color: var(--td-text-secondary);
+      margin-bottom: 12px;
+      padding-bottom: 7px;
       border-bottom: 1px solid var(--td-divider-color);
     }
   }
 
+  /* 灰底盒嵌在卡片里就是盒中盒；一行开关而已，发丝线分隔就够 */
   .setting-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
-    background: var(--td-bg-page);
-    border-radius: 8px;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--td-divider-color);
+    /* 外面是 el-form-item 的 flex content，不撑满就会缩到文字宽度，
+       下边那条分隔线只画出 204px 的一截，看着像画漏了 */
+    width: 100%;
+
+    /* 分节里最后一行下面没有内容要隔开，那条线是多余的 */
+    &:last-child {
+      border-bottom: 0;
+    }
   }
 
   .form-item-tip {
     font-size: 12px;
-    color: var(--td-color-info);
+    color: var(--td-text-secondary);
     margin-top: 4px;
     line-height: 1.5;
   }
@@ -1506,58 +1463,103 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 
   .setting-label {
-    font-size: 14px;
-    color: var(--td-text-regular);
+    font-size: 13px;
+    color: var(--td-text-primary);
     font-weight: 500;
   }
 
   .setting-desc {
-    font-size: 12px;
+    font-size: 11.5px;
+    color: var(--td-text-secondary);
+    line-height: 1.5;
+  }
+}
+
+/* ── 说明面板 ─────────────────────────────────── */
+/* 原来是淡蓝底 + 蓝字，和真正需要注意的错误提示抢同一套视觉语言。
+   它只是帮助文字，退回普通卡片，靠发丝边和弱色区分即可。 */
+.info-panel {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 0;
+}
+
+.info-card,
+.config-tips {
+  width: 100%;
+  background: var(--td-bg-section);
+  border: 1px solid var(--td-border-color);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.info-card .info-title,
+.config-tips .tip-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 590;
+  color: var(--td-text-secondary);
+  margin-bottom: 10px;
+
+  .el-icon {
     color: var(--td-text-placeholder);
   }
 }
 
-// 信息面板
-.info-panel {
-  display: flex;
-  align-items: flex-start;
-  padding-top: 24px;
+.info-card .info-list {
+  margin: 0;
+  padding-left: 17px;
+
+  li {
+    font-size: 12.5px;
+    color: var(--td-text-secondary);
+    line-height: 1.7;
+  }
 }
 
-.info-card {
-  background: var(--td-color-primary-light);
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid var(--td-color-primary-light-hover);
-
-  .info-title {
+.config-tips {
+  .tip-content {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #0369a1;
-    margin-bottom: 12px;
+    flex-direction: column;
+    gap: 12px;
   }
 
-  .info-list {
-    margin: 0;
-    padding-left: 20px;
+  .tip-item {
+    .tip-label {
+      font-size: 12.5px;
+      font-weight: 590;
+      color: var(--td-text-primary);
+      margin-bottom: 3px;
+    }
 
-    li {
-      font-size: 13px;
-      color: var(--td-text-regular);
-      line-height: 1.8;
+    .tip-desc {
+      font-size: 12.5px;
+      color: var(--td-text-secondary);
+      line-height: 1.7;
+
+      code {
+        background: var(--td-code-bg);
+        border: 1px solid var(--td-border-color-light);
+        padding: 1px 5px;
+        border-radius: 5px;
+        font-family: var(--td-font-mono);
+        font-size: 11.5px;
+        color: var(--td-text-regular);
+        word-break: break-all;
+      }
     }
   }
 }
 
-// 安全设置块
+/* ── 安全设置块 ───────────────────────────────── */
 .setting-block {
   border-radius: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 
   :deep(.el-card__body) {
     padding: 0;
@@ -1566,49 +1568,9 @@ onMounted(() => {
   .block-header {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 20px;
+    gap: 12px;
+    padding: 12px 16px;
     border-bottom: 1px solid var(--td-divider-color);
-
-    .block-icon {
-      width: 44px;
-      height: 44px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 22px;
-
-      &.mfa-icon {
-        background: var(--td-color-primary);
-        color: var(--td-text-white);
-      }
-
-      &.password-icon {
-        background: #ec4899;
-        color: var(--td-text-white);
-      }
-
-      &.session-icon {
-        background: var(--td-color-primary);
-        color: var(--td-text-white);
-      }
-
-      &.webhook-rl-icon {
-        background: #ec4899;
-        color: var(--td-text-white);
-      }
-
-      &.auth-rl-icon {
-        background: var(--td-color-primary);
-        color: var(--td-text-white);
-      }
-
-      &.api-rl-icon {
-        background: var(--td-color-success);
-        color: var(--td-text-white);
-      }
-    }
 
     .block-title {
       display: flex;
@@ -1616,20 +1578,22 @@ onMounted(() => {
       gap: 2px;
 
       .title {
-        font-size: 15px;
-        font-weight: 600;
+        font-size: 14px;
+        font-weight: 590;
+        letter-spacing: -0.01em;
         color: var(--td-text-primary);
       }
 
       .desc {
-        font-size: 12px;
-        color: var(--td-text-placeholder);
+        font-size: 11.5px;
+        color: var(--td-text-secondary);
+        line-height: 1.5;
       }
     }
   }
 
   .block-content {
-    padding: 16px 20px;
+    padding: 4px 16px 12px;
   }
 }
 
@@ -1637,116 +1601,60 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 0;
+  gap: 16px;
+  padding: 10px 0;
 
   &:not(:last-child) {
-    border-bottom: 1px solid var(--td-border-color);
+    border-bottom: 1px solid var(--td-divider-color);
   }
 }
 
 .action-bar {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--td-border-color);
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--td-divider-color);
 }
 
-// 响应式
 @media (max-width: 992px) {
   .info-panel {
-    margin-top: 24px;
-  }
-
-  .setting-block {
-    margin-bottom: 16px;
+    margin-top: 16px;
   }
 }
 
-// Claims 映射动态列表
+/* ── Claims 映射 / 工作类型动态列表 ───────────── */
 .claim-mappings {
   .claim-mapping-row {
     display: flex;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
 
   .claim-mapping-hint {
     font-size: 12px;
-    color: var(--td-color-info);
-    margin-top: 8px;
+    color: var(--td-text-secondary);
+    margin-top: 6px;
     line-height: 1.6;
   }
 }
 
-// 工作类型列表
 .work-type-list {
+  /* 里面装的是「开发」「巡检」这种两三个字的标签，输入框跟着栅格拉到 895px
+     只剩一片空白，十一行排下来整页都是空框。按内容给个合理上限。 */
+  max-width: 340px;
+
   .work-type-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
 }
 
-// 配置说明面板
-.config-tips {
-  background: var(--td-color-primary-light);
-  border-radius: 12px;
-  padding: 20px;
-  border: 1px solid var(--td-color-primary-light-hover);
-
-  .tip-title {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #0369a1;
-    margin-bottom: 12px;
-  }
-
-  .tip-content {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .tip-item {
-    .tip-label {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--td-text-regular);
-      margin-bottom: 4px;
-    }
-
-    .tip-desc {
-      font-size: 13px;
-      color: var(--td-text-regular);
-      line-height: 1.8;
-
-      code {
-        background: var(--td-bg-section);
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 12px;
-        color: #0369a1;
-        word-break: break-all;
-      }
-    }
-
-    .tip-example {
-      font-size: 12px;
-      color: var(--td-text-secondary);
-      margin-top: 4px;
-      font-style: italic;
-    }
-  }
-}
-
-// 品牌设置
+/* ── 品牌设置 ─────────────────────────────────── */
 .upload-area {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
 }
 
 .upload-preview {
@@ -1756,34 +1664,38 @@ onMounted(() => {
 }
 
 .preview-image {
-  width: 40px;
-  height: 40px;
-  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
   object-fit: contain;
   border: 1px solid var(--td-border-color);
   padding: 2px;
 }
 
 .preview-favicon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
 }
 
 .brand-preview-section {
-  padding: 0 8px;
+  padding: 0;
 }
 
 .brand-preview-card {
   border: 1px solid var(--td-border-color);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
+/* 品牌预览里模拟的侧边栏。
+   这里的每一个颜色都必须走 sidebar 那组 token ——
+   侧边栏翻成浅色之后，原来写死的 #fff / rgba(255,255,255,.x) 就是白底白字，
+   预览整块变成一片空白（和登录页品牌面板当初是同一个雷）。 */
 .preview-sidebar {
-  background: #1e1e2d;
-  padding: 16px;
-  min-height: 200px;
+  background: var(--td-sidebar-bg);
+  padding: 14px;
+  min-height: 180px;
   display: flex;
   flex-direction: column;
 }
@@ -1792,71 +1704,88 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--td-sidebar-border);
+  margin-bottom: 10px;
 }
 
 .preview-logo-img {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 6px;
   object-fit: contain;
 }
 
 .preview-logo-placeholder {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 6px;
-  background: #3b82f6;
-  color: #fff;
+  background: var(--td-color-primary);
+  color: var(--td-text-white);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   flex-shrink: 0;
 }
 
 .preview-logo-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
+  font-size: 13.5px;
+  font-weight: 590;
+  letter-spacing: -0.015em;
+  color: var(--td-sidebar-text-active);
 }
 
 .preview-menu-item {
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
-  margin-bottom: 4px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: var(--td-sidebar-text);
+  margin-bottom: 2px;
 
+  /* 当前项和真实侧边栏一致：淡底 + 字重加粗，不用大面积品牌色，也不加左侧竖条 */
   &.active {
-    background: rgba(59, 130, 246, 0.2);
-    color: #fff;
-    border-left: 2px solid #3b82f6;
+    background: var(--td-sidebar-active-bg);
+    color: var(--td-sidebar-text-active);
+    font-weight: 590;
   }
 }
 
 .preview-copyright {
   margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.3);
+  padding-top: 10px;
+  border-top: 1px solid var(--td-sidebar-border);
+  font-size: 10.5px;
+  color: var(--td-sidebar-text-muted);
   word-break: break-all;
 }
 
 .brand-tips {
-  margin-top: 12px;
+  margin-top: 10px;
 
   p {
-    margin: 0 0 4px;
-    font-size: 13px;
+    margin: 0 0 3px;
+    font-size: 12.5px;
+    color: var(--td-text-secondary);
 
     &:last-child {
       margin-bottom: 0;
     }
   }
+}
+
+/* 卡头右侧的总开关：文字放在开关外面，塞进 40px 宽的开关里读不出来 */
+.header-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-switch-label {
+  font-size: 12.5px;
+  color: var(--td-text-placeholder);
+
+  &.active { color: var(--td-text-primary); }
 }
 </style>

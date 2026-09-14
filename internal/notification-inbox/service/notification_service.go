@@ -11,6 +11,7 @@ import (
 	"github.com/kerbos/ticketdesk/internal/notification-inbox/dto"
 	"github.com/kerbos/ticketdesk/internal/notification-inbox/repository"
 	"github.com/kerbos/ticketdesk/internal/notification-inbox/websocket"
+	"github.com/kerbos/ticketdesk/pkg/i18n"
 	"github.com/kerbos/ticketdesk/pkg/logger"
 )
 
@@ -30,30 +31,66 @@ type NotificationService interface {
 	DeleteNotification(ctx context.Context, id, userID uint64) error
 }
 
+// UserLocaleReader 读取用户的偏好语言
+//
+// 单独抽一个窄接口而不是塞整个 UserRepository：
+// 站内通知只需要知道"这个人想看哪种语言"，不该拿到改用户的能力。
+type UserLocaleReader interface {
+	LocaleOf(ctx context.Context, userID uint64) string
+}
+
 // notificationService 站内通知服务实现
 type notificationService struct {
 	repo      repository.NotificationRepository
 	wsManager *websocket.Manager
+	locales   UserLocaleReader
 }
 
 // NewNotificationService 创建通知服务实例
+//
+// locales 可以为 nil（比如测试里），此时标题回落到站点语言。
 func NewNotificationService(
 	repo repository.NotificationRepository,
 	wsManager *websocket.Manager,
+	locales UserLocaleReader,
 ) NotificationService {
 	return &notificationService{
 		repo:      repo,
 		wsManager: wsManager,
+		locales:   locales,
 	}
+}
+
+// renderTitle 按收件人的语言渲染标题
+//
+// 没给 key 就用调用方已经成文的 Title —— 站内通知的写入口是公开 API，
+// 外部调用方仍然可以直接传一句话。
+func (s *notificationService) renderTitle(ctx context.Context, req *dto.CreateNotificationRequest) (title, content string) {
+	title, content = req.Title, req.Content
+	if req.TitleKey == "" && req.ContentKey == "" {
+		return title, content
+	}
+	var pref string
+	if s.locales != nil {
+		pref = s.locales.LocaleOf(ctx, req.UserID)
+	}
+	if req.TitleKey != "" {
+		title = i18n.Uf(pref, req.TitleKey, req.TitleArgs...)
+	}
+	if req.ContentKey != "" {
+		content = i18n.Uf(pref, req.ContentKey, req.ContentArgs...)
+	}
+	return title, content
 }
 
 // CreateNotification 创建通知并通过 WebSocket 推送
 func (s *notificationService) CreateNotification(ctx context.Context, req *dto.CreateNotificationRequest) error {
+	title, content := s.renderTitle(ctx, req)
 	notification := &model.Notification{
 		UserID:     req.UserID,
 		Type:       req.Type,
-		Title:      req.Title,
-		Content:    req.Content,
+		Title:      title,
+		Content:    content,
 		EntityType: req.EntityType,
 		EntityID:   req.EntityID,
 		EntityKey:  req.EntityKey,

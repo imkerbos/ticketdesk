@@ -1,0 +1,92 @@
+{
+  "//": "视觉回归的取样页面。改动波及哪些页面，就把哪些页面列在这里。",
+  "//themes": "每个页面在每个主题下各拍一张，全页截图。",
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "pages": [
+    {
+      "name": "dashboard",
+      "path": "/"
+    },
+    {
+      "name": "issues",
+      "path": "/issues"
+    },
+    {
+      "name": "issue-detail",
+      "path": "/issues/{ISSUE_KEY}",
+      "tabs": ".detail-tabs .el-tabs__item"
+    },
+    {
+      "name": "projects",
+      "path": "/projects"
+    },
+    {
+      "name": "project-overview",
+      "path": "/projects/{PROJECT_KEY}"
+    },
+    {
+      "name": "project-settings",
+      "path": "/projects/{PROJECT_KEY}/settings",
+      "tabs": ".settings-tabs > .el-tabs__header .el-tabs__item"
+    },
+    {
+      "name": "alerts",
+      "path": "/alerts"
+    },
+    {
+      "name": "alert-rules",
+      "path": "/alert-rules"
+    },
+    {
+      "name": "alert-silences",
+      "path": "/alert-silences"
+    },
+    {
+      "name": "datasources",
+      "path": "/alert-datasources"
+    },
+    {
+      "name": "requirements",
+      "path": "/requirements"
+    },
+    {
+      "name": "requirement-pools",
+      "path": "/requirement-pools"
+    },
+    {
+      "name": "req-kanban",
+      "path": "/requirements/kanban"
+    },
+    {
+      "name": "workflows",
+      "path": "/workflows"
+    },
+    {
+      "name": "fields",
+      "path": "/fields"
+    },
+    {
+      "name": "reports",
+      "path": "/reports"
+    },
+    {
+      "name": "users",
+      "path": "/users"
+    },
+    {
+      "name": "settings",
+      "path": "/settings"
+    },
+    {
+      "name": "notifications",
+      "path": "/notifications"
+    },
+    {
+      "name": "profile",
+      "path": "/profile"
+    }
+  ]
+}

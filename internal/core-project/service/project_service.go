@@ -21,18 +21,18 @@ import (
 
 // 业务错误定义
 var (
-	ErrProjectNotFound        = errors.New("项目不存在")
-	ErrProjectKeyExists       = errors.New("项目 Key 已存在")
-	ErrMemberNotFound         = errors.New("成员不存在")
-	ErrMemberAlreadyExists    = errors.New("成员已存在")
-	ErrCannotRemoveOwner      = errors.New("不能移除项目所有者")
-	ErrIssueTypeNotFound      = errors.New("工单类型不存在")
-	ErrNoPermission           = errors.New("没有操作权限")
-	ErrRoleNotFound           = errors.New("角色不存在")
-	ErrRoleKeyExists          = errors.New("角色 Key 已存在")
-	ErrCannotDeleteSystemRole = errors.New("不能删除系统预置角色")
-	ErrRoleMemberExists       = errors.New("用户已在该角色中")
-	ErrRoleMemberNotFound     = errors.New("角色成员不存在")
+	ErrProjectNotFound        = errors.New("workflow.project_not_found")
+	ErrProjectKeyExists       = errors.New("project.key_exists")
+	ErrMemberNotFound         = errors.New("project.member_not_found")
+	ErrMemberAlreadyExists    = errors.New("project.member_exists")
+	ErrCannotRemoveOwner      = errors.New("project.cannot_remove_owner")
+	ErrIssueTypeNotFound      = errors.New("project.issue_type_not_found")
+	ErrNoPermission           = errors.New("project.no_permission")
+	ErrRoleNotFound           = errors.New("project.role_not_found")
+	ErrRoleKeyExists          = errors.New("project.role_key_exists")
+	ErrCannotDeleteSystemRole = errors.New("project.role_system")
+	ErrRoleMemberExists       = errors.New("project.role_member_exists")
+	ErrRoleMemberNotFound     = errors.New("project.role_member_not_found")
 )
 
 // ProjectService 项目服务接口
@@ -67,6 +67,8 @@ type ProjectService interface {
 	RemoveRoleMember(ctx context.Context, projectKey string, roleID, userID uint64) error
 	ListRoleMembers(ctx context.Context, projectKey string, roleID uint64) ([]*dto.ProjectRoleMemberResponse, error)
 	GetUserRoles(ctx context.Context, projectKey string, userID uint64) ([]*dto.ProjectRoleResponse, error)
+	// GetMyPermissions 返回用户在项目中的完整权限集，供前端决定显示哪些操作
+	GetMyPermissions(ctx context.Context, projectKey string, userID uint64, isAdmin bool) (*dto.MyProjectPermissionsResponse, error)
 
 	// 角色权限管理
 	GetRolePermissions(ctx context.Context, projectKey string, roleID uint64) ([]string, error)
@@ -331,6 +333,10 @@ func (s *projectService) UpdateProject(ctx context.Context, key string, req *dto
 
 // DeleteProject 硬删除项目及所有关联数据
 func (s *projectService) DeleteProject(ctx context.Context, key string) error {
+	// 权限相关变更后立即失效该项目的权限缓存。
+	// 用 defer 覆盖所有返回路径：失败路径多失效一次只是一次缓存回源，
+	// 而漏失效会让被移除的成员在 TTL 内仍然通过校验。
+	defer InvalidateProjectPermissions(ctx, key)
 	projectKey := strings.ToUpper(key)
 	project, err := s.projectRepo.GetByKey(ctx, projectKey)
 	if err != nil {
@@ -550,6 +556,10 @@ func (s *projectService) ListProjects(ctx context.Context, req *dto.ListProjects
 
 // AddMember 添加项目成员
 func (s *projectService) AddMember(ctx context.Context, projectKey string, req *dto.AddMemberRequest) (*dto.ProjectMemberResponse, error) {
+	// 权限相关变更后立即失效该项目的权限缓存。
+	// 用 defer 覆盖所有返回路径：失败路径多失效一次只是一次缓存回源，
+	// 而漏失效会让被移除的成员在 TTL 内仍然通过校验。
+	defer InvalidateProjectPermissions(ctx, projectKey)
 	project, err := s.projectRepo.GetByKey(ctx, strings.ToUpper(projectKey))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -633,6 +643,10 @@ func (s *projectService) AddMember(ctx context.Context, projectKey string, req *
 
 // UpdateMember 更新项目成员角色
 func (s *projectService) UpdateMember(ctx context.Context, projectKey string, userID uint64, req *dto.UpdateMemberRequest) (*dto.ProjectMemberResponse, error) {
+	// 权限相关变更后立即失效该项目的权限缓存。
+	// 用 defer 覆盖所有返回路径：失败路径多失效一次只是一次缓存回源，
+	// 而漏失效会让被移除的成员在 TTL 内仍然通过校验。
+	defer InvalidateProjectPermissions(ctx, projectKey)
 	project, err := s.projectRepo.GetByKey(ctx, strings.ToUpper(projectKey))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -718,6 +732,10 @@ func (s *projectService) UpdateMember(ctx context.Context, projectKey string, us
 
 // RemoveMember 移除项目成员
 func (s *projectService) RemoveMember(ctx context.Context, projectKey string, userID uint64) error {
+	// 权限相关变更后立即失效该项目的权限缓存。
+	// 用 defer 覆盖所有返回路径：失败路径多失效一次只是一次缓存回源，
+	// 而漏失效会让被移除的成员在 TTL 内仍然通过校验。
+	defer InvalidateProjectPermissions(ctx, projectKey)
 	project, err := s.projectRepo.GetByKey(ctx, strings.ToUpper(projectKey))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1106,6 +1124,10 @@ func (s *projectService) UpdateRole(ctx context.Context, projectKey string, role
 
 // DeleteRole 删除项目角色
 func (s *projectService) DeleteRole(ctx context.Context, projectKey string, roleID uint64) error {
+	// 权限相关变更后立即失效该项目的权限缓存。
+	// 用 defer 覆盖所有返回路径：失败路径多失效一次只是一次缓存回源，
+	// 而漏失效会让被移除的成员在 TTL 内仍然通过校验。
+	defer InvalidateProjectPermissions(ctx, projectKey)
 	project, err := s.projectRepo.GetByKey(ctx, strings.ToUpper(projectKey))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1170,6 +1192,10 @@ func (s *projectService) ListRoles(ctx context.Context, projectKey string) ([]*d
 
 // AddRoleMember 添加角色成员
 func (s *projectService) AddRoleMember(ctx context.Context, projectKey string, roleID uint64, req *dto.AddRoleMemberRequest) (*dto.ProjectRoleMemberResponse, error) {
+	// 权限相关变更后立即失效该项目的权限缓存。
+	// 用 defer 覆盖所有返回路径：失败路径多失效一次只是一次缓存回源，
+	// 而漏失效会让被移除的成员在 TTL 内仍然通过校验。
+	defer InvalidateProjectPermissions(ctx, projectKey)
 	project, err := s.projectRepo.GetByKey(ctx, strings.ToUpper(projectKey))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1231,6 +1257,10 @@ func (s *projectService) AddRoleMember(ctx context.Context, projectKey string, r
 
 // RemoveRoleMember 移除角色成员
 func (s *projectService) RemoveRoleMember(ctx context.Context, projectKey string, roleID, userID uint64) error {
+	// 权限相关变更后立即失效该项目的权限缓存。
+	// 用 defer 覆盖所有返回路径：失败路径多失效一次只是一次缓存回源，
+	// 而漏失效会让被移除的成员在 TTL 内仍然通过校验。
+	defer InvalidateProjectPermissions(ctx, projectKey)
 	project, err := s.projectRepo.GetByKey(ctx, strings.ToUpper(projectKey))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1428,6 +1458,10 @@ func (s *projectService) GetRolePermissions(ctx context.Context, projectKey stri
 
 // SetRolePermissions 设置角色权限
 func (s *projectService) SetRolePermissions(ctx context.Context, projectKey string, roleID uint64, permissions []string) error {
+	// 权限相关变更后立即失效该项目的权限缓存。
+	// 用 defer 覆盖所有返回路径：失败路径多失效一次只是一次缓存回源，
+	// 而漏失效会让被移除的成员在 TTL 内仍然通过校验。
+	defer InvalidateProjectPermissions(ctx, projectKey)
 	project, err := s.projectRepo.GetByKey(ctx, strings.ToUpper(projectKey))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1463,35 +1497,80 @@ func (s *projectService) SetRolePermissions(ctx context.Context, projectKey stri
 }
 
 // CheckUserPermission 检查用户在项目中是否有指定权限
+//
+// 命中缓存时零数据库查询；未命中才回源，回源结果整体缓存。
+// 权限相关变更通过 InvalidateProjectPermissions 递增项目版本号即时失效。
+// GetMyPermissions 返回用户在项目中的完整权限集。
+//
+// 走的是 CheckUserPermission 同一条缓存路径，不另开一套判定逻辑 ——
+// 前端拿到的必须和中间件实际执行的是同一份，否则界面显示得了的操作后端会拒。
+func (s *projectService) GetMyPermissions(ctx context.Context, projectKey string, userID uint64, isAdmin bool) (*dto.MyProjectPermissionsResponse, error) {
+	if isAdmin {
+		// 系统管理员在中间件里是直接放行的，这里保持一致
+		return &dto.MyProjectPermissionsResponse{IsAdmin: true, IsMember: true, IsOwner: true}, nil
+	}
+
+	cached := loadCachedPermissions(ctx, projectKey, userID)
+	if cached == nil {
+		loaded, err := s.loadUserProjectPermissions(ctx, projectKey, userID)
+		if err != nil {
+			return nil, err
+		}
+		storeCachedPermissions(ctx, projectKey, userID, loaded)
+		cached = loaded
+	}
+
+	return &dto.MyProjectPermissionsResponse{
+		IsMember:    cached.IsMember,
+		IsOwner:     cached.IsOwner,
+		Permissions: cached.Permissions,
+	}, nil
+}
+
 func (s *projectService) CheckUserPermission(ctx context.Context, projectKey string, userID uint64, permission string) (bool, error) {
+	if cached := loadCachedPermissions(ctx, projectKey, userID); cached != nil {
+		return cached.has(permission), nil
+	}
+
+	cached, err := s.loadUserProjectPermissions(ctx, projectKey, userID)
+	if err != nil {
+		return false, err
+	}
+	storeCachedPermissions(ctx, projectKey, userID, cached)
+	return cached.has(permission), nil
+}
+
+// loadUserProjectPermissions 从数据库读取用户在项目中的完整权限集
+func (s *projectService) loadUserProjectPermissions(ctx context.Context, projectKey string, userID uint64) (*cachedPermissions, error) {
 	project, err := s.projectRepo.GetByKey(ctx, strings.ToUpper(projectKey))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, ErrProjectNotFound
+			return nil, ErrProjectNotFound
 		}
-		return false, fmt.Errorf("查询项目失败: %w", err)
+		return nil, fmt.Errorf("查询项目失败: %w", err)
 	}
 
 	// 检查是否为项目 owner，owner 拥有全部权限
 	member, err := s.memberRepo.GetByProjectAndUser(ctx, project.ID, userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, nil
+			// 非项目成员：同样缓存该结论，避免无权限用户反复穿透到数据库
+			return &cachedPermissions{IsMember: false}, nil
 		}
-		return false, fmt.Errorf("查询成员失败: %w", err)
+		return nil, fmt.Errorf("查询成员失败: %w", err)
 	}
 	if member.Role == "owner" {
-		return true, nil
+		return &cachedPermissions{IsMember: true, IsOwner: true}, nil
 	}
 
 	// 获取用户在项目中的所有角色
 	roleMembers, err := s.roleMemberRepo.ListByProjectAndUser(ctx, project.ID, userID)
 	if err != nil {
-		return false, fmt.Errorf("查询用户角色失败: %w", err)
+		return nil, fmt.Errorf("查询用户角色失败: %w", err)
 	}
 
 	if len(roleMembers) == 0 {
-		return false, nil
+		return &cachedPermissions{IsMember: true}, nil
 	}
 
 	roleIDs := make([]uint64, len(roleMembers))
@@ -1502,14 +1581,8 @@ func (s *projectService) CheckUserPermission(ctx context.Context, projectKey str
 	// 获取合并权限
 	perms, err := s.permissionRepo.ListByRoles(ctx, roleIDs)
 	if err != nil {
-		return false, fmt.Errorf("查询角色权限失败: %w", err)
+		return nil, fmt.Errorf("查询角色权限失败: %w", err)
 	}
 
-	for _, p := range perms {
-		if p == permission {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return &cachedPermissions{IsMember: true, Permissions: perms}, nil
 }

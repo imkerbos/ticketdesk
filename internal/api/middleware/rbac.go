@@ -26,7 +26,7 @@ func (m *RBACMiddleware) RequireRoles(roles ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID := c.GetUint64("user_id")
 		if userID == 0 {
-			response.Unauthorized(c, "未获取到用户信息")
+			response.UnauthorizedT(c, "perm.no_user")
 			c.Abort()
 			return
 		}
@@ -34,7 +34,7 @@ func (m *RBACMiddleware) RequireRoles(roles ...string) gin.HandlerFunc {
 		// 获取用户角色
 		userRoles, err := m.userRoleRepo.GetUserRoleNames(c.Request.Context(), userID)
 		if err != nil {
-			response.InternalError(c, "获取用户角色失败")
+			response.InternalErrorT(c, "perm.check_failed")
 			c.Abort()
 			return
 		}
@@ -54,7 +54,7 @@ func (m *RBACMiddleware) RequireRoles(roles ...string) gin.HandlerFunc {
 		}
 
 		if !hasRole {
-			response.Forbidden(c, "权限不足")
+			response.ForbiddenT(c, "perm.denied")
 			c.Abort()
 			return
 		}
@@ -129,7 +129,7 @@ func RequireProjectPermission(checker ProjectPermissionChecker, permission strin
 	return func(c *gin.Context) {
 		userID := c.GetUint64("user_id")
 		if userID == 0 {
-			response.Unauthorized(c, "未获取到用户信息")
+			response.UnauthorizedT(c, "perm.no_user")
 			c.Abort()
 			return
 		}
@@ -142,20 +142,20 @@ func RequireProjectPermission(checker ProjectPermissionChecker, permission strin
 
 		projectKey := c.Param("key")
 		if projectKey == "" {
-			response.BadRequest(c, "缺少项目标识")
+			response.BadRequestT(c, "perm.missing_project")
 			c.Abort()
 			return
 		}
 
 		has, err := checker.CheckUserPermission(c.Request.Context(), projectKey, userID, permission)
 		if err != nil {
-			response.InternalError(c, "权限检查失败")
+			response.InternalErrorT(c, "perm.check_failed")
 			c.Abort()
 			return
 		}
 
 		if !has {
-			response.Forbidden(c, "权限不足")
+			response.ForbiddenT(c, "perm.denied")
 			c.Abort()
 			return
 		}
@@ -170,7 +170,7 @@ func RequireIssuePermission(checker ProjectPermissionChecker, permission string)
 	return func(c *gin.Context) {
 		userID := c.GetUint64("user_id")
 		if userID == 0 {
-			response.Unauthorized(c, "未获取到用户信息")
+			response.UnauthorizedT(c, "perm.no_user")
 			c.Abort()
 			return
 		}
@@ -190,7 +190,7 @@ func RequireIssuePermission(checker ProjectPermissionChecker, permission string)
 		// 从工单 key 提取项目 key（PROJ-123 → PROJ）
 		parts := strings.SplitN(issueKey, "-", 2)
 		if len(parts) < 2 {
-			response.BadRequest(c, "无效的工单标识")
+			response.BadRequestT(c, "common.bad_request")
 			c.Abort()
 			return
 		}
@@ -198,13 +198,13 @@ func RequireIssuePermission(checker ProjectPermissionChecker, permission string)
 
 		has, err := checker.CheckUserPermission(c.Request.Context(), projectKey, userID, permission)
 		if err != nil {
-			response.InternalError(c, "权限检查失败")
+			response.InternalErrorT(c, "perm.check_failed")
 			c.Abort()
 			return
 		}
 
 		if !has {
-			response.Forbidden(c, "权限不足")
+			response.ForbiddenT(c, "perm.denied")
 			c.Abort()
 			return
 		}
@@ -225,7 +225,7 @@ func RequireIssueListPermission(checker ProjectPermissionChecker, lister MemberP
 	return func(c *gin.Context) {
 		userID := c.GetUint64("user_id")
 		if userID == 0 {
-			response.Unauthorized(c, "未获取到用户信息")
+			response.UnauthorizedT(c, "perm.no_user")
 			c.Abort()
 			return
 		}
@@ -240,12 +240,12 @@ func RequireIssueListPermission(checker ProjectPermissionChecker, lister MemberP
 		if projectKey != "" {
 			has, err := checker.CheckUserPermission(c.Request.Context(), projectKey, userID, "issue:view")
 			if err != nil {
-				response.InternalError(c, "权限检查失败")
+				response.InternalErrorT(c, "perm.check_failed")
 				c.Abort()
 				return
 			}
 			if !has {
-				response.Forbidden(c, "权限不足")
+				response.ForbiddenT(c, "perm.denied")
 				c.Abort()
 				return
 			}
@@ -256,7 +256,7 @@ func RequireIssueListPermission(checker ProjectPermissionChecker, lister MemberP
 		// 未指定项目，注入用户可访问的项目 ID 列表
 		projectIDs, err := lister.ListUserProjectIDs(c.Request.Context(), userID)
 		if err != nil {
-			response.InternalError(c, "获取用户项目失败")
+			response.InternalErrorT(c, "perm.check_failed")
 			c.Abort()
 			return
 		}

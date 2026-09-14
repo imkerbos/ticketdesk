@@ -51,11 +51,15 @@ import (
 	reqPoolRepo "github.com/kerbos/ticketdesk/internal/requirement-pool/repository"
 	reqPoolService "github.com/kerbos/ticketdesk/internal/requirement-pool/service"
 	"github.com/kerbos/ticketdesk/internal/scheduler"
+	setupHandler "github.com/kerbos/ticketdesk/internal/setup/handler"
+	setupService "github.com/kerbos/ticketdesk/internal/setup/service"
 	configHandler "github.com/kerbos/ticketdesk/internal/system-config/handler"
 	configRepo "github.com/kerbos/ticketdesk/internal/system-config/repository"
 	configService "github.com/kerbos/ticketdesk/internal/system-config/service"
 	"github.com/kerbos/ticketdesk/pkg/config"
 	"github.com/kerbos/ticketdesk/pkg/jwt"
+	"github.com/kerbos/ticketdesk/pkg/logger"
+	"github.com/kerbos/ticketdesk/pkg/safego"
 	"github.com/kerbos/ticketdesk/pkg/storage"
 )
 
@@ -91,6 +95,10 @@ type Router struct {
 	ssoHandler             *userHandler.SSOHandler
 	apiTokenHandler        *userHandler.APITokenHandler
 	apiTokenSvc            userService.APITokenService
+	userSvc                userService.UserService
+	fileStorage            storage.Storage
+	setupSvc               setupService.Service
+	setupHandler           *setupHandler.SetupHandler
 }
 
 // NewRouter 创建路由管理器
@@ -114,6 +122,9 @@ func NewRouter(cfg *config.Config, jwtManager *jwt.Manager, db *gorm.DB) *Router
 	userRoleRepository := userRepo.NewUserRoleRepository(db)
 	userSvc := userService.NewUserService(userRepository, userRoleRepository, jwtManager, emailSvc, configSvc, db)
 	mfaSvc := userService.NewMFAService(userRepository)
+	// MFA 校验器反向注入：登录第二步由 userSvc 统一签发令牌，
+	// 需要它能调用 TOTP 校验，同时避免两个 service 构造顺序上的循环依赖
+	userSvc.SetMFAVerifier(mfaSvc)
 	userHdl := userHandler.NewUserHandler(userSvc, mfaSvc)
 
 	// ============ 初始化 SSO 模块（仅在启用时创建完整的 service/handler）============
@@ -161,18 +172,21 @@ func NewRouter(cfg *config.Config, jwtManager *jwt.Manager, db *gorm.DB) *Router
 		db,
 	)
 	issueHdl := issueHandler.NewIssueHandler(issueSvc)
+	issueHdl.SetPermissionChecker(projectSvc)
 
 	// ============ 初始化 Attachment 模块 ============
 	attachmentRepository := issueRepo.NewAttachmentRepository(db)
-	localStorage, err := storage.NewLocalStorage("./uploads")
+	// 按配置选择存储驱动：local（单副本 + PVC）或 s3（对象存储，多副本必需）
+	fileStorage, err := storage.New(cfg.Storage)
 	if err != nil {
-		panic(fmt.Sprintf("failed to initialize local storage: %v", err))
+		panic(fmt.Sprintf("failed to initialize file storage: %v", err))
 	}
+	logger.Info("file storage initialized", zap.String("driver", fileStorage.Driver()))
 	attachmentSvc := issueService.NewAttachmentService(
 		attachmentRepository,
 		issueRepository,
 		userRepository,
-		localStorage,
+		fileStorage,
 	)
 	attachmentHdl := issueHandler.NewAttachmentHandler(attachmentSvc)
 
@@ -184,7 +198,7 @@ func NewRouter(cfg *config.Config, jwtManager *jwt.Manager, db *gorm.DB) *Router
 	}
 
 	// 注入 LocalStorage 到 ConfigHandler（品牌资源上传）
-	configHdl.SetLocalStorage(localStorage)
+	configHdl.SetStorage(fileStorage)
 
 	// ============ 初始化 Workflow 模块 ============
 	workflowRepository := workflowRepo.NewWorkflowRepository(db)
@@ -299,10 +313,20 @@ func NewRouter(cfg *config.Config, jwtManager *jwt.Manager, db *gorm.DB) *Router
 
 	// ============ 初始化 Notification 模块 ============
 	wsManager := ws.NewManager()
-	go wsManager.Run()
+	safego.Go("websocket.managerLoop", wsManager.Run)
+	// 订阅跨副本广播：连接表是进程内的，多副本下用户可能连在另一个 Pod 上，
+	// 不广播的话那部分实时通知会静默丢失
+	wsManager.StartBroadcastSubscriber(context.Background())
 
 	notificationRepository := notifRepo.NewNotificationRepository(db)
-	notificationSvc := notifService.NewNotificationService(notificationRepository, wsManager)
+	// 初始化向导：管理员、站点信息、平台语言都写数据库，多副本天然一致
+	setupSvc := setupService.NewService(db, configSvc)
+	setupSvc.EnsureToken(context.Background())
+
+	notificationSvc := notifService.NewNotificationService(notificationRepository, wsManager, &userLocaleAdapter{repo: userRepository})
+
+	// 平台语言以数据库配置为准，配置文件的 app.language 只是首启兜底
+	configService.StartLanguageSync(context.Background(), configSvc)
 	notificationHdl := notifHandler.NewNotificationHandler(notificationSvc)
 	wsHdl := notifHandler.NewWebSocketHandler(wsManager, jwtManager)
 
@@ -495,6 +519,10 @@ func NewRouter(cfg *config.Config, jwtManager *jwt.Manager, db *gorm.DB) *Router
 		ssoHandler:             ssoHdl,
 		apiTokenHandler:        apiTokenHdl,
 		apiTokenSvc:            apiTokenSvc,
+		userSvc:                userSvc,
+		fileStorage:            fileStorage,
+		setupSvc:               setupSvc,
+		setupHandler:           setupHandler.NewSetupHandler(setupSvc),
 	}
 }
 
@@ -529,10 +557,25 @@ func (r *Router) Setup() *gin.Engine {
 
 	engine := gin.New()
 
+	// 限定可信反向代理：Gin 默认信任所有代理，会无条件采信 X-Forwarded-For，
+	// 导致 c.ClientIP() 可被任意伪造 —— 限流（/auth 20/min、webhook 100/min）形同虚设，
+	// 审计日志里的来源 IP 也不可信。
+	trusted := r.config.App.EffectiveTrustedProxies()
+	if err := engine.SetTrustedProxies(trusted); err != nil {
+		logger.Fatal("invalid app.trusted_proxies config", zap.Strings("trusted_proxies", trusted), zap.Error(err))
+	}
+
 	// 全局中间件
+	// 语言协商要在所有业务中间件之前，否则限流等中间件的报错拿不到语言
+	engine.Use(middleware.LocaleMiddleware())
 	engine.Use(middleware.RecoveryMiddleware())
 	engine.Use(middleware.LoggerMiddleware())
 	engine.Use(middleware.CORSMiddleware())
+	// 未完成初始化时，除向导与健康检查外一律 503，
+	// 避免一个还没有管理员的实例被当成正常实例使用
+	engine.Use(middleware.SetupRequired(func(c *gin.Context) bool {
+		return r.setupSvc.Initialized(c.Request.Context())
+	}))
 
 	// 健康检查
 	engine.GET("/health", healthCheck)
@@ -568,6 +611,20 @@ func healthCheck(c *gin.Context) {
 
 // registerPublicRoutes 注册公开路由（无需认证）
 func (r *Router) registerPublicRoutes(rg *gin.RouterGroup) {
+	// 初始化向导：完成前公开可访问，靠 setup token 把关；限流同登录接口
+	setupGroup := rg.Group("/setup")
+	setupGroup.Use(middleware.RateLimitMiddleware(middleware.RateLimitConfig{
+		KeyPrefix: "rl:setup",
+		Limit:     20,
+		Window:    1 * time.Minute,
+		ConfigKey: "ratelimit.auth_limit",
+		ConfigSvc: r.configSvc,
+	}))
+	{
+		setupGroup.GET("/status", r.setupHandler.HandleStatus)
+		setupGroup.POST("", r.setupHandler.HandleSetup)
+	}
+
 	auth := rg.Group("/auth")
 	auth.Use(middleware.RateLimitMiddleware(middleware.RateLimitConfig{
 		KeyPrefix: "rl:auth",
@@ -595,8 +652,21 @@ func (r *Router) registerPublicRoutes(rg *gin.RouterGroup) {
 	// 品牌配置（公开接口，登录页需要）
 	rg.GET("/brand", r.configHandler.HandleGetBrandConfig)
 
-	// 品牌资源静态文件服务
-	rg.Static("/brand/assets", "./uploads")
+	// 品牌资源：走存储抽象层流式下发，而不是挂本地目录。
+	//
+	// 之所以不用 gin.Static：对象存储驱动下根本没有本地路径可挂。
+	// 路由只暴露 brand/ 前缀，绝不能放开到整个存储根 ——
+	// attachments/ 下是工单附件，放开等于让附件无需认证即可下载，
+	// 绕过 /issues/:key/attachments/:id/download 上的 issue:view 校验。
+	//
+	// 路径里重复的 /brand 是为了兼容存量配置中已写入的 URL
+	// （HandleUploadBrandAsset 存的是 "/api/v1/brand/assets/" + "brand/xxx.svg"），避免数据迁移。
+	//
+	// 品牌资源允许上传 .svg 且本路由免认证：直接导航打开的 SVG 会在同源下执行脚本，
+	// 因此必须带 CSP + nosniff 下发。
+	brandAssets := rg.Group("/brand/assets")
+	brandAssets.Use(middleware.UploadedAssetSecurityHeaders())
+	brandAssets.GET("/brand/*filepath", r.handleBrandAsset)
 
 	// 告警 Webhook（无需认证）
 	alerts := rg.Group("/alerts")
@@ -607,6 +677,9 @@ func (r *Router) registerPublicRoutes(rg *gin.RouterGroup) {
 		ConfigKey: "ratelimit.webhook_limit",
 		ConfigSvc: r.configSvc,
 	}))
+	// 这些端点对公网开放且不需要认证：先限制请求体大小，再按配置校验 HMAC 签名
+	alerts.Use(middleware.BodyLimit(middleware.DefaultWebhookMaxBytes))
+	alerts.Use(middleware.WebhookSignature(r.configSvc, configService.KeySecurityWebhookSecret))
 	alerts.POST("/webhook", r.alertHandler.HandleWebhook)
 	alerts.POST("/nightingale", r.alertHandler.HandleNightingaleWebhook)
 	alerts.POST("/datasource/:name/webhook", r.datasourceHandler.HandleDatasourceWebhook)
@@ -622,7 +695,7 @@ func (r *Router) registerProtectedRoutes(rg *gin.RouterGroup) {
 		ConfigKey: "ratelimit.api_limit",
 		ConfigSvc: r.configSvc,
 	}))
-	protected.Use(middleware.AuthMiddleware(r.jwtManager, r.apiTokenSvc))
+	protected.Use(middleware.AuthMiddleware(r.jwtManager, r.apiTokenSvc, r.userSvc))
 	protected.Use(r.rbac.LoadUserRoles())
 
 	// Swagger 会话: 已通过 JWT 鉴权, 设 HttpOnly cookie 供后续 swagger UI 资源请求 (doc.json/css/js) 使用
@@ -631,7 +704,7 @@ func (r *Router) registerProtectedRoutes(rg *gin.RouterGroup) {
 		raw := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
 		raw = strings.TrimSpace(raw)
 		if raw == "" {
-			response.BadRequest(c, "需 Bearer token")
+			response.BadRequest(c, "apidoc.need_bearer")
 			return
 		}
 		c.SetSameSite(http.SameSiteStrictMode)
@@ -706,9 +779,13 @@ func (r *Router) registerUserRoutes(rg *gin.RouterGroup) {
 	users.GET("/all", r.userHandler.HandleListAllUsers)
 
 	// 用户管理（需要管理员权限）
-	users.GET("", r.userHandler.HandleListUsers)
+	//
+	// 列表和详情原来没挂 RequireAdmin：写操作全都挡住了，读却是敞开的，
+	// 任何登录用户都能拿到全体成员的邮箱、账号状态、角色、MFA 开关和认证来源。
+	// 需要选人的地方走上面的 /all（只返回 id / username / display_name）。
+	users.GET("", r.rbac.RequireAdmin(), r.userHandler.HandleListUsers)
 	users.POST("", r.rbac.RequireAdmin(), r.userHandler.HandleCreateUser)
-	users.GET("/:id", r.userHandler.HandleGetUser)
+	users.GET("/:id", r.rbac.RequireAdmin(), r.userHandler.HandleGetUser)
 	users.PUT("/:id", r.rbac.RequireAdmin(), r.userHandler.HandleUpdateUser)
 	users.POST("/:id/enable", r.rbac.RequireAdmin(), r.userHandler.HandleEnableUser)
 	users.POST("/:id/disable", r.rbac.RequireAdmin(), r.userHandler.HandleDisableUser)
@@ -759,6 +836,10 @@ func (r *Router) registerProjectRoutes(rg *gin.RouterGroup) {
 		// 角色权限管理
 		projects.GET("/:key/roles/:id/permissions", r.requirePerm("role:view"), r.projectHandler.HandleGetRolePermissions)
 		projects.PUT("/:key/roles/:id/permissions", r.requirePerm("role:manage"), r.projectHandler.HandleSetRolePermissions)
+
+		// 我在这个项目有哪些权限（前端据此决定显示哪些操作入口）。
+		// 不挂 requirePerm：非成员同样要能问出「我没有权限」，挂上就成了先有鸡还是先有蛋。
+		projects.GET("/:key/my-permissions", r.projectHandler.HandleGetMyPermissions)
 
 		// 用户角色查询
 		projects.GET("/:key/users/:user_id/roles", r.requirePerm("member:view"), r.projectHandler.HandleGetUserRoles)
@@ -1058,16 +1139,39 @@ type notificationAdapter struct {
 // CreateNotification 适配创建通知调用
 func (a *notificationAdapter) CreateNotification(ctx context.Context, req *issueService.NotificationRequest) error {
 	return a.svc.CreateNotification(ctx, &notifDto.CreateNotificationRequest{
-		UserID:     req.UserID,
-		Type:       req.Type,
-		Title:      req.Title,
-		Content:    req.Content,
-		EntityType: req.EntityType,
-		EntityID:   req.EntityID,
-		EntityKey:  req.EntityKey,
-		ActorID:    req.ActorID,
-		ActorName:  req.ActorName,
+		UserID:      req.UserID,
+		Type:        req.Type,
+		Title:       req.Title,
+		TitleKey:    req.TitleKey,
+		TitleArgs:   req.TitleArgs,
+		Content:     req.Content,
+		ContentKey:  req.ContentKey,
+		ContentArgs: req.ContentArgs,
+		EntityType:  req.EntityType,
+		EntityID:    req.EntityID,
+		EntityKey:   req.EntityKey,
+		ActorID:     req.ActorID,
+		ActorName:   req.ActorName,
 	})
+}
+
+// ============ 用户语言适配器（桥接 notifService.UserLocaleReader 和 UserRepository）============
+
+// userLocaleAdapter 只暴露"读某人的偏好语言"，不把整个用户仓储递给通知模块
+type userLocaleAdapter struct {
+	repo userRepo.UserRepository
+}
+
+// LocaleOf 返回用户的偏好语言；查不到时返回空串，由 i18n 回落到站点语言
+func (a *userLocaleAdapter) LocaleOf(ctx context.Context, userID uint64) string {
+	if userID == 0 {
+		return ""
+	}
+	user, err := a.repo.GetByID(ctx, userID)
+	if err != nil || user == nil {
+		return ""
+	}
+	return user.Locale
 }
 
 // ============ 字段值保存适配器（桥接 issue_service.FieldValueSaver 和 fieldService.FieldService）============
@@ -1100,15 +1204,19 @@ type alertNotificationAdapter struct {
 // CreateNotification 适配创建通知调用
 func (a *alertNotificationAdapter) CreateNotification(ctx context.Context, req *alertService.AlertNotificationRequest) error {
 	return a.svc.CreateNotification(ctx, &notifDto.CreateNotificationRequest{
-		UserID:     req.UserID,
-		Type:       req.Type,
-		Title:      req.Title,
-		Content:    req.Content,
-		EntityType: req.EntityType,
-		EntityID:   req.EntityID,
-		EntityKey:  req.EntityKey,
-		ActorID:    req.ActorID,
-		ActorName:  req.ActorName,
+		UserID:      req.UserID,
+		Type:        req.Type,
+		Title:       req.Title,
+		TitleKey:    req.TitleKey,
+		TitleArgs:   req.TitleArgs,
+		Content:     req.Content,
+		ContentKey:  req.ContentKey,
+		ContentArgs: req.ContentArgs,
+		EntityType:  req.EntityType,
+		EntityID:    req.EntityID,
+		EntityKey:   req.EntityKey,
+		ActorID:     req.ActorID,
+		ActorName:   req.ActorName,
 	})
 }
 

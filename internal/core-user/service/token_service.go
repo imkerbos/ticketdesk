@@ -16,6 +16,7 @@ import (
 	"github.com/kerbos/ticketdesk/internal/core-user/dto"
 	"github.com/kerbos/ticketdesk/internal/core-user/repository"
 	"github.com/kerbos/ticketdesk/internal/model"
+	"github.com/kerbos/ticketdesk/pkg/safego"
 )
 
 // API token 相关常量
@@ -28,10 +29,10 @@ const (
 
 // API token 相关错误
 var (
-	ErrTokenLimitExceeded = errors.New("token 数量超过上限 (20)")
-	ErrTokenInvalid       = errors.New("无效的 API token")
-	ErrTokenExpired       = errors.New("API token 已过期")
-	ErrTokenNotFound      = errors.New("token 不存在")
+	ErrTokenLimitExceeded = errors.New("user.token_limit")
+	ErrTokenInvalid       = errors.New("user.api_token_invalid")
+	ErrTokenExpired       = errors.New("user.api_token_expired")
+	ErrTokenNotFound      = errors.New("user.token_not_found")
 )
 
 // APITokenService API token 业务接口
@@ -152,6 +153,7 @@ func (s *apiTokenService) Authenticate(ctx context.Context, plainToken string) (
 
 	// 异步更新 last_used_at，避免阻塞请求
 	go func() {
+		defer safego.Recover("token.updateLastUsedAt")
 		bgCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		_ = s.tokenRepo.UpdateLastUsed(bgCtx, token.ID)

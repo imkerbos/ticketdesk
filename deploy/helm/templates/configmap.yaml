@@ -18,6 +18,15 @@ data:
   LOG_LEVEL: {{ .Values.app.logLevel | quote }}
   JWT_ACCESS_EXPIRE: {{ .Values.jwt.accessExpire | quote }}
   JWT_REFRESH_EXPIRE: {{ .Values.jwt.refreshExpire | quote }}
+  STORAGE_DRIVER: {{ .Values.storage.driver | quote }}
+  {{- if eq .Values.storage.driver "s3" }}
+  STORAGE_S3_ENDPOINT: {{ .Values.storage.s3.endpoint | quote }}
+  STORAGE_S3_BUCKET: {{ .Values.storage.s3.bucket | quote }}
+  STORAGE_S3_REGION: {{ .Values.storage.s3.region | quote }}
+  STORAGE_S3_USE_SSL: {{ .Values.storage.s3.useSSL | quote }}
+  STORAGE_S3_PATH_STYLE: {{ .Values.storage.s3.pathStyle | quote }}
+  STORAGE_S3_PREFIX: {{ .Values.storage.s3.prefix | quote }}
+  {{- end }}
   NIGHTINGALE_ENABLE: {{ .Values.nightingale.enabled | quote }}
   {{- if .Values.nightingale.enabled }}
   NIGHTINGALE_BASE_URL: {{ .Values.nightingale.baseUrl | quote }}

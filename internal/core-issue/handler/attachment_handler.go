@@ -3,6 +3,8 @@ package handler
 
 import (
 	"errors"
+	"mime"
+	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -44,7 +46,7 @@ func (h *AttachmentHandler) HandleUploadAttachment(c *gin.Context) {
 	// 获取上传的文件
 	file, err := c.FormFile("file")
 	if err != nil {
-		response.BadRequest(c, "请选择要上传的文件")
+		response.BadRequestT(c, "issue.choose_file")
 		return
 	}
 
@@ -52,13 +54,13 @@ func (h *AttachmentHandler) HandleUploadAttachment(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrIssueNotFound):
-			response.NotFound(c, "工单不存在")
+			response.NotFoundT(c, "issue.not_found")
 		case errors.Is(err, service.ErrFileTooLarge):
-			response.BadRequest(c, "文件大小超过限制（最大10MB）")
+			response.BadRequestT(c, "issue.file_too_large_10mb")
 		case errors.Is(err, service.ErrInvalidFileType):
-			response.BadRequest(c, "不支持的文件类型")
+			response.BadRequestT(c, "issue.invalid_file_type")
 		default:
-			response.InternalError(c, "上传附件失败")
+			response.InternalErrorT(c, "issue.upload_failed")
 		}
 		return
 	}
@@ -82,10 +84,10 @@ func (h *AttachmentHandler) HandleListAttachments(c *gin.Context) {
 	result, err := h.attachmentService.ListAttachments(c.Request.Context(), issueKey)
 	if err != nil {
 		if errors.Is(err, service.ErrIssueNotFound) {
-			response.NotFound(c, "工单不存在")
+			response.NotFoundT(c, "issue.not_found")
 			return
 		}
-		response.InternalError(c, "获取附件列表失败")
+		response.InternalErrorT(c, "issue.attachments_failed")
 		return
 	}
 
@@ -112,7 +114,7 @@ func (h *AttachmentHandler) HandleDeleteAttachment(c *gin.Context) {
 
 	attachmentID, err := strconv.ParseUint(attachmentIDStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的附件ID")
+		response.BadRequestT(c, "issue.invalid_attachment_id")
 		return
 	}
 
@@ -120,13 +122,13 @@ func (h *AttachmentHandler) HandleDeleteAttachment(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrIssueNotFound):
-			response.NotFound(c, "工单不存在")
+			response.NotFoundT(c, "issue.not_found")
 		case errors.Is(err, service.ErrAttachmentNotFound):
-			response.NotFound(c, "附件不存在")
+			response.NotFoundT(c, "issue.attachment_not_found")
 		case errors.Is(err, service.ErrUnauthorized):
-			response.Forbidden(c, "无权限删除此附件")
+			response.ForbiddenT(c, "issue.delete_attachment_denied")
 		default:
-			response.InternalError(c, "删除附件失败")
+			response.InternalErrorT(c, "issue.delete_attachment_failed")
 		}
 		return
 	}
@@ -152,24 +154,38 @@ func (h *AttachmentHandler) HandleDownloadAttachment(c *gin.Context) {
 
 	attachmentID, err := strconv.ParseUint(attachmentIDStr, 10, 64)
 	if err != nil {
-		response.BadRequest(c, "无效的附件ID")
+		response.BadRequestT(c, "issue.invalid_attachment_id")
 		return
 	}
 
 	// 校验附件归属于该工单, 防 IDOR (别的工单的附件 ID 不应能下到)
-	filePath, err := h.attachmentService.GetAttachmentPathForIssue(c.Request.Context(), issueKey, attachmentID)
+	obj, fileName, err := h.attachmentService.OpenAttachmentForIssue(c.Request.Context(), issueKey, attachmentID)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrIssueNotFound):
-			response.NotFound(c, "工单不存在")
+			response.NotFoundT(c, "issue.not_found")
 		case errors.Is(err, service.ErrAttachmentNotFound):
-			response.NotFound(c, "附件不存在")
+			response.NotFoundT(c, "issue.attachment_not_found")
 		default:
-			response.InternalError(c, "获取附件失败")
+			response.InternalErrorT(c, "issue.attachment_failed")
 		}
 		return
 	}
 
-	// 直接返回文件
-	c.File(filePath)
+	defer obj.Body.Close()
+
+	// 强制以附件形式下载, 不在浏览器内联渲染:
+	// 允许上传的类型里有 .xml / .json / .md 等可被解析的文本格式,
+	// 内联打开会让上传内容运行在本应用同源下 (访问令牌就在 localStorage 里)。
+	// nosniff 同时阻止浏览器忽略声明的 Content-Type 去猜测类型。
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": fileName}))
+
+	contentType := obj.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	// 直接把存储侧的流转发给客户端：对象存储驱动下没有本地文件可供 c.File 使用
+	c.DataFromReader(http.StatusOK, obj.Size, contentType, obj.Body, nil)
 }

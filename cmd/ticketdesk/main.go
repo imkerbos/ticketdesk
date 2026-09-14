@@ -12,7 +12,9 @@
 //
 // @license.name  MIT
 //
-// @host      localhost:10010
+// 不声明 @host：声明了就会被写进 swagger.json，文档页上的 Base URL 永远是
+// 生成时那台机器的地址（原来是 localhost:10010），换个域名部署就对不上，
+// 照着调的人第一个请求就失败。留空时 swagger UI 用当前页面的 origin。
 // @BasePath  /api/v1
 //
 // @securityDefinitions.apikey BearerAuth
@@ -35,6 +37,7 @@ import (
 
 	"github.com/kerbos/ticketdesk/internal/api/router"
 	"github.com/kerbos/ticketdesk/internal/model"
+	"github.com/kerbos/ticketdesk/pkg/cache"
 	"github.com/kerbos/ticketdesk/pkg/config"
 	"github.com/kerbos/ticketdesk/pkg/database"
 	"github.com/kerbos/ticketdesk/pkg/jwt"
@@ -84,17 +87,7 @@ func main() {
 		}
 	}()
 
-	// 自动迁移数据库
-	if err := model.AutoMigrate(database.GetDB()); err != nil {
-		logger.Fatal("failed to auto migrate database", zap.Error(err))
-	}
-
-	// 初始化种子数据
-	if err := model.SeedData(database.GetDB()); err != nil {
-		logger.Fatal("failed to seed data", zap.Error(err))
-	}
-
-	// 初始化 Redis
+	// 初始化 Redis（迁移需要用它加分布式锁，因此要先于迁移初始化）
 	if err := redis.Init(&cfg.Redis); err != nil {
 		logger.Fatal("failed to init redis", zap.Error(err))
 	}
@@ -103,6 +96,16 @@ func main() {
 			logger.Error("failed to close redis", zap.Error(err))
 		}
 	}()
+
+	// 自动迁移 + 种子数据。
+	//
+	// 多副本部署时所有副本会同时启动并各跑一遍 AutoMigrate，
+	// 意味着并发对同一批表执行 DDL（含 CREATE/DROP INDEX），
+	// 大表上还会互相阻塞。这里用分布式锁串行化：
+	// 抢到锁的副本执行，其余副本等待锁释放后再继续启动。
+	if err := runMigrations(cfg); err != nil {
+		logger.Fatal("failed to migrate database", zap.Error(err))
+	}
 
 	// 初始化 JWT 管理器
 	jwtManager := jwt.NewManager(&cfg.JWT)
@@ -144,4 +147,41 @@ func main() {
 	}
 
 	logger.Info("server exited")
+}
+
+// migrationLockKey 迁移互斥锁的键
+const migrationLockKey = "ticketdesk:migration:lock"
+
+// runMigrations 在分布式锁保护下执行数据库迁移与种子数据
+//
+// 锁获取失败（Redis 不可用）时降级为直接执行：单副本部署下行为不变，
+// 多副本下退回到原来的并发风险，但不会因为 Redis 抖动而拒绝启动。
+func runMigrations(cfg *config.Config) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	migrate := func() error {
+		if err := model.AutoMigrate(database.GetDB()); err != nil {
+			return fmt.Errorf("auto migrate: %w", err)
+		}
+		if err := model.SeedData(database.GetDB()); err != nil {
+			return fmt.Errorf("seed data: %w", err)
+		}
+		return nil
+	}
+
+	// 最多等 5 分钟让先启动的副本完成迁移
+	lockValue := cache.TryLockWithRetry(ctx, migrationLockKey, 10*time.Minute, 60, 5*time.Second)
+	switch lockValue {
+	case "":
+		logger.Warn("migration lock not acquired within timeout, proceeding without lock")
+		return migrate()
+	case "degraded":
+		logger.Warn("migration lock degraded (redis unavailable), proceeding without lock")
+		return migrate()
+	default:
+		defer cache.UnlockWithValue(ctx, migrationLockKey, lockValue)
+		logger.Info("migration lock acquired", zap.String("env", cfg.App.Env))
+		return migrate()
+	}
 }

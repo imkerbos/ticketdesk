@@ -1,6 +1,6 @@
 <template>
   <div class="attachment-list">
-    <el-empty v-if="attachments.length === 0" description="暂无附件" />
+    <el-empty v-if="attachments.length === 0" :description="t('component.attachment.empty')" />
     <div v-else class="attachment-items">
       <div
         v-for="attachment in attachments"
@@ -17,16 +17,16 @@
             :loading="imageLoading[attachment.id] ? 'lazy' : undefined"
           >
             <template #placeholder>
-              <div class="image-loading">加载中...</div>
+              <div class="image-loading">{{ t('component.attachment.imageLoading') }}</div>
             </template>
             <template #error>
-              <div class="image-error">加载失败</div>
+              <div class="image-error">{{ t('component.attachment.imageError') }}</div>
             </template>
           </el-image>
         </div>
         <!-- 文件图标 -->
         <div v-else class="attachment-file">
-          <el-icon :size="40" color="#909399">
+          <el-icon :size="40" color="var(--td-color-info)">
             <Document />
           </el-icon>
         </div>
@@ -37,7 +37,7 @@
           <div class="file-meta">
             <span>{{ formatFileSize(attachment.file_size) }}</span>
             <span class="separator">·</span>
-            <span>{{ attachment.uploader?.display_name || '未知用户' }}</span>
+            <span>{{ attachment.uploader?.display_name || t('common.unknownUser') }}</span>
             <span class="separator">·</span>
             <span>{{ formatDate(attachment.created_at) }}</span>
           </div>
@@ -50,7 +50,7 @@
             type="primary"
             @click="handleDownload(attachment.id)"
           >
-            下载
+            {{ t('component.attachment.download') }}
           </el-button>
           <el-button
             v-if="canDelete(attachment)"
@@ -58,7 +58,7 @@
             type="danger"
             @click="handleDelete(attachment.id)"
           >
-            删除
+            {{ t('common.delete') }}
           </el-button>
         </div>
       </div>
@@ -67,12 +67,15 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
 import { deleteAttachment, getAttachmentDownloadUrl } from '@/api/attachment'
 import type { Attachment } from '@/types/attachment'
 import { useUserStore } from '@/stores/user'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   issueKey: string
@@ -171,13 +174,13 @@ const formatDate = (dateStr: string) => {
     const hours = Math.floor(diff / (1000 * 60 * 60))
     if (hours === 0) {
       const minutes = Math.floor(diff / (1000 * 60))
-      return minutes === 0 ? '刚刚' : `${minutes}分钟前`
+      return minutes === 0 ? t('component.attachment.justNow') : t('component.attachment.minutesAgo', { n: minutes })
     }
-    return `${hours}小时前`
+    return t('component.attachment.hoursAgo', { n: hours })
   } else if (days === 1) {
-    return '昨天'
+    return t('component.attachment.yesterday')
   } else if (days < 7) {
-    return `${days}天前`
+    return t('component.attachment.daysAgo', { n: days })
   } else {
     return date.toLocaleDateString('zh-CN')
   }
@@ -202,7 +205,7 @@ const handleDownload = async (attachmentId: number) => {
     })
 
     if (!response.ok) {
-      throw new Error('下载失败')
+      throw new Error(t('component.attachment.downloadFailed'))
     }
 
     // 获取文件名
@@ -221,25 +224,25 @@ const handleDownload = async (attachmentId: number) => {
     window.URL.revokeObjectURL(blobUrl)
 
   } catch (error: any) {
-    ElMessage.error(error.message || '下载失败')
+    ElMessage.error(error.message || t('component.attachment.downloadFailed'))
   }
 }
 
 // 删除附件
 const handleDelete = async (attachmentId: number) => {
   try {
-    await ElMessageBox.confirm('确定要删除这个附件吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
+    await ElMessageBox.confirm(t('component.attachment.confirmDelete'), t('issue.msg.tipTitle'), {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
       type: 'warning'
     })
 
     await deleteAttachment(props.issueKey, attachmentId)
-    ElMessage.success('删除成功')
+    ElMessage.success(t('issue.msg.deleteSuccess'))
     emit('refresh')
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.message || '删除失败')
+      ElMessage.error(error.message || t('issue.msg.deleteFailed2'))
     }
   }
 }
@@ -267,7 +270,7 @@ const handleDelete = async (attachmentId: number) => {
 
 .attachment-item:hover {
   background-color: var(--td-bg-page);
-  border-color: #c0c4cc;
+  border-color: var(--td-border-color-dark);
 }
 
 .attachment-image {
