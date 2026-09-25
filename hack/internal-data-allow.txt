@@ -1,0 +1,9 @@
+# 门禁误报报备。本地文件，不进仓库。
+
+# 示例配置和默认值里的网段常量，不指向任何真实环境。
+10.42.0.0
+172.16.0.0
+192.168.0.0
+test-secret-for-unit-test
+# 测试里构造的 alg=none JWT 头，用来验证拒绝逻辑。
+eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.
